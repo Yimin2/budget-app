@@ -1,0 +1,505 @@
+/* 시작 화면 (/start, /start/new) — 집중 틀 안에서만 써요.
+   규칙은 src/ui/components.css 와 같아요: 의미 토큰만, 글자 12·14·15·16·18·22·28·36, 굵기 400·500·700·800 */
+
+/* ───────── 첫 화면 ───────── */
+.sp-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sp-hero h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.sp-hero .lead {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--text-muted);
+}
+@media (min-width: 768px) {
+  .sp-hero h1 {
+    font-size: 36px;
+    line-height: 44px;
+  }
+}
+.sp-features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-5);
+  list-style: none;
+  border-radius: var(--radius-lg);
+  background: var(--brand-surface);
+}
+.sp-features li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  font-size: 16px;
+  line-height: 24px;
+}
+.sp-features .ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--primary-text);
+}
+.sp-features strong {
+  display: block;
+  font-weight: 700;
+}
+.sp-features span.s {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.sp-cta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sp-g {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+}
+.sp-note {
+  margin: 0;
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.sp-note .icon {
+  margin-top: 1px;
+}
+
+/* ───────── 가계부 고르기 ───────── */
+.sp-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.sp-title h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+}
+.sp-title .sub {
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+@media (min-width: 768px) {
+  .sp-title h1 {
+    font-size: 28px;
+    line-height: 36px;
+  }
+}
+.sp-ledgers {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sp-ledgers > li + li {
+  border-top: 1px solid var(--border);
+}
+.sp-ledger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sp-ledger .open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 64px;
+  padding: var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.sp-ledger .open:hover {
+  background: var(--surface-subtle);
+}
+.sp-ledger .lead {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
+.sp-ledger .main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sp-ledger .t {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  min-width: 0;
+}
+.sp-ledger .t .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-ledger .s {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-2);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.sp-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+@media (min-width: 640px) {
+  .sp-actions {
+    flex-direction: row;
+  }
+  .sp-actions > * {
+    flex: 1;
+  }
+}
+
+/* ───────── 단계 표시 (Stepper) ───────── */
+.wz-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 22px;
+}
+.wz-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  min-width: 0;
+}
+.wz-step + .wz-step::before {
+  content: '';
+  flex: none;
+  width: 16px;
+  height: 2px;
+  margin-right: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--border-input);
+  transition: background-color var(--duration-slow) var(--ease-out);
+}
+.wz-step.done + .wz-step::before,
+.wz-step.done + .wz-step.now::before {
+  background: var(--primary);
+}
+.wz-step .c {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--border-choice);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color var(--duration-slow) var(--ease-out),
+    border-color var(--duration-slow) var(--ease-out);
+}
+.wz-step.done .c {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.wz-step.now {
+  color: var(--text);
+  font-weight: 700;
+}
+.wz-step.now .c {
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+.wz-step .l {
+  white-space: nowrap;
+}
+/* 좁은 화면에서는 지금 단계 이름만 */
+@media (max-width: 639.98px) {
+  .wz-step:not(.now) .l {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
+/* ───────── 마법사 ───────── */
+.wz-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.wz-head h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+}
+.wz-head h1:focus {
+  outline: none;
+}
+.wz-head p {
+  margin: 0;
+  color: var(--text-muted);
+}
+@media (min-width: 768px) {
+  .wz-head h1 {
+    font-size: 28px;
+    line-height: 36px;
+  }
+}
+.wz-actions {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-3);
+}
+.wz-actions .grow {
+  display: none;
+}
+@media (min-width: 640px) {
+  .wz-actions {
+    flex-direction: row;
+    align-items: center;
+  }
+  .wz-actions .grow {
+    display: block;
+    flex: 1;
+  }
+}
+
+/* 고르기 카드 (라디오) */
+.wz-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.wz-options legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+@media (min-width: 640px) {
+  .wz-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wz-options legend {
+    grid-column: 1 / -1;
+  }
+}
+.wz-opt {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-4);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.wz-opt:hover {
+  background: var(--surface-subtle);
+}
+.wz-opt:has(input:checked) {
+  border: 2px solid var(--primary);
+  padding: calc(var(--space-4) - 1px);
+  background: var(--primary-subtle);
+}
+.wz-opt:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.wz-opt input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+  border: 1.5px solid var(--border-choice);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+.wz-opt input::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  transform: scale(0);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.wz-opt input:checked {
+  border-color: var(--primary);
+}
+.wz-opt input:checked::before {
+  transform: scale(1);
+}
+.wz-opt input:focus-visible {
+  outline: none;
+}
+.wz-opt .txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wz-opt strong {
+  font-size: 16px;
+  line-height: 24px;
+}
+.wz-opt span.s {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+
+/* 금액 줄 (통장 시작 잔액 · 매달 배분) */
+.wz-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.wz-total {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+.wz-total .line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.wz-total .line strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* 고정 지출 · 용돈 행 */
+.wz-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wz-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.wz-item .top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.wz-item .top > .field {
+  flex: 1;
+  min-width: 0;
+}
+.wz-item .top .btn {
+  margin-top: 30px;
+}
+.wz-item .pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+@media (min-width: 480px) {
+  .wz-item .pair {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+.wz-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.wz-section h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.wz-section > p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}

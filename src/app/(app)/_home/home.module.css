@@ -1,0 +1,489 @@
+/* 홈 · 사도 돼? 화면 전용 배치. 색·간격·모서리·시간은 토큰만 써요.
+   글자 크기 12·14·15·16·18·22·28·36·48, 굵기 400·500·700·800. */
+
+/* ───────── 홈 배치 ─────────
+   모바일(<768): 한 줄. 태블릿(768–1279): 이벤트통장 · 최근 지출만 두 칸.
+   데스크톱(≥1280): 왼쪽(오늘 · 사도 돼? · 자주 쓰는 지출 · 최근 지출) / 오른쪽(부족 알림 · 이벤트통장 · 통장 잔액) */
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.col {
+  display: contents;
+}
+.oHeader {
+  order: 0;
+}
+.oHero {
+  order: 1;
+}
+.oCta {
+  order: 2;
+}
+.oFav {
+  order: 3;
+}
+.oBanner {
+  order: 4;
+}
+.oEvent {
+  order: 5;
+}
+.oRecent {
+  order: 6;
+}
+.oBalances {
+  order: 7;
+}
+@media (min-width: 768px) {
+  .home {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6);
+  }
+  .home > *,
+  .col > * {
+    grid-column: 1 / -1;
+  }
+  .col > .half {
+    grid-column: auto;
+  }
+}
+@media (min-width: 1280px) {
+  .home {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    min-width: 0;
+  }
+  .home > .col {
+    grid-column: auto;
+  }
+}
+
+/* ───────── 오늘 써도 되는 생활비 ───────── */
+.hero {
+  gap: var(--space-3);
+}
+.heroLabel {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.over {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--warning-text);
+}
+.heroBar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: var(--space-3);
+  row-gap: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.heroMeta strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.heroMeta .bad {
+  color: var(--danger-text);
+}
+.setup {
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.setupIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--primary-text);
+}
+.setupTitle {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.setupText {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* ───────── 섹션 공통 ───────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.hintText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.chipLink {
+  text-decoration: none;
+}
+.chipLink:hover {
+  color: var(--text);
+}
+.cardGap {
+  gap: var(--space-3);
+}
+.cardFoot {
+  display: flex;
+  justify-content: flex-end;
+  margin: calc(var(--space-2) * -1) calc(var(--space-3) * -1) calc(var(--space-3) * -1);
+}
+.asideLink {
+  margin: -9px calc(var(--space-3) * -1) -9px 0;
+}
+.balanceAside {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.totalAside {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.totalLabel {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.overdue {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--warning-text);
+  font-weight: 500;
+}
+.subRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+.amountCell {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.emptyLine {
+  margin: 0;
+  padding: var(--space-3) 0;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+.listTop {
+  border-top: 1px solid var(--border);
+}
+
+/* ───────── 12개월 막대 ───────── */
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+.chartHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: var(--space-3);
+}
+.chartTitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.readout {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 22px;
+}
+.readout strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.bars {
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  gap: 2px;
+}
+.barCol {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  padding: var(--space-1) 0 0;
+  border-radius: var(--radius-xs);
+  cursor: default;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.barCol.active {
+  background: var(--surface-subtle);
+}
+.onTint .barCol.active {
+  background: var(--surface);
+}
+.posArea {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--border-strong);
+}
+.negArea {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.barPos,
+.barNeg {
+  display: block;
+  width: min(18px, 64%);
+}
+.barPos {
+  background: var(--chart-bar);
+  border-radius: 4px 4px 0 0;
+}
+.barNeg {
+  background: var(--danger);
+  border-radius: 0 0 4px 4px;
+}
+.barLabel {
+  padding: 2px 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.barLabel.short {
+  color: var(--danger-text);
+  font-weight: 700;
+}
+.monthSuffix {
+  display: none;
+}
+@media (min-width: 420px) {
+  .monthSuffix {
+    display: inline;
+  }
+}
+.chartNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.chartNote > svg {
+  margin-top: 3px;
+}
+.chartNote.bad {
+  color: var(--danger-text);
+}
+.chartNote.ok {
+  color: var(--text);
+}
+.chartFoot {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ───────── 사도 돼? ─────────
+   모바일·태블릿: 한 줄 (금액 → 빠른 금액 → 어느 돈 → 결과 → 버튼 → 카테고리). 데스크톱(≥1280): 왼쪽 입력 / 오른쪽 결과 */
+.check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+}
+.checkGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.checkCol {
+  display: contents;
+}
+.cAmount {
+  order: 1;
+}
+.cQuick {
+  order: 2;
+}
+.cSource {
+  order: 3;
+}
+.cNotice {
+  order: 4;
+}
+.cVerdict {
+  order: 5;
+}
+.cActions {
+  order: 6;
+}
+.cCategory {
+  order: 7;
+}
+@media (min-width: 768px) {
+  .check,
+  .checkGrid {
+    gap: var(--space-6);
+  }
+}
+@media (min-width: 1280px) {
+  .check {
+    max-width: none;
+  }
+  .checkGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .checkCol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    min-width: 0;
+  }
+  .checkSticky {
+    position: sticky;
+    top: var(--space-8);
+  }
+}
+.amountField :global(.money-input.lg .input) {
+  text-align: center;
+}
+.chipsCenter {
+  justify-content: center;
+}
+@media (min-width: 1280px) {
+  .chipsCenter {
+    justify-content: flex-start;
+  }
+}
+.groupLabel {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.optional {
+  margin-left: var(--space-1);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-button);
+  background: var(--surface);
+  text-align: center;
+}
+.placeholder p {
+  margin: 0;
+}
+.placeholderIcon {
+  color: var(--text-muted);
+}
+.placeholderTitle {
+  font-weight: 700;
+}
+.placeholderSub {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sheetForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sheetSummary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.sheetSummary span {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.sheetSummary strong {
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────── 불러오는 중 ───────── */
+.skelCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

@@ -1,0 +1,662 @@
+/* 통장 화면 전용 배치. 색·간격·모서리·시간은 토큰만 써요.
+   글자 크기 12·14·15·16·18·22·28·36·48, 굵기 400·500·700·800. */
+
+/* ───────── 목록 배치 ─────────
+   모바일: 한 줄 (합계 → 통장 → 매달 배분). 태블릿: 통장 카드 두 칸.
+   데스크톱(≥1280): 왼쪽 합계 · 통장 / 오른쪽 매달 배분 */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.main,
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+@media (min-width: 1280px) {
+  .layout {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: var(--space-6);
+  }
+  .main,
+  .side {
+    gap: var(--space-6);
+  }
+}
+
+.label {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.sub {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.note {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--text-muted);
+}
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.cardLink:global(.btn) {
+  margin: -9px calc(var(--space-3) * -1) -9px 0;
+}
+
+/* ───────── 합계 ───────── */
+.summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.totalCard {
+  gap: var(--space-1);
+}
+.totalValue {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+@media (min-width: 390px) {
+  .totalValue {
+    font-size: 36px;
+    line-height: 46px;
+    letter-spacing: -0.015em;
+  }
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+/* 좁은 휴대폰: 1,000만 원이 넘는 금액도 칸 밖으로 나가지 않게 한 줄에 하나씩 */
+@media (max-width: 419.98px) {
+  .stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (min-width: 768px) {
+  .summary {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ───────── 통장 카드 ───────── */
+.cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cards > li {
+  display: flex;
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+}
+.accCard {
+  flex: 1;
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+.accHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.accIcon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.accCard:hover .accIcon {
+  background: var(--surface);
+}
+.accTitle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.accName {
+  min-width: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chev {
+  color: var(--text-muted);
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.accBalance {
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.warnLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--warning-text);
+}
+.accFlow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.accFlow > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.accFlowLabel {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.accFlow strong {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* ───────── 매달 배분 ───────── */
+.flowCard {
+  gap: var(--space-4);
+}
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.path > li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.pathNode {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--surface-subtle);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.pathArrow {
+  color: var(--text-muted);
+}
+.stackWrap {
+  position: relative;
+  padding-top: var(--space-1);
+}
+.withMark {
+  padding-bottom: var(--space-5);
+}
+.stack {
+  display: flex;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.stack > span {
+  height: 100%;
+  min-width: 3px;
+}
+.stack > span + span {
+  box-shadow: inset 2px 0 0 var(--surface);
+}
+.leftSeg {
+  background: repeating-linear-gradient(135deg, var(--surface-subtle) 0 6px, var(--border) 6px 8px);
+}
+.mark {
+  position: absolute;
+  top: 0;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+}
+.mark > span {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.c1 {
+  background: var(--chart-1);
+}
+.c2 {
+  background: var(--chart-2);
+}
+.c3 {
+  background: var(--chart-3);
+}
+.c4 {
+  background: var(--chart-4);
+}
+.c5 {
+  background: var(--chart-5);
+}
+.c6 {
+  background: var(--chart-6);
+}
+.legend {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.legend > li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: 44px;
+  font-size: 16px;
+  line-height: 24px;
+}
+.legend > li + li {
+  border-top: 1px solid var(--border);
+}
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+}
+.leftDot {
+  background: var(--surface-subtle);
+  box-shadow: inset 0 0 0 2px var(--border-choice);
+}
+.legendName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.legendPct {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: right;
+}
+.legendAmt {
+  font-weight: 700;
+  min-width: 96px;
+  text-align: right;
+}
+.flowTotals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.flowTotals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 14px;
+  line-height: 22px;
+}
+.flowTotals dt {
+  color: var(--text-muted);
+}
+.flowTotals dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────── 통장 상세 ───────── */
+.skel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.detailSide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+@media (min-width: 1280px) {
+  .detail {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: var(--space-6);
+  }
+  .detailSide {
+    position: sticky;
+    top: var(--space-6);
+  }
+}
+.balanceCard {
+  gap: var(--space-2);
+}
+.balanceValue {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+@media (min-width: 390px) {
+  .balanceValue {
+    font-size: 36px;
+    line-height: 46px;
+    letter-spacing: -0.015em;
+  }
+}
+.negative {
+  color: var(--danger-text);
+}
+.flowStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+}
+.flowStats > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.flowStats dt {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.flowStats dd {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.actionPair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.actionPair :global(.btn) {
+  padding: 0 var(--space-3);
+}
+
+.historyCard {
+  gap: var(--space-2);
+}
+.hGroup + .hGroup {
+  margin-top: var(--space-3);
+}
+.hMonth {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.hList {
+  margin: 0 calc(var(--space-2) * -1);
+  padding: 0;
+  list-style: none;
+}
+.hList > li + li > .hRow {
+  box-shadow: inset 0 1px 0 var(--border);
+}
+.hRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: 64px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.hBtn {
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.hBtn:hover {
+  background: var(--surface-subtle);
+}
+.hDate {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.hTitle {
+  font-size: 16px;
+  line-height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hSub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.hTrail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+.hTrail > :first-child {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.hBal {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.plus {
+  color: var(--success-text);
+}
+.dim {
+  color: var(--text-muted);
+}
+
+/* ───────── 창 ───────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.preview {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.preview > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-height: 36px;
+  padding: var(--space-1) 0;
+}
+.preview > div + div {
+  border-top: 1px solid var(--border);
+}
+.preview dt {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  flex: none;
+}
+.preview dd {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.previewDiff dd {
+  font-size: 18px;
+}
+.fromTo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.swap:global(.btn) {
+  justify-self: center;
+  transform: rotate(90deg);
+}
+@media (min-width: 768px) {
+  .fromTo {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: end;
+    gap: var(--space-3);
+  }
+  .swap:global(.btn) {
+    transform: none;
+  }
+}
+.infoBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.dangerOutline:global(.btn.outline) {
+  color: var(--danger-text);
+}
+
+/* 긴 기록 창: 아래 버튼 줄을 창 아래에 붙여 둬요 (스크롤해도 보여요) */
+.sheet:global(.dialog) :global(.actions) {
+  position: sticky;
+  /* 창의 안쪽 여백만큼 내려야 창 아래 끝에 붙어요 */
+  bottom: calc(-1 * (var(--space-6) + env(safe-area-inset-bottom, 0px)));
+  z-index: 1;
+  flex-direction: row;
+  margin: 0 calc(var(--space-4) * -1) calc(-1 * (var(--space-6) + env(safe-area-inset-bottom, 0px)));
+  padding: var(--space-3) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.sheet:global(.dialog) :global(.actions .btn) {
+  flex: 1;
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .sheet:global(.dialog) :global(.actions) {
+    bottom: calc(var(--space-6) * -1);
+    margin: 0 calc(var(--space-6) * -1) calc(var(--space-6) * -1);
+    padding: var(--space-4) var(--space-6) var(--space-6);
+  }
+  .sheet:global(.dialog) :global(.actions .btn) {
+    flex: none;
+  }
+}
