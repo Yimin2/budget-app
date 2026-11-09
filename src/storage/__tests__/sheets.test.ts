@@ -209,12 +209,17 @@ describe('SheetsRepository', () => {
       ],
     });
     const repo = backend.open(ref);
-    await repo.upsert('monthEnds', { month: '2026-10', leftover: 2000, choice: 'reservoir', decidedBy: 'a@b.c', decidedAt: 'now' });
-    // 빠진 앱 열(처리자·처리일시)은 머리글 끝에 다시 붙이고, 손으로 쓴 메모 칸은 건드리지 않는다
-    expect(g.tabs.get('월말')![0]).toEqual(['처리', '사용자메모', '월', '남은생활비', '처리자', '처리일시']);
-    expect(g.tabs.get('월말')![1]).toEqual(['저수지', '손으로 쓴 메모', '2026-10', 2000, 'a@b.c', 'now']);
-    await repo.upsert('monthEnds', { month: '2026-11', leftover: 5, choice: 'pending', decidedBy: null, decidedAt: null });
-    expect(g.tabs.get('월말')![2]).toEqual(['미정', '', '2026-11', 5, '', '']);
+    await repo.upsert('monthEnds', {
+      month: '2026-10', leftover: 2000, choice: 'reservoir', decidedBy: 'a@b.c', decidedAt: 'now',
+      items: [{ categoryId: 'c-food', leftover: 2500 }, { categoryId: null, leftover: -500 }],
+    });
+    // 빠진 앱 열(처리자·처리일시·항목별)은 머리글 끝에 다시 붙이고, 손으로 쓴 메모 칸은 건드리지 않는다
+    expect(g.tabs.get('월말')![0]).toEqual(['처리', '사용자메모', '월', '남은생활비', '처리자', '처리일시', '항목별']);
+    expect(g.tabs.get('월말')![1]).toEqual([
+      '저수지', '손으로 쓴 메모', '2026-10', 2000, 'a@b.c', 'now', '{"c-food":2500,"":-500}',
+    ]);
+    await repo.upsert('monthEnds', { month: '2026-11', leftover: 5, choice: 'pending', decidedBy: null, decidedAt: null, items: null });
+    expect(g.tabs.get('월말')![2]).toEqual(['미정', '', '2026-11', 5, '', '', '']);
   });
 
   it('updateSettings 는 설정 탭을 다시 쓰고 이름이면 제목도 바꾼다', async () => {

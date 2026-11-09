@@ -3,20 +3,21 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { monthOf } from '@/domain';
-import type { AllocationRule, FixedExpense, LedgerKind } from '@/domain/types';
+import type { Account, AllocationRule, FixedExpense, LedgerKind } from '@/domain/types';
 import { useLedger, useSession } from '@/state';
 import type { LedgerRef } from '@/storage/types';
 import { Button, LoadingBlock, useToast } from '@/ui';
 import { LedgerLoadError } from '@/app/(app)/_components/RequireLedger';
 import { Stepper } from '../_components/Stepper';
-import { StepAllocation, StepBalances, StepBasics, StepFixed, StepNote } from './Steps';
+import { StepAllocation, StepBalances, StepBasics, StepFixed, StepLiving, StepNote } from './Steps';
 import {
-  ALLOC_TARGETS, DEFAULT_NAMES, allocationSummary, diffByKey, draftKey, validateAllowances, validateBills,
-  wantedFixed, wantedRules, type AllocRole, type AllowanceDraft, type BillDraft, type DraftErrors,
+  ALLOC_TARGETS, DEFAULT_NAMES, activeEarners, defaultLivingDrafts, diffByKey, draftKey, earnerAccountFields, newEarner,
+  validateAllowances, validateBills, validateEarners, wantedFixed, wantedLiving, wantedRules,
+  type AllowanceDraft, type BillDraft, type DraftErrors, type EarnerDraft, type LivingDraft,
 } from './wizard';
 
 const STEPS: Record<LedgerKind, string[]> = {
-  shared: ['종류·이름', '시작 잔액', '매달 배분', '고정 지출'],
+  shared: ['종류·이름', '시작 잔액', '매달 배분', '고정 지출', '생활비'],
   personal: ['종류·이름', '시작 잔액'],
 };
 
@@ -26,15 +27,22 @@ const HEADS: Record<string, { title: string; desc: string }> = {
     title: '통장 시작 잔액',
     desc: '지금 은행 앱에 보이는 잔액을 적어 주세요. 다르면 나중에 통장 화면에서 언제든 맞출 수 있어요.',
   },
-  '매달 배분': { title: '매달 배분', desc: '월급이 들어오면 수입통장에서 각 통장으로 보낼 금액이에요.' },
-  '고정 지출': { title: '고정 지출과 생활비', desc: '매달 나가는 돈과 한 달 생활비를 정해 주세요.' },
+  '매달 배분': {
+    title: '매달 배분',
+    desc: '버는 사람마다 수입통장을 하나씩 만들어요. 월급이 들어오면 각자 수입통장에서 보낼 금액을 정해 주세요.',
+  },
+  '고정 지출': { title: '고정 지출과 용돈', desc: '매달 나가는 돈과 멤버 용돈을 정해 주세요.' },
+  '생활비': {
+    title: '생활비 예산',
+    desc: '항목마다 한 달 예산을 정해 주세요. 매일 쓰는 건 하루에 나눠 쓰고, 가끔 쓰는 건 한 달 한도만 봐요.',
+  },
 };
 
 function errorText(e: unknown, fallback: string): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
-/** 새 가계부 만들기: ① 종류·이름 → (만들기) → ② 시작 잔액 → ③ 매달 배분 → ④ 고정 지출 → 홈 */
+/** 새 가계부 만들기: ① 종류·이름 → (만들기) → ② 시작 잔액 → ③ 매달 배분(사람별 수입통장) → ④ 고정 지출 → ⑤ 생활비 → 홈 */
 export function Wizard() {
   const session = useSession();
   const ledger = useLedger();
@@ -57,14 +65,14 @@ export function Wizard() {
   const [balances, setBalances] = useState<Record<string, number | null>>({});
   const [openingDate, setOpeningDate] = useState('');
 
-  // ③ 매달 배분
-  const [salary, setSalary] = useState<number | null>(null);
-  const [allocDay, setAllocDay] = useState(1);
-  const [alloc, setAlloc] = useState<Record<AllocRole, number | null>>({ fixed: null, event: null, savings: null, reservoir: null });
+  // ③ 매달 배분 (버는 사람마다 수입통장 하나)
+  const [earners, setEarners] = useState<EarnerDraft[]>(() => [newEarner(user?.name ?? '', user?.email ?? '')]);
+  const [earnerErrors, setEarnerErrors] = useState<DraftErrors>({});
+  /** 사람 키 → 저장한 수입통장 */
+  const [savedIncome, setSavedIncome] = useState<Record<string, Account>>({});
   const [savedRules, setSavedRules] = useState<Record<string, AllocationRule>>({});
 
   // ④ 고정 지출
-  const [living, setLiving] = useState<number | null>(null);
   const [bills, setBills] = useState<BillDraft[]>([]);
   const [allowances, setAllowances] = useState<AllowanceDraft[]>(() => [
     { key: draftKey('al'), email: user?.email ?? '', name: user?.name ?? '', amount: null, day: 1 },
@@ -73,6 +81,10 @@ export function Wizard() {
   const [billErrors, setBillErrors] = useState<DraftErrors>({});
   const [allowanceErrors, setAllowanceErrors] = useState<DraftErrors>({});
 
+  // ⑤ 생활비 항목 (가계부가 준비되면 기본 카테고리로 채워요)
+  const [livingRows, setLivingRows] = useState<LivingDraft[] | null>(null);
+  const [savedLiving, setSavedLiving] = useState<Record<string, FixedExpense>>({});
+
   const steps = STEPS[kind];
   const stepName = steps[step] ?? steps[0]!;
   const head = HEADS[stepName]!;
@@ -80,10 +92,7 @@ export function Wizard() {
   const ledgerReady = created !== null && ledger.ref?.id === created.id && ledger.data !== null;
   const month = monthOf(ledger.today);
   const sharedLedgers = session.recentLedgers.filter((r) => r.kind === 'shared');
-  const summary = allocationSummary(
-    salary,
-    ALLOC_TARGETS.map((t) => alloc[t.role]),
-  );
+  const livingDrafts = livingRows ?? [];
 
   function chooseKind(k: LedgerKind) {
     setKind(k);
@@ -96,8 +105,13 @@ export function Wizard() {
   }
 
   function goNext() {
-    if (isLast) finish();
-    else setStep((s) => s + 1);
+    if (isLast) {
+      finish();
+      return;
+    }
+    // 생활비 단계에 처음 들어갈 때 기본 항목을 채워요 (금액은 비워 둬요)
+    if (steps[step + 1] === '생활비' && livingRows === null) setLivingRows(defaultLivingDrafts(ledger.activeCategories));
+    setStep((s) => s + 1);
   }
 
   /* ---------- 단계별 저장 ---------- */
@@ -128,11 +142,54 @@ export function Wizard() {
     }
   }
 
-  async function saveRules() {
-    const income = ledger.accountByRole('income');
-    const wanted = wantedRules(
-      { incomeAccountId: income?.id ?? null, month, day: allocDay },
-      ALLOC_TARGETS.map((t) => ({ role: t.role, accountId: ledger.accountByRole(t.role)?.id ?? null, amount: alloc[t.role] })),
+  /** 사람마다 수입통장을 맞춰요: 첫 사람은 처음 만든 수입통장을 고쳐 쓰고, 나머지는 새로 만들어요 */
+  async function saveIncomeAccounts(list: EarnerDraft[]): Promise<Record<string, Account>> {
+    const next = { ...savedIncome };
+    try {
+      const keep = new Set(list.map((e) => e.key));
+      for (const [i, e] of list.entries()) {
+        const fields = earnerAccountFields(e);
+        const prev = next[e.key] ?? (i === 0 ? ledger.accountByRole('income') : null);
+        if (prev) {
+          if (prev.name !== fields.name || prev.ownerName !== fields.ownerName || prev.ownerEmail !== fields.ownerEmail) {
+            const row = { ...prev, ...fields };
+            await ledger.saveAccount(row);
+            next[e.key] = row;
+          } else {
+            next[e.key] = prev;
+          }
+        } else {
+          next[e.key] = await ledger.addAccount({ ...fields, role: 'income', openingBalance: 0 });
+        }
+      }
+      // 빠진 사람의 수입통장은 지워요 (처음 만든 수입통장은 두고요)
+      const first = list[0] ? next[list[0].key]?.id : undefined;
+      for (const [key, acc] of Object.entries(next)) {
+        if (keep.has(key)) continue;
+        if (acc.id !== first) await ledger.saveAccount({ ...acc, deleted: true });
+        delete next[key];
+      }
+    } finally {
+      setSavedIncome(next);
+    }
+    return next;
+  }
+
+  /** false 면 입력 오류가 있어 멈춰요 */
+  async function saveRules(): Promise<boolean> {
+    const errs = validateEarners(earners);
+    setEarnerErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      toast.error('입력한 내용을 확인해 주세요');
+      return false;
+    }
+    const list = activeEarners(earners);
+    const incomeByEarner = await saveIncomeAccounts(list);
+    const wanted = list.flatMap((e) =>
+      wantedRules(
+        { incomeAccountId: incomeByEarner[e.key]?.id ?? null, month, day: e.day, keyPrefix: e.key },
+        ALLOC_TARGETS.map((t) => ({ role: t.role, accountId: ledger.accountByRole(t.role)?.id ?? null, amount: e.alloc[t.role] })),
+      ),
     );
     const { add, update, remove } = diffByKey(savedRules, wanted);
     const next = { ...savedRules };
@@ -149,6 +206,7 @@ export function Wizard() {
     } finally {
       setSavedRules(next);
     }
+    return true;
   }
 
   /** false 면 입력 오류가 있어 멈춰요 */
@@ -163,7 +221,7 @@ export function Wizard() {
     }
     const account = ledger.accountByRole('fixed') ?? ledger.activeAccounts[0];
     if (!account) throw new Error('고정 지출을 기록할 통장이 없어요');
-    const wanted = wantedFixed({ accountId: account.id, month }, living, bills, kind === 'shared' ? allowances : []);
+    const wanted = wantedFixed({ accountId: account.id, month }, bills, kind === 'shared' ? allowances : []);
     const { add, update, remove } = diffByKey(savedFixed, wanted);
     const next = { ...savedFixed };
     try {
@@ -182,6 +240,27 @@ export function Wizard() {
     return true;
   }
 
+  async function saveLiving() {
+    const account = ledger.accountByRole('fixed') ?? ledger.activeAccounts[0];
+    if (!account) throw new Error('생활비를 쓸 통장이 없어요');
+    const wanted = wantedLiving({ accountId: account.id, month }, livingDrafts);
+    const { add, update, remove } = diffByKey(savedLiving, wanted);
+    const next = { ...savedLiving };
+    try {
+      for (const a of add) next[a.key] = await ledger.addFixed(a.input);
+      for (const u of update) {
+        await ledger.saveFixed(u.row);
+        next[u.key] = u.row;
+      }
+      for (const r of remove) {
+        await ledger.saveFixed(r.row);
+        delete next[r.key];
+      }
+    } finally {
+      setSavedLiving(next);
+    }
+  }
+
   async function submit() {
     setBusy(true);
     try {
@@ -190,11 +269,11 @@ export function Wizard() {
         return;
       }
       if (stepName === '시작 잔액') await saveBalances();
-      else if (stepName === '매달 배분') await saveRules();
-      else if (stepName === '고정 지출') {
-        const ok = await saveFixed();
-        if (!ok) return;
-      }
+      else if (stepName === '매달 배분') {
+        if (!(await saveRules())) return;
+      } else if (stepName === '고정 지출') {
+        if (!(await saveFixed())) return;
+      } else if (stepName === '생활비') await saveLiving();
       goNext();
     } catch (e) {
       toast.error(errorText(e, '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요'));
@@ -244,23 +323,25 @@ export function Wizard() {
   } else if (stepName === '매달 배분') {
     body = (
       <StepAllocation
-        salary={salary}
-        onSalary={setSalary}
-        day={allocDay}
-        onDay={setAllocDay}
-        values={alloc}
-        onValue={(role, v) => setAlloc((m) => ({ ...m, [role]: v }))}
+        earners={earners}
+        setEarners={setEarners}
+        errors={earnerErrors}
         accountName={(role) => ledger.accountByRole(role)?.name ?? null}
-        hasIncome={ledger.accountByRole('income') !== null}
-        summary={summary}
+      />
+    );
+  } else if (stepName === '생활비') {
+    body = (
+      <StepLiving
+        rows={livingDrafts}
+        setRows={(update) => setLivingRows((prev) => update(prev ?? []))}
+        categories={ledger.activeCategories}
+        accountName={(ledger.accountByRole('fixed') ?? ledger.activeAccounts[0])?.name ?? null}
       />
     );
   } else {
     body = (
       <StepFixed
         isShared={kind === 'shared'}
-        living={living}
-        onLiving={setLiving}
         bills={bills}
         setBills={setBills}
         allowances={allowances}

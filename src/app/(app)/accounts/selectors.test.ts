@@ -41,10 +41,11 @@ describe('ro', () => {
 });
 
 describe('monthFlows · monthTotals', () => {
-  it('체험 가계부: 수입통장은 500만 들어오고 500만 나가요', () => {
+  it('체험 가계부: 사람별 수입통장은 월급만큼 들어오고 그만큼 나가요 (민지 300만 · 준호 200만)', () => {
     const data = demo();
     const flows = monthFlows(data, TODAY);
-    expect(flows['demo-acc-income']).toEqual({ in: 5_000_000, out: 5_000_000 });
+    expect(flows['demo-acc-income']).toEqual({ in: 3_000_000, out: 3_000_000 });
+    expect(flows['demo-acc-income-junho']).toEqual({ in: 2_000_000, out: 2_000_000 });
     expect(flows['demo-acc-event']).toEqual({ in: 300_000, out: 0 });
     const fixed = flows['demo-acc-fixed']!;
     expect(fixed.in).toBe(2_000_000);
@@ -87,6 +88,20 @@ describe('flowSummary', () => {
     expect(f.left).toBe(0);
     expect(f.incomeMark).toBeNull();
     expect(f.items.reduce((s, i) => s + i.share, 0)).toBeCloseTo(1);
+    // 사람별 수입통장
+    expect(f.incomeAccounts.map((a) => a.name)).toEqual(['민지 수입통장', '준호 수입통장']);
+    expect(f.sources.map((x) => [x.account.name, x.total, x.income?.amount, x.over])).toEqual([
+      ['민지 수입통장', 3_000_000, 3_000_000, 0],
+      ['준호 수입통장', 2_000_000, 2_000_000, 0],
+    ]);
+  });
+
+  it('한 사람 수입통장만 넘쳐도 그 사람 몫으로 알려요', () => {
+    const data = demo();
+    data.rules.push({ ...data.rules.find((r) => r.id === 'demo-rule-junho-fixed')!, id: 'extra', amount: 500_000 });
+    const f = flowSummary(data, '2026-11');
+    expect(f.sources.find((x) => x.account.id === 'demo-acc-income-junho')!.over).toBe(500_000);
+    expect(f.sources.find((x) => x.account.id === 'demo-acc-income')!.over).toBe(0);
   });
 
   it('배분이 수입보다 많으면 over 와 수입 위치', () => {
@@ -101,7 +116,7 @@ describe('flowSummary', () => {
 
   it('수입이 더 많으면 남는 돈', () => {
     const data = demo();
-    data.rules = data.rules.filter((r) => r.id !== 'demo-rule-reservoir');
+    data.rules = data.rules.filter((r) => r.id !== 'demo-rule-reservoir' && r.id !== 'demo-rule-junho-reservoir');
     const f = flowSummary(data, '2026-11');
     expect(f.left).toBe(1_200_000);
     expect(f.leftShare).toBeCloseTo(1_200_000 / 5_000_000);
@@ -113,7 +128,12 @@ describe('flowSummary', () => {
     data.rules[1] = { ...data.rules[1]!, deleted: true };
     data.rules.push({ ...data.rules[2]!, id: 'x', fromAccountId: 'demo-acc-fixed' });
     const f = flowSummary(data, '2026-11');
-    expect(f.items.map((i) => i.accountId)).toEqual(['demo-acc-reservoir', 'demo-acc-savings']);
+    // 민지 → 고정(끝남) · 이벤트(지움) 은 빠지고, 준호 → 고정 800,000 은 남아요
+    expect(f.items.map((i) => [i.accountId, i.amount])).toEqual([
+      ['demo-acc-fixed', 800_000],
+      ['demo-acc-reservoir', 1_200_000],
+      ['demo-acc-savings', 1_500_000],
+    ]);
   });
 
   it('수입 기록이 없으면 비교하지 않아요', () => {
@@ -141,14 +161,14 @@ describe('accountHistory', () => {
     const h = accountHistory(demo(), 'demo-acc-income', TODAY);
     expect(h.map((e) => e.kind)).toEqual(['transferOut', 'transferOut', 'transferOut', 'transferOut', 'income', 'opening']);
     for (const e of h) expect(e.balance! >= 0).toBe(true);
-    expect(h[4]).toMatchObject({ title: '월급', detail: '수입', amount: 5_000_000, balance: 5_000_000 });
+    expect(h[4]).toMatchObject({ title: '월급', detail: '수입', amount: 3_000_000, balance: 3_000_000 });
     const toEvent = h.find((e) => e.transfer?.toAccountId === 'demo-acc-event')!;
     expect(toEvent).toMatchObject({ title: '매달 배분', detail: '이벤트통장으로', amount: -300_000, auto: true });
   });
 
   it('받는 쪽은 + 와 보낸 통장 이름', () => {
     const h = accountHistory(demo(), 'demo-acc-event', TODAY);
-    expect(h[0]).toMatchObject({ kind: 'transferIn', detail: '수입통장에서', amount: 300_000, balance: 900_000 });
+    expect(h[0]).toMatchObject({ kind: 'transferIn', detail: '민지 수입통장에서', amount: 300_000, balance: 900_000 });
   });
 
   it('예정 이체 · 미래 날짜는 pending, 시작일 전 기록은 beforeOpening (둘 다 잔액 null)', () => {

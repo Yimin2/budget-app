@@ -109,6 +109,11 @@ describe('앱 틀 (app)/layout', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('heading').textContent).toContain('지난달 생활비가');
     expect(within(dialog).getByText('공용 가계부는 먼저 고른 사람의 선택이 적용돼요. 누가 골랐는지 기록에 남아요.')).toBeTruthy();
+    // 항목별 남은 돈 (넘긴 항목은 '넘음')
+    const items = within(dialog).getByRole('list', { name: '항목별 남은 돈' });
+    const rows = within(items).getAllByRole('listitem');
+    expect(rows.length).toBe(current(h).ledger.pendingMonthEnd!.items.length);
+    expect(rows[0]!.textContent).toContain('식비');
 
     fireEvent.click(within(dialog).getByRole('button', { name: '저수지로 보내기' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -116,6 +121,28 @@ describe('앱 틀 (app)/layout', () => {
     expect(data.monthEnds.find((m) => m.month === '2026-10')).toMatchObject({ choice: 'reservoir', decidedBy: 'minji@demo' });
     expect(data.transfers.some((t) => t.id === 'monthend:2026-10' && t.amount === leftover)).toBe(true);
     expect(await screen.findByText(/저수지로 .*원을 보냈어요/)).toBeTruthy();
+  });
+
+  it('월말 처리: 이월하면 항목마다 같은 항목의 이번 달 예산에 더해요', async () => {
+    const ledgerStorage = createMemoryStorage();
+    const lastMonth = createDemoLedger('2026-10-31', '2026-10-01T00:00:00.000Z');
+    await new LocalBackend(ledgerStorage).create(lastMonth, DEMO_LEDGER_ID);
+    const h = renderApp(
+      <AppLayout>
+        <p>홈</p>
+      </AppLayout>,
+      { ledgerStorage },
+    );
+    await startDemo(h);
+    const dialog = await screen.findByRole('dialog');
+    const pending = current(h).ledger.pendingMonthEnd!;
+    fireEvent.click(within(dialog).getByRole('button', { name: '이번 달 생활비로 넘기기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const row = current(h).ledger.data!.monthEnds.find((m) => m.month === '2026-10')!;
+    expect(row.choice).toBe('carryover');
+    expect(row.items).toEqual(pending.items.map((i) => ({ categoryId: i.categoryId, leftover: i.leftover })));
+    const food = pending.items.find((i) => i.name === '식비')!;
+    expect(current(h).ledger.living!.items.find((i) => i.name === '식비')!.carryIn).toBe(food.leftover);
   });
 
   it('월말 처리: 나중에 고를게요로 닫으면 이번 접속 동안은 다시 묻지 않아요', async () => {

@@ -25,7 +25,7 @@ export function emptyLedger(overrides: Partial<LedgerData> = {}): LedgerData {
 }
 
 export function account(role: AccountRole, p: Partial<Account> = {}): Account {
-  return { id: `acc-${role}`, name: role, role, openingBalance: 0, openingDate: '2026-01-01', order: 0, deleted: false, ...p };
+  return { id: `acc-${role}`, name: role, role, openingBalance: 0, openingDate: '2026-01-01', order: 0, ownerName: null, ownerEmail: null, deleted: false, ...p };
 }
 
 export function rule(p: Partial<AllocationRule> & Pick<AllocationRule, 'fromAccountId' | 'toAccountId' | 'amount'>): AllocationRule {
@@ -48,7 +48,7 @@ export function expense(p: Partial<Expense> & Pick<Expense, 'date' | 'amount' | 
 
 export function fixed(p: Partial<FixedExpense> & Pick<FixedExpense, 'amount' | 'accountId' | 'kind'>): FixedExpense {
   return {
-    id: nid('fx'), name: '고정', categoryId: null, dayOfMonth: p.kind === 'living' ? null : 1, targetEmail: null,
+    id: nid('fx'), name: '고정', categoryId: null, dayOfMonth: p.kind === 'living' ? null : 1, targetEmail: null, spread: 'daily',
     startMonth: '2026-01', endMonth: null, deleted: false, ...p,
   };
 }

@@ -310,3 +310,39 @@
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* 생활비 예산 */
+.st-label {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text);
+}
+.st-living-split {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.st-living-split > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.st-living-split .name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.st-living-split .name .icon {
+  color: var(--primary-text);
+}

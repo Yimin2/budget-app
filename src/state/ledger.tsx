@@ -419,6 +419,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     (role: Account['role']) => activeAccounts.find((a) => a.role === role) ?? null,
     [activeAccounts],
   );
+  const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income'), [activeAccounts]);
   const living = useMemo(() => (data ? computeLiving(data, today) : null), [data, today]);
   const balances = useMemo(() => (data ? allBalances(data, today) : {}), [data, today]);
   const eventProjection = useMemo(() => (data ? projectEventAccount(data, today) : null), [data, today]);
@@ -432,9 +433,17 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const pendingMonthEnd = useMemo(() => (data ? pendingMonthEndDomain(data, today) : null), [data, today]);
 
   const judge = useCallback<LedgerApi['judge']>(
-    (amount, source) => {
+    (amount, source, categoryId) => {
       if (!data) return null;
-      if (source === 'living') return living ? judgeLiving(living, amount) : null;
+      if (source === 'living') {
+        if (!living) return null;
+        if (categoryId === undefined) {
+          const budgeted = living.items.filter((i) => !i.unbudgeted);
+          if (budgeted.length !== 1) return null;
+          return judgeLiving(living, budgeted[0]!.categoryId, amount);
+        }
+        return judgeLiving(living, categoryId, amount);
+      }
       return judgeEvent(data, today, amount);
     },
     [data, living, today],
@@ -745,7 +754,13 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         await syncAutoNow();
         return;
       }
-      const income = accountByRole('income');
+      // 수입통장이 여럿이면(사람별) 이번 달 배분을 가장 많이 보내는 통장에서 적립해요
+      const incomes = sortedActive(d.accounts).filter((a) => a.role === 'income');
+      const sent = (id: Id) =>
+        d.rules
+          .filter((r) => !r.deleted && r.fromAccountId === id && isMonthActive(fix.fromMonth, r.startMonth, r.endMonth))
+          .reduce((s, r) => s + r.amount, 0);
+      const income = incomes.reduce<Account | null>((best, a) => (!best || sent(a.id) > sent(best.id) ? a : best), null);
       if (!income) throw new Error('수입통장이 없어서 적립을 늘릴 수 없어요');
       await addRule({
         fromAccountId: income.id,
@@ -801,6 +816,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         openingBalance: Math.round(input.openingBalance),
         openingDate: todayRef.current,
         order: nextOrder(d.accounts),
+        ownerName: input.ownerName?.trim() || null,
+        ownerEmail: input.ownerEmail?.trim() || null,
         deleted: false,
       };
       await insertRows('accounts', [row], '통장을 추가하지 못했어요');
@@ -962,6 +979,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         choice,
         authorRef.current,
         nowIso(),
+        pending.items.map((i) => ({ categoryId: i.categoryId, leftover: i.leftover })),
       );
       await mutate(
         (x) => ({
@@ -1035,6 +1053,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       activeAccounts,
       activeCategories,
       accountByRole,
+      incomeAccounts,
       judge,
       addExpense,
       updateExpense,
@@ -1068,7 +1087,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     }),
     [
       status, error, needsReconnect, ref, data, today, savingCount, reload, living, balances, eventProjection, shortageFix,
-      pendingMonthEnd, activeAccounts, activeCategories, accountByRole, judge, addExpense, updateExpense,
+      pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
       changeRuleAmount, saveFixed, addFixed, saveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,

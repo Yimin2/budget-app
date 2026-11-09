@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { addMonths, formatMonthKo, formatWon, monthOf } from '@/domain';
 import { useLedger, useSession } from '@/state';
-import { Button, Dialog, Icon, useToast } from '@/ui';
+import { Button, Dialog, Icon, isIconName, useToast } from '@/ui';
 import './screens.css';
 
 type Choice = 'reservoir' | 'carryover';
@@ -13,6 +13,7 @@ type Choice = 'reservoir' | 'carryover';
  * 고르지 않은 달이 여럿이면 오래된 달부터 차례로 물어요 (한 달을 고르면 다음 달이 이어서 보여요).
  * '나중에 고를게요' 로 닫으면 이번 접속 동안은 다시 열지 않아요 (다음에 열면 다시 물어요).
  * 이월하는 달은 남은 달의 다음 달이에요 — 지난달이면 '이번 달', 더 앞이면 '12월'처럼 달 이름으로 적어요.
+ * 항목별 남은 돈(넘긴 항목은 음수)을 보여 줘요. 이월하면 항목마다 같은 항목 예산에 더해지고, 저수지로 보내면 합계 한 번에 보내요.
  */
 export function MonthEndDialog() {
   const ledger = useLedger();
@@ -73,6 +74,7 @@ export function MonthEndDialog() {
   const isLastMonth = addMonths(monthOf(ledger.today), -1) === pending.month;
   const amountText = formatWon(pending.leftover);
   const target = targetLabel(pending.month, ledger.today);
+  const showItems = pending.items.length > 1 || (pending.items.length === 1 && pending.items[0]!.categoryId !== null);
 
   return (
     <Dialog
@@ -111,6 +113,21 @@ export function MonthEndDialog() {
           <span className="lbl">{monthText}에 남은 생활비</span>
           <span className="val">{amountText}</span>
         </div>
+        {showItems ? (
+          <ul className="me-items" aria-label="항목별 남은 돈">
+            {pending.items.map((i) => (
+              <li key={i.categoryId ?? ''}>
+                <span className="name">
+                  <Icon name={isIconName(i.icon) ? i.icon : 'dots'} size={16} />
+                  {i.name}
+                </span>
+                <span className={i.leftover < 0 ? 'amt bad' : 'amt'}>
+                  {i.leftover < 0 ? `${formatWon(-i.leftover)} 넘음` : formatWon(i.leftover)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <ul className="me-choices">
           <li className="me-choice">
             <Icon name="piggy-bank" size={20} />
@@ -118,7 +135,7 @@ export function MonthEndDialog() {
               <strong>저수지로 보내기</strong>
               <span>
                 {reservoir
-                  ? `${livingAccountName ?? '생활비 통장'} → ${reservoir.name} 이체로 기록해요`
+                  ? `합계 ${amountText}을 ${livingAccountName ?? '생활비 통장'} → ${reservoir.name} 이체 한 번으로 기록해요`
                   : '저수지통장이 없어서 고를 수 없어요. 설정에서 통장을 추가할 수 있어요'}
               </span>
             </div>
@@ -128,7 +145,9 @@ export function MonthEndDialog() {
             <div>
               <strong>{target} 생활비로 넘기기</strong>
               <span>
-                {target} 생활비가 {amountText} 늘어나요
+                {showItems
+                  ? `항목마다 남은 돈을 ${target} 같은 항목 예산에 더해요. 넘긴 항목은 그만큼 줄어요`
+                  : `${target} 생활비가 ${amountText} 늘어나요`}
               </span>
             </div>
           </li>

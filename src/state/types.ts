@@ -1,6 +1,6 @@
 import type {
   Account, AllocationRule, Category, EventProjection, Expense, Favorite, FixedExpense, Id,
-  ISODate, LedgerData, LivingStatus, PlannedEvent, ShortageFix, Transfer, Verdict, Won, YearMonth,
+  ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer, Verdict, Won, YearMonth,
 } from '@/domain/types';
 import type { LedgerRef } from '@/storage/types';
 
@@ -69,11 +69,18 @@ export interface LedgerApi {
   balances: Record<Id, Won>;
   eventProjection: EventProjection | null;
   shortageFix: ShortageFix | null;
-  pendingMonthEnd: { month: YearMonth; leftover: Won } | null;
+  pendingMonthEnd: PendingMonthEnd | null;
   activeAccounts: Account[];
   activeCategories: Category[];
+  /** 그 역할의 첫 통장 (순서대로). 수입통장은 사람마다 있을 수 있어 incomeAccounts 도 봐요 */
   accountByRole(role: Account['role']): Account | null;
-  judge(amount: Won, source: 'living' | 'event'): Verdict | null;
+  /** 수입 역할 통장 모두 (사람별 수입통장, 순서대로) */
+  incomeAccounts: Account[];
+  /**
+   * "사도 돼?" 판단. living 은 생활비 항목(categoryId, null = 카테고리 없는 묶음)으로 판단해요.
+   * categoryId 를 안 주면(undefined) 항목이 하나뿐일 때만 그 항목으로, 여럿이면 null
+   */
+  judge(amount: Won, source: 'living' | 'event', categoryId?: Id | null): Verdict | null;
 
   // 지출
   addExpense(input: NewExpense): Promise<Expense>;
@@ -91,7 +98,9 @@ export interface LedgerApi {
   applyFromReservoir(fix: NonNullable<ShortageFix['fromReservoir']>): Promise<void>;
   // 통장·이체
   saveAccount(account: Account): Promise<void>;
-  addAccount(input: Pick<Account, 'name' | 'role' | 'openingBalance'>): Promise<Account>;
+  addAccount(
+    input: Pick<Account, 'name' | 'role' | 'openingBalance'> & Partial<Pick<Account, 'ownerName' | 'ownerEmail'>>,
+  ): Promise<Account>;
   addTransfer(input: Pick<Transfer, 'date' | 'kind' | 'fromAccountId' | 'toAccountId' | 'amount' | 'memo'>): Promise<void>;
   deleteTransfer(id: Id): Promise<void>;
   adjustBalance(accountId: Id, actual: Won): Promise<void>;

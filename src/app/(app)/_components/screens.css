@@ -321,3 +321,41 @@
   flex-wrap: wrap;
   justify-content: center;
 }
+.me-items {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.me-items li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 22px;
+}
+.me-items li:last-child {
+  border-bottom: 0;
+}
+.me-items .name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.me-items .name .icon {
+  flex: none;
+  color: var(--primary-text);
+}
+.me-items .amt {
+  flex: none;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.me-items .amt.bad {
+  color: var(--danger-text);
+}

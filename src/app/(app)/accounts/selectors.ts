@@ -2,7 +2,7 @@
 import { isCountedTransfer, isMonthActive, monthOf } from '@/domain';
 import type { Account, AccountRole, Expense, Id, ISODate, LedgerData, Transfer, Won, YearMonth } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON } from '@/ui';
-import { referenceIncome } from '../settings/helpers';
+import { incomeSummaries, referenceIncome, type IncomeSummary } from '../settings/helpers';
 
 /* ───────── 통장 역할 ───────── */
 
@@ -102,6 +102,10 @@ export interface FlowSummary {
   month: YearMonth;
   /** 배분을 보내는 수입 역할 통장 (첫 통장) */
   incomeAccount: Account | null;
+  /** 수입 역할 통장 모두 (사람별 수입통장) */
+  incomeAccounts: Account[];
+  /** 수입통장마다 배분 합 · 수입 · 넘침 (배분이나 수입 기록이 있는 통장만) */
+  sources: IncomeSummary[];
   /** 받는 통장별 합 (통장 순서) */
   items: FlowItem[];
   total: Won;
@@ -118,7 +122,7 @@ export interface FlowSummary {
 }
 
 /**
- * 월급 → 수입통장 → 각 통장 흐름. 이번 달에 적용되는 규칙 중 수입 역할 통장에서 나가는 것만 받는 통장별로 더해요.
+ * 월급 → 수입통장(사람마다 하나일 수 있음) → 각 통장 흐름. 이번 달에 적용되는 규칙 중 수입 역할 통장에서 나가는 것만 받는 통장별로 더해요.
  * 막대 기준 = max(배분 합, 수입). 배분이 수입보다 많으면 over > 0 이고 incomeMark 에 수입 위치를 줘요.
  */
 export function flowSummary(data: LedgerData, month: YearMonth): FlowSummary {
@@ -152,6 +156,8 @@ export function flowSummary(data: LedgerData, month: YearMonth): FlowSummary {
   return {
     month,
     incomeAccount: incomeAccounts[0] ?? null,
+    incomeAccounts,
+    sources: incomeSummaries(data, month).filter((x) => x.total > 0 || x.income !== null),
     items,
     total,
     income,

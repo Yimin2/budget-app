@@ -80,6 +80,21 @@ describe('createDemoLedger', () => {
     const authors = new Set(d.expenses.filter((e) => e.fixedExpenseId === null).map((e) => e.author));
     expect(authors).toEqual(new Set(['minji@demo', 'junho@demo']));
     expect(d.rules.map((r) => r.amount).reduce((a, b) => a + b, 0)).toBe(5_000_000);
+    // 사람별 수입통장 두 개, 각자 배분 규칙
+    const incomes = d.accounts.filter((a) => a.role === 'income');
+    expect(incomes.map((a) => [a.name, a.ownerName, a.ownerEmail])).toEqual([
+      ['민지 수입통장', '민지', 'minji@demo'],
+      ['준호 수입통장', '준호', 'junho@demo'],
+    ]);
+    const sent = (id: string) => d.rules.filter((r) => r.fromAccountId === id).reduce((a, r) => a + r.amount, 0);
+    expect(incomes.map((a) => sent(a.id))).toEqual([3_000_000, 2_000_000]);
+    for (const a of incomes) expect(accountBalance(d, a.id, '2026-11-09')).toBe(0);
+    // 생활비 항목 7개 (합 600,000), 식비·카페·교통은 하루에 나눠 쓰기
+    const living = d.fixedExpenses.filter((f) => f.kind === 'living');
+    expect(living.reduce((a, f) => a + f.amount, 0)).toBe(600_000);
+    expect(living.every((f) => f.categoryId !== null)).toBe(true);
+    expect(living.filter((f) => f.spread === 'daily').map((f) => f.name)).toEqual(['식비', '카페', '교통']);
+    expect(computeLiving(d, '2026-11-09').items.some((i) => i.unbudgeted)).toBe(false);
     // 오늘 이후 날짜의 지출은 없다
     expect(d.expenses.every((e) => e.date <= '2026-11-09')).toBe(true);
   });

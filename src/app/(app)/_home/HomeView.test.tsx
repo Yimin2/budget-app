@@ -23,10 +23,10 @@ async function renderHome(opts: { autoStart?: boolean } = {}) {
 }
 
 describe('HomeView — 체험 가계부', () => {
-  it('불러오는 동안 뼈대를 보여 주고, 다 불러오면 오늘 써도 되는 생활비를 크게 보여 줘요', async () => {
+  it('불러오는 동안 뼈대를 보여 주고, 다 불러오면 오늘 써도 되는 돈(하루씩 항목 합)을 크게 보여 줘요', async () => {
     const h = await renderHome();
     expect(screen.getByText('11월 20일 금요일')).toBeTruthy();
-    const hero = await screen.findByRole('region', { name: '오늘 써도 되는 생활비' });
+    const hero = await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
     const living = h.probe.ledger!.living!;
     expect(living.todayAvailable).toBeGreaterThan(0);
     expect(within(hero).getByText(formatWon(living.todayAvailable))).toBeTruthy();
@@ -34,11 +34,31 @@ describe('HomeView — 체험 가계부', () => {
     expect(within(hero).getByText(`${living.daysLeft}일 남음`)).toBeTruthy();
     expect(within(hero).getByRole('progressbar', { name: '이번 달 생활비 사용' })).toBeTruthy();
     expect(screen.getByRole('link', { name: /사도 돼\? 확인하기/ }).getAttribute('href')).toBe('/check');
+    // 큰 숫자 = 하루에 나눠 쓰는 항목(식비·카페·교통)의 오늘 써도 되는 돈 합
+    const daily = living.items.filter((i) => i.spread === 'daily');
+    expect(daily.map((i) => i.name)).toEqual(['식비', '카페', '교통']);
+    expect(living.todayAvailable).toBe(daily.reduce((s, i) => s + (i.todayAvailable ?? 0), 0));
+    expect(within(hero).getByText('식비 · 카페 · 교통 합계')).toBeTruthy();
+  });
+
+  it('항목별 생활비: 항목마다 막대 · 남은 돈 · 하루 항목은 오늘 써도 되는 돈', async () => {
+    const h = await renderHome();
+    const card = await screen.findByRole('region', { name: '항목별 생활비' });
+    const living = h.probe.ledger!.living!;
+    const rows = within(card).getAllByRole('listitem');
+    expect(rows).toHaveLength(living.items.length);
+    expect(within(card).getAllByRole('progressbar')).toHaveLength(living.items.length);
+    const food = living.items.find((i) => i.name === '식비')!;
+    const foodRow = within(card).getByRole('progressbar', { name: '식비 사용' }).closest('li') as HTMLElement;
+    expect(within(foodRow).getByText(formatWon(food.todayAvailable!))).toBeTruthy();
+    const shopRow = within(card).getByRole('progressbar', { name: '쇼핑 사용' }).closest('li') as HTMLElement;
+    expect(within(shopRow).getByText('한 달 한도')).toBeTruthy();
+    expect(within(card).getByRole('link', { name: /예산 바꾸기/ }).getAttribute('href')).toBe('/settings#st-living');
   });
 
   it('이벤트통장 부족 알림 · 다가오는 일정 3개 · 최근 지출 5개', async () => {
     await renderHome();
-    await screen.findByRole('region', { name: '오늘 써도 되는 생활비' });
+    await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
     expect(screen.getByText('2027년 4월에 이벤트통장이 300,000원 모자라요')).toBeTruthy();
     expect(screen.getByRole('link', { name: '대처하기' }).getAttribute('href')).toBe('/events');
 
@@ -56,7 +76,7 @@ describe('HomeView — 체험 가계부', () => {
 
   it('자주 쓰는 지출을 누르면 바로 기록하고, 되돌리기로 지워요', async () => {
     const h = await renderHome();
-    await screen.findByRole('region', { name: '오늘 써도 되는 생활비' });
+    await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
     const before = h.probe.ledger!.living!.spent;
 
     fireEvent.click(screen.getByRole('button', { name: '커피 4,500원 바로 기록하기' }));
@@ -77,12 +97,13 @@ describe('HomeView — 체험 가계부', () => {
 describe('HomeView — 새 가계부', () => {
   it('생활비를 안 정했으면 설정으로 안내하고, 빈 목록 문구를 보여 줘요', async () => {
     const h = await renderHome();
-    await screen.findByRole('region', { name: '오늘 써도 되는 생활비' });
+    await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
     await act(async () => {
       await h.probe.session!.createLedger({ kind: 'shared', name: '새 가계부' });
     });
-    const setup = await screen.findByRole('region', { name: '한 달 생활비를 정해 주세요' });
-    expect(within(setup).getByRole('link', { name: '생활비 정하기' }).getAttribute('href')).toBe('/settings#st-fixed');
+    const setup = await screen.findByRole('region', { name: '생활비 예산을 정해 주세요' });
+    expect(within(setup).getByRole('link', { name: '생활비 정하기' }).getAttribute('href')).toBe('/settings#st-living');
+    expect(screen.queryByRole('region', { name: '항목별 생활비' })).toBeNull();
     expect(screen.getByText('다가오는 일정이 없어요.')).toBeTruthy();
     expect(screen.getByText(/아직 기록한 지출이 없어요/)).toBeTruthy();
     expect(screen.getByRole('link', { name: '자주 쓰는 지출 추가' }).textContent).toContain('추가하기');

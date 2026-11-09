@@ -33,7 +33,8 @@ export function FlowCard({ flow, thisYear }: { flow: FlowSummary; thisYear: numb
   }
 
   const whole = flow.income?.amount || flow.total;
-  const incomeName = flow.incomeAccount?.name ?? '수입통장';
+  const multi = flow.incomeAccounts.length > 1;
+  const incomeName = multi ? `수입통장 ${flow.incomeAccounts.length}개` : (flow.incomeAccount?.name ?? '수입통장');
   const aria = [
     ...flow.items.map((it) => `${it.name} ${formatWon(it.amount)}`),
     flow.left > 0 ? `남는 돈 ${formatWon(flow.left)}` : null,
@@ -104,7 +105,34 @@ export function FlowCard({ flow, thisYear }: { flow: FlowSummary; thisYear: numb
         </div>
       </dl>
 
-      {flow.over > 0 ? (
+      {multi && flow.sources.length > 0 ? (
+        <ul className={styles.sources} aria-label="사람별 수입통장">
+          {flow.sources.map((x) => (
+            <li key={x.account.id}>
+              <span className={styles.legendName}>{x.account.name}</span>
+              <span className={styles.sourceNums}>
+                배분 {formatWon(x.total)} · 수입 {x.income ? formatWon(x.income.amount) : '기록 없음'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {multi
+        ? flow.sources
+            .filter((x) => x.over > 0)
+            .map((x) => (
+              <Banner
+                key={x.account.id}
+                tone="warning"
+                title={`${x.account.name}에서 보내는 돈이 수입보다 ${formatWon(x.over)} 많아요`}
+                action={{ label: '배분 바꾸기', href: '/settings#st-rules' }}
+              >
+                {x.account.name} 잔액이 모자랄 수 있어요.
+              </Banner>
+            ))
+        : null}
+
+      {!multi && flow.over > 0 ? (
         <Banner tone="warning" title={`배분 합계가 수입보다 ${formatWon(flow.over)} 많아요`} action={{ label: '배분 바꾸기', href: '/settings#st-rules' }}>
           수입통장 잔액이 모자랄 수 있어요.
         </Banner>

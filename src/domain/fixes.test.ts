@@ -131,9 +131,9 @@ describe('month-end: every undecided month is asked, oldest first', () => {
     });
   it('skipped November is still offered in January, then December with the carryover', () => {
     const d = base();
-    expect(pendingMonthEnd(d, '2027-01-03')).toEqual({ month: '2026-11', leftover: 100_000 });
+    expect(pendingMonthEnd(d, '2027-01-03')).toMatchObject({ month: '2026-11', leftover: 100_000 });
     d.monthEnds.push(decideMonthEnd(d, '2026-11', 100_000, 'carryover', 'a', NOW).monthEnd);
-    expect(pendingMonthEnd(d, '2027-01-03')).toEqual({ month: '2026-12', leftover: 150_000 });
+    expect(pendingMonthEnd(d, '2027-01-03')).toMatchObject({ month: '2026-12', leftover: 150_000 });
     d.monthEnds.push(decideMonthEnd(d, '2026-12', 150_000, 'reservoir', 'a', NOW).monthEnd);
     expect(pendingMonthEnd(d, '2027-01-03')).toBeNull();
   });
@@ -143,7 +143,7 @@ describe('month-end: every undecided month is asked, oldest first', () => {
     d.transfers.push(t!);
     expect(t!.id).toBe(monthEndTransferId('2026-11'));
     expect(accountBalance(d, reservoir.id, '2027-01-03')).toBe(0);
-    d.monthEnds.push({ month: '2026-11', leftover: 100_000, choice: 'carryover', decidedBy: 'b', decidedAt: NOW });
+    d.monthEnds.push({ month: '2026-11', leftover: 100_000, choice: 'carryover', decidedBy: 'b', decidedAt: NOW, items: null });
     expect(accountBalance(d, reservoir.id, '2027-01-03')).toBe(0);
     d.monthEnds[0]!.choice = 'reservoir';
     expect(accountBalance(d, reservoir.id, '2027-01-03')).toBe(100_000);

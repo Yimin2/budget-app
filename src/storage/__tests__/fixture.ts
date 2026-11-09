@@ -8,13 +8,13 @@ export function sampleLedger(): LedgerData {
   return {
     settings: { name: '우리집 가계부', kind: 'shared', sharedLedgerId: null, schemaVersion: 1, createdAt: now },
     accounts: [
-      { id: 'a-inc', name: '수입통장', role: 'income', openingBalance: 1200000, openingDate: '2026-11-01', order: 0, deleted: false },
-      { id: 'a-fix', name: '고정지출통장', role: 'fixed', openingBalance: 0, openingDate: '2026-11-01', order: 1, deleted: false },
-      { id: 'a-evt', name: '이벤트통장', role: 'event', openingBalance: 300000, openingDate: '2026-11-01', order: 2, deleted: true },
-      { id: 'a-res', name: '저수지통장', role: 'reservoir', openingBalance: 5, openingDate: '2026-11-01', order: 3, deleted: false },
-      { id: 'a-sav', name: '저축', role: 'savings', openingBalance: 0, openingDate: '2026-11-01', order: 4, deleted: false },
-      { id: 'a-al', name: '용돈', role: 'allowance', openingBalance: 0, openingDate: '2026-11-01', order: 5, deleted: false },
-      { id: 'a-etc', name: '기타', role: 'other', openingBalance: -1000, openingDate: '2026-11-01', order: 6, deleted: false },
+      { id: 'a-inc', name: '수입통장', role: 'income', openingBalance: 1200000, openingDate: '2026-11-01', order: 0, ownerName: '민지', ownerEmail: 'minji@example.com', deleted: false },
+      { id: 'a-fix', name: '고정지출통장', role: 'fixed', openingBalance: 0, openingDate: '2026-11-01', order: 1, ownerName: null, ownerEmail: null, deleted: false },
+      { id: 'a-evt', name: '이벤트통장', role: 'event', openingBalance: 300000, openingDate: '2026-11-01', order: 2, ownerName: null, ownerEmail: null, deleted: true },
+      { id: 'a-res', name: '저수지통장', role: 'reservoir', openingBalance: 5, openingDate: '2026-11-01', order: 3, ownerName: null, ownerEmail: null, deleted: false },
+      { id: 'a-sav', name: '저축', role: 'savings', openingBalance: 0, openingDate: '2026-11-01', order: 4, ownerName: null, ownerEmail: null, deleted: false },
+      { id: 'a-al', name: '용돈', role: 'allowance', openingBalance: 0, openingDate: '2026-11-01', order: 5, ownerName: null, ownerEmail: null, deleted: false },
+      { id: 'a-etc', name: '기타', role: 'other', openingBalance: -1000, openingDate: '2026-11-01', order: 6, ownerName: null, ownerEmail: null, deleted: false },
     ],
     rules: [
       { id: 'r1', fromAccountId: 'a-inc', toAccountId: 'a-fix', amount: 2000000, dayOfMonth: 25, startMonth: '2026-11', endMonth: null, deleted: false },
@@ -26,9 +26,9 @@ export function sampleLedger(): LedgerData {
       { id: 't3', date: '2026-11-26', kind: 'adjustment', fromAccountId: 'a-fix', toAccountId: null, amount: 1000, status: 'done', ruleId: null, memo: '맞추기', ...audit, deleted: true },
     ],
     fixedExpenses: [
-      { id: 'f1', name: '월세', amount: 700000, accountId: 'a-fix', categoryId: 'c1', dayOfMonth: 5, kind: 'bill', targetEmail: null, startMonth: '2026-11', endMonth: null, deleted: false },
-      { id: 'f2', name: '생활비', amount: 600000, accountId: 'a-fix', categoryId: null, dayOfMonth: null, kind: 'living', targetEmail: null, startMonth: '2026-11', endMonth: '2027-03', deleted: false },
-      { id: 'f3', name: '용돈(민지)', amount: 300000, accountId: 'a-fix', categoryId: null, dayOfMonth: 1, kind: 'allowance', targetEmail: 'minji@example.com', startMonth: '2026-11', endMonth: null, deleted: true },
+      { id: 'f1', name: '월세', amount: 700000, accountId: 'a-fix', categoryId: 'c1', dayOfMonth: 5, kind: 'bill', targetEmail: null, spread: 'daily', startMonth: '2026-11', endMonth: null, deleted: false },
+      { id: 'f2', name: '생활비', amount: 600000, accountId: 'a-fix', categoryId: null, dayOfMonth: null, kind: 'living', targetEmail: null, spread: 'monthly', startMonth: '2026-11', endMonth: '2027-03', deleted: false },
+      { id: 'f3', name: '용돈(민지)', amount: 300000, accountId: 'a-fix', categoryId: null, dayOfMonth: 1, kind: 'allowance', targetEmail: 'minji@example.com', spread: 'daily', startMonth: '2026-11', endMonth: null, deleted: true },
     ],
     events: [
       { id: 'e1', date: '2027-02-16', name: '설날', amount: 500000, accountId: 'a-evt', categoryId: 'c2', status: 'planned', repeat: 'yearly', memo: '', ...audit },
@@ -40,9 +40,9 @@ export function sampleLedger(): LedgerData {
       { id: 'x2', date: '2026-11-05', amount: 700000, accountId: 'a-fix', categoryId: null, memo: '', eventId: 'e2', fixedExpenseId: 'f1', ...audit, deleted: true },
     ],
     monthEnds: [
-      { month: '2026-10', leftover: 52000, choice: 'reservoir', decidedBy: 'minji@example.com', decidedAt: now },
-      { month: '2026-09', leftover: 0, choice: 'pending', decidedBy: null, decidedAt: null },
-      { month: '2026-08', leftover: -3000, choice: 'carryover', decidedBy: 'junho@example.com', decidedAt: now },
+      { month: '2026-10', leftover: 52000, choice: 'reservoir', decidedBy: 'minji@example.com', decidedAt: now, items: [{ categoryId: 'c1', leftover: 55000 }, { categoryId: null, leftover: -3000 }] },
+      { month: '2026-09', leftover: 0, choice: 'pending', decidedBy: null, decidedAt: null, items: null },
+      { month: '2026-08', leftover: -3000, choice: 'carryover', decidedBy: 'junho@example.com', decidedAt: now, items: null },
     ],
     categories: [
       { id: 'c1', name: '식비', icon: 'utensils', defaultAccountRole: 'fixed', order: 0, deleted: false },

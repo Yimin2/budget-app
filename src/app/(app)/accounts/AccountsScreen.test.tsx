@@ -38,16 +38,19 @@ describe('통장 목록', () => {
     const total = Object.values(balances).reduce((s, v) => s + v, 0);
     expect(within(summary).getByText(won(total))).toBeTruthy();
 
-    const list = screen.getByRole('heading', { name: '통장 5개' }).parentElement!;
+    const list = screen.getByRole('heading', { name: '통장 6개' }).parentElement!;
     const links = within(list).getAllByRole('link');
-    expect(links).toHaveLength(5);
-    expect(links[2]!.getAttribute('href')).toBe('/accounts?id=demo-acc-event');
-    expect(links[2]!.textContent).toContain('이벤트통장');
-    expect(links[2]!.textContent).toContain('900,000원');
-    expect(links[1]!.textContent).toContain('생활비');
-    // 수입통장: 이번 달 500만 들어오고 500만 나감
-    expect(links[0]!.textContent).toContain('이번 달 들어온 돈5,000,000원');
-    expect(links[0]!.textContent).toContain('나간 돈5,000,000원');
+    expect(links).toHaveLength(6);
+    expect(links[3]!.getAttribute('href')).toBe('/accounts?id=demo-acc-event');
+    expect(links[3]!.textContent).toContain('이벤트통장');
+    expect(links[3]!.textContent).toContain('900,000원');
+    expect(links[2]!.textContent).toContain('생활비');
+    // 사람별 수입통장: 민지 300만 · 준호 200만 들어오고 그만큼 나감
+    expect(links[0]!.textContent).toContain('민지 수입통장');
+    expect(links[0]!.textContent).toContain('이번 달 들어온 돈3,000,000원');
+    expect(links[0]!.textContent).toContain('나간 돈3,000,000원');
+    expect(links[1]!.textContent).toContain('준호 수입통장');
+    expect(links[1]!.textContent).toContain('이번 달 들어온 돈2,000,000원');
 
     const flow = screen.getByRole('complementary', { name: '매달 배분' });
     expect(within(flow).getByRole('img').getAttribute('aria-label')).toBe(
@@ -55,6 +58,12 @@ describe('통장 목록', () => {
     );
     expect(within(flow).getByText('40%')).toBeTruthy(); // 고정지출 200만 / 수입 500만
     expect(within(flow).queryByText(/수입보다/)).toBeNull();
+    expect(within(flow).getByText('수입통장 2개')).toBeTruthy();
+    const sources = within(flow).getByRole('list', { name: '사람별 수입통장' });
+    expect(within(sources).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      '민지 수입통장배분 3,000,000원 · 수입 3,000,000원',
+      '준호 수입통장배분 2,000,000원 · 수입 2,000,000원',
+    ]);
   });
 
   it('배분이 수입보다 많으면 경고해요', async () => {
@@ -71,7 +80,8 @@ describe('통장 목록', () => {
       });
     });
     const flow = screen.getByRole('complementary', { name: '매달 배분' });
-    expect(await within(flow).findByText('배분 합계가 수입보다 1,000,000원 많아요')).toBeTruthy();
+    expect(await within(flow).findByText('민지 수입통장에서 보내는 돈이 수입보다 1,000,000원 많아요')).toBeTruthy();
+    expect(within(flow).queryByText(/준호 수입통장에서 보내는/)).toBeNull();
     expect(within(flow).getByRole('link', { name: '배분 바꾸기' }).getAttribute('href')).toBe('/settings#st-rules');
   });
 
@@ -139,7 +149,10 @@ describe('통장 상세', () => {
     const h = await open('id=demo-acc-event');
     fireEvent.click(await screen.findByRole('button', { name: '수입 기록' }));
     const dialog = await screen.findByRole('dialog', { name: '수입 기록' });
-    expect((within(dialog).getByLabelText(/받는 통장/) as HTMLSelectElement).value).toBe('demo-acc-event');
+    // 수입통장이 여럿이면 누구 수입인지 골라요 (사람별 수입통장이 앞에)
+    const to = within(dialog).getByLabelText(/누구 수입인가요/) as HTMLSelectElement;
+    expect(to.value).toBe('demo-acc-event');
+    expect([...to.options].filter((o) => o.value).slice(0, 2).map((o) => o.textContent)).toEqual(['민지 수입통장', '준호 수입통장']);
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '50000' } });
     fireEvent.change(within(dialog).getByLabelText(/메모/), { target: { value: '축의금 받음' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));

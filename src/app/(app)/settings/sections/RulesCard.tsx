@@ -6,7 +6,7 @@ import type { AllocationRule } from '@/domain/types';
 import { Badge, Banner, Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { DAY_OPTIONS } from '@/app/start/new/wizard';
-import { accountName, allocationTotal, periodLabel, referenceIncome, startMonthForNew, startMonthHint, visibleRules } from '../helpers';
+import { accountName, incomeSummaries, periodLabel, startMonthForNew, startMonthHint, visibleRules } from '../helpers';
 import { useRunner } from '../useRunner';
 
 interface Draft {
@@ -19,7 +19,7 @@ interface Draft {
 
 type Errors = Partial<Record<'to' | 'amount', string>>;
 
-/** 매달 배분: 보내는 통장 → 받는 통장 · 금액 · 이체일. 합계가 수입보다 크면 경고 */
+/** 매달 배분: 보내는 통장 → 받는 통장 · 금액 · 이체일. 수입통장(사람)마다 합계가 그 수입보다 크면 경고 */
 export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
   const { busy, run } = useRunner();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -28,14 +28,18 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
 
   const month = monthOf(ledger.today);
   const accounts = ledger.activeAccounts;
-  const rules = visibleRules(ledger.data.rules, month);
-  const total = allocationTotal(ledger.data, month);
-  const income = referenceIncome(ledger.data, month);
+  const order = (id: string) => accounts.find((a) => a.id === id)?.order ?? Number.MAX_SAFE_INTEGER;
+  // 보내는 통장(사람별 수입통장) 순서로 묶어 보여요
+  const rules = visibleRules(ledger.data.rules, month).sort((a, b) => order(a.fromAccountId) - order(b.fromAccountId));
+  const allSummaries = incomeSummaries(ledger.data, month);
+  // 수입통장이 여럿이면 배분이나 수입 기록이 있는 통장만 보여요
+  const summaries = allSummaries.length > 1 ? allSummaries.filter((x) => x.total > 0 || x.income !== null) : allSummaries;
+  const multi = summaries.length > 1;
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
   const editing = draft?.id ? ledger.data.rules.find((r) => r.id === draft.id) : undefined;
 
   function openNew() {
-    const from = ledger.accountByRole('income') ?? accounts[0];
+    const from = ledger.incomeAccounts[0] ?? accounts[0];
     const to = accounts.find((a) => a.id !== from?.id);
     setErrors({});
     setDraft({ id: null, fromAccountId: from?.id ?? '', toAccountId: to?.id ?? '', amount: null, day: 1 });
@@ -92,25 +96,45 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
     <Card id="st-rules" title="매달 배분">
       <p className="st-desc">정한 날마다 보내는 통장에서 받는 통장으로 이체 기록이 자동으로 생겨요.</p>
 
-      {rules.length > 0 ? (
-        <div className="st-summary">
-          <div className="line">
-            <span>이번 달 배분 합계</span>
-            <strong>{formatWon(total)}</strong>
-          </div>
-          <div className="line">
-            <span>{income ? `${formatMonthKo(income.month)} 수입` : '수입'}</span>
-            <strong>{income ? formatWon(income.amount) : '기록 없음'}</strong>
-          </div>
-        </div>
-      ) : null}
-      {income && total > income.amount ? (
-        <Banner tone="warning" title={`배분 합계가 수입보다 ${formatWon(total - income.amount)} 많아요`}>
-          수입통장 잔액이 모자랄 수 있어요. 금액을 줄이거나 수입 기록을 확인해 주세요.
-        </Banner>
-      ) : null}
-      {rules.length > 0 && !income ? (
-        <p className="st-desc">이번 달과 지난달 수입 기록이 없어서 합계를 수입과 비교하지 못했어요.</p>
+      {rules.length > 0
+        ? summaries.map((x) => (
+            <div key={x.account.id} className="stack gap-2">
+              <div className="st-summary" role="group" aria-label={`${x.account.name} 배분`}>
+                {multi ? (
+                  <div className="line">
+                    <strong>{x.account.name}</strong>
+                  </div>
+                ) : null}
+                <div className="line">
+                  <span>이번 달 배분 합계</span>
+                  <strong>{formatWon(x.total)}</strong>
+                </div>
+                <div className="line">
+                  <span>{x.income ? `${formatMonthKo(x.income.month)} 수입` : '수입'}</span>
+                  <strong>{x.income ? formatWon(x.income.amount) : '기록 없음'}</strong>
+                </div>
+              </div>
+              {x.over > 0 ? (
+                <Banner
+                  tone="warning"
+                  title={
+                    multi
+                      ? `${x.account.name}에서 보내는 돈이 수입보다 ${formatWon(x.over)} 많아요`
+                      : `배분 합계가 수입보다 ${formatWon(x.over)} 많아요`
+                  }
+                >
+                  {x.account.name} 잔액이 모자랄 수 있어요. 금액을 줄이거나 수입 기록을 확인해 주세요.
+                </Banner>
+              ) : null}
+            </div>
+          ))
+        : null}
+      {rules.length > 0 && summaries.some((x) => !x.income) ? (
+        <p className="st-desc">
+          {multi
+            ? `${summaries.filter((x) => !x.income).map((x) => x.account.name).join(', ')}에 이번 달과 지난달 수입 기록이 없어서 수입과 비교하지 못했어요.`
+            : '이번 달과 지난달 수입 기록이 없어서 합계를 수입과 비교하지 못했어요.'}
+        </p>
       ) : null}
 
       {rules.length === 0 ? (

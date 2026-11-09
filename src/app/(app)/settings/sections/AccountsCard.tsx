@@ -5,7 +5,8 @@ import { formatDateKo } from '@/domain';
 import type { Account, AccountRole } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON, Badge, Button, Card, ConfirmDialog, DateInput, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
-import { ROLE_OPTIONS, ROLE_TEXT } from '../helpers';
+import { ROLE_OPTIONS, ROLE_TEXT, ownerLabel } from '../helpers';
+import { incomeAccountName, isEmail } from '@/app/start/new/wizard';
 import { useRunner } from '../useRunner';
 
 interface Draft {
@@ -14,32 +15,59 @@ interface Draft {
   role: AccountRole;
   openingBalance: number | null;
   openingDate: string;
+  ownerName: string;
+  ownerEmail: string;
 }
 
-/** 통장: 이름 · 역할 · 시작 잔액/기준일 · 추가 · 지우기 */
+/** 통장: 이름 · 역할 · 주인(사람별 수입통장) · 시작 잔액/기준일 · 추가 · 지우기 */
 export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
   const { busy, run } = useRunner();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [nameError, setNameError] = useState<string | undefined>();
+  const [emailError, setEmailError] = useState<string | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<Account | null>(null);
   const accounts = ledger.activeAccounts;
+  const isShared = ledger.data.settings.kind === 'shared';
 
-  function openNew() {
+  function openNew(role: AccountRole = 'other') {
     setNameError(undefined);
-    setDraft({ id: null, name: '', role: 'other', openingBalance: null, openingDate: ledger.today });
+    setEmailError(undefined);
+    setDraft({
+      id: null,
+      name: '',
+      role,
+      openingBalance: null,
+      openingDate: ledger.today,
+      ownerName: '',
+      ownerEmail: '',
+    });
   }
   function openEdit(a: Account) {
     setNameError(undefined);
-    setDraft({ id: a.id, name: a.name, role: a.role, openingBalance: a.openingBalance, openingDate: a.openingDate });
+    setEmailError(undefined);
+    setDraft({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      openingBalance: a.openingBalance,
+      openingDate: a.openingDate,
+      ownerName: a.ownerName ?? '',
+      ownerEmail: a.ownerEmail ?? '',
+    });
   }
 
   async function save() {
     if (!draft) return;
-    if (!draft.name.trim()) {
-      setNameError('통장 이름을 입력해 주세요');
+    // 수입통장은 이름을 비우면 주인 이름으로 지어 줘요 ('준호 수입통장')
+    const name = draft.name.trim() || (draft.role === 'income' && draft.ownerName.trim() ? incomeAccountName(draft.ownerName) : '');
+    const badEmail = draft.ownerEmail.trim() !== '' && !isEmail(draft.ownerEmail);
+    setNameError(name ? undefined : '통장 이름을 입력해 주세요');
+    setEmailError(badEmail ? '이메일 주소를 확인해 주세요' : undefined);
+    if (!name || badEmail) {
       focusFirstInvalid();
       return;
     }
+    const owner = { ownerName: draft.ownerName.trim() || null, ownerEmail: draft.ownerEmail.trim() || null };
     const balance = draft.openingBalance ?? 0;
     const ok = draft.id
       ? await run(
@@ -49,7 +77,8 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             if (!prev) throw new Error('통장을 찾을 수 없어요');
             await ledger.saveAccount({
               ...prev,
-              name: draft.name.trim(),
+              ...owner,
+              name,
               role: draft.role,
               openingBalance: balance,
               openingDate: draft.openingDate || prev.openingDate,
@@ -60,7 +89,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
       : await run(
           'save',
           async () => {
-            const created = await ledger.addAccount({ name: draft.name, role: draft.role, openingBalance: balance });
+            const created = await ledger.addAccount({ ...owner, name, role: draft.role, openingBalance: balance });
             if (draft.openingDate && draft.openingDate !== created.openingDate) {
               await ledger.saveAccount({ ...created, openingDate: draft.openingDate });
             }
@@ -100,6 +129,11 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                     <Badge size="sm" dot={false}>
                       {ROLE_TEXT[a.role]}
                     </Badge>
+                    {ownerLabel(a) ? (
+                      <Badge size="sm" tone="info" dot={false}>
+                        {ownerLabel(a)}
+                      </Badge>
+                    ) : null}
                     <span>
                       시작 <Money amount={a.openingBalance} /> · {formatDateKo(a.openingDate, false)}부터
                     </span>
@@ -119,15 +153,20 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
         </ul>
       )}
       <div className="st-foot">
-        <Button variant="outline" icon="plus" onClick={openNew}>
+        <Button variant="outline" icon="plus" onClick={() => openNew()}>
           통장 추가
         </Button>
+        {isShared ? (
+          <Button variant="ghost" icon="user" onClick={() => openNew('income')}>
+            다른 사람 수입통장 추가
+          </Button>
+        ) : null}
       </div>
 
       <Dialog
         open={draft !== null}
         onClose={() => (busy ? undefined : setDraft(null))}
-        title={draft?.id ? '통장 고치기' : '통장 추가'}
+        title={draft?.id ? '통장 고치기' : draft?.role === 'income' ? '수입통장 추가' : '통장 추가'}
         actions={
           <>
             <Button variant="outline" onClick={() => setDraft(null)} disabled={busy !== null}>
@@ -149,7 +188,12 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
               void save();
             }}
           >
-            <Field label="이름" error={nameError} required>
+            <Field
+              label="이름"
+              error={nameError}
+              required={draft.role !== 'income'}
+              hint={draft.role === 'income' && !draft.id ? '비우면 \'주인 이름 수입통장\'으로 지어 드려요.' : undefined}
+            >
               <TextInput
                 value={draft.name}
                 maxLength={30}
@@ -159,6 +203,27 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             </Field>
             <Field label="역할" hint="역할에 따라 생활비·이벤트 예측·월말 처리에 쓰는 통장이 정해져요.">
               <Select value={draft.role} onChange={(v) => setDraft({ ...draft, role: v as AccountRole })} options={ROLE_OPTIONS} />
+            </Field>
+            <Field
+              label="주인"
+              optional
+              hint={draft.role === 'income' ? '누구 월급이 들어오는 통장인지 적어 주세요. 가계부에 아직 안 들어온 사람도 돼요.' : '함께 쓰는 통장이면 비워 두세요.'}
+            >
+              <TextInput
+                value={draft.ownerName}
+                maxLength={20}
+                autoComplete="off"
+                onChange={(e) => setDraft({ ...draft, ownerName: e.target.value })}
+              />
+            </Field>
+            <Field label="주인 이메일" optional error={emailError}>
+              <TextInput
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                value={draft.ownerEmail}
+                onChange={(e) => setDraft({ ...draft, ownerEmail: e.target.value })}
+              />
             </Field>
             <Field label="시작 잔액">
               <MoneyInput value={draft.openingBalance} onChange={(v) => setDraft({ ...draft, openingBalance: v })} allowNegative />

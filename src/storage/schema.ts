@@ -4,7 +4,7 @@
  * 열을 추가해도 읽을 수 있다. 쓰기 값은 RAW(문자열·숫자·불리언).
  */
 import type {
-  AccountRole, EventStatus, FixedKind, LedgerKind, LedgerSettings, MonthEndChoice, Repeat,
+  AccountRole, EventStatus, FixedKind, LedgerKind, LedgerSettings, LivingSpread, MonthEndChoice, MonthEndItem, Repeat,
   TransferKind, TransferStatus,
 } from '@/domain/types';
 import type { TableName, TableRows } from './types';
@@ -139,6 +139,35 @@ const optMonth: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toYearMo
 const ts: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toTimestamp(c) ?? '' };
 const optTs: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toTimestamp(c) };
 
+/**
+ * 월말 항목별 남은 돈 <-> JSON 객체 {"카테고리id": 금액, "": 금액(카테고리 없는 묶음)}.
+ * 빈 셀 · 읽을 수 없는 값은 null (예전 기록: 항목 구분 없음)
+ */
+const monthEndItems: Codec = {
+  enc: (v) => {
+    if (!Array.isArray(v) || v.length === 0) return '';
+    const obj: Record<string, number> = {};
+    for (const it of v as MonthEndItem[]) obj[it.categoryId ?? ''] = (obj[it.categoryId ?? ''] ?? 0) + it.leftover;
+    return JSON.stringify(obj);
+  },
+  dec: (c) => {
+    if (isBlank(c) || typeof c !== 'string') return null;
+    try {
+      const parsed: unknown = JSON.parse(c);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      const out: MonthEndItem[] = [];
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        const n = typeof v === 'number' ? v : toNumber(v as RawCell);
+        if (n === null || !Number.isFinite(n)) continue;
+        out.push({ categoryId: k.trim() === '' ? null : k.trim(), leftover: Math.round(n) });
+      }
+      return out.length > 0 ? out : null;
+    } catch {
+      return null;
+    }
+  },
+};
+
 /** 코드값 <-> 한글 표시값. 읽을 때는 한글·코드 둘 다 받는다 */
 function enumCodec<T extends string>(labels: Record<T, string>, fallback: T): Codec {
   const reverse = new Map<string, T>();
@@ -167,6 +196,8 @@ export const EVENT_STATUS_LABELS: Record<EventStatus, string> = { planned: '예�
 export const REPEAT_LABELS: Record<Repeat, string> = { none: '없음', monthly: '매월', yearly: '매년' };
 export const MONTH_END_LABELS: Record<MonthEndChoice, string> = { pending: '미정', reservoir: '저수지', carryover: '이월' };
 export const LEDGER_KIND_LABELS: Record<LedgerKind, string> = { shared: '공용', personal: '개인' };
+/** 생활비 항목 쓰는 방식. 빈 셀은 하루 (예전 생활비 한 줄도 지금처럼 하루에 나눠 써요) */
+export const SPREAD_LABELS: Record<LivingSpread, string> = { daily: '하루', monthly: '한달' };
 
 const role = enumCodec(ROLE_LABELS, 'other');
 
@@ -202,7 +233,9 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
     columns: [
       c('id', 'id', str), c('name', '이름', str), c('role', '역할', role),
       c('openingBalance', '시작잔액', int), c('openingDate', '시작일', date),
-      c('order', '순서', int), c('deleted', '삭제됨', bool, ['삭제']),
+      c('order', '순서', int),
+      c('ownerName', '주인', optStr, ['명의']), c('ownerEmail', '주인이메일', optStr),
+      c('deleted', '삭제됨', bool, ['삭제']),
     ],
   },
   rules: {
@@ -232,6 +265,7 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('accountId', '통장', str), c('categoryId', '카테고리', optStr),
       c('dayOfMonth', '결제일', optInt), c('kind', '종류', enumCodec(FIXED_KIND_LABELS, 'bill')),
       c('targetEmail', '대상', optStr), c('startMonth', '시작월', month), c('endMonth', '종료월', optMonth),
+      c('spread', '나눠쓰기', enumCodec(SPREAD_LABELS, 'daily'), ['쓰는방식']),
       c('deleted', '삭제됨', bool, ['삭제']),
     ],
   },
@@ -260,6 +294,7 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('month', '월', month), c('leftover', '남은생활비', int),
       c('choice', '처리', enumCodec(MONTH_END_LABELS, 'pending')),
       c('decidedBy', '처리자', optStr), c('decidedAt', '처리일시', optTs),
+      c('items', '항목별', monthEndItems),
     ],
   },
   categories: {

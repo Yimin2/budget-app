@@ -56,7 +56,8 @@ describe('state — 체험 모드 흐름', () => {
     expect(s.session.user?.email).toBe('minji@demo');
     expect(s.session.activeLedger?.id).toBe(DEMO_LEDGER_ID);
     expect(s.ledger.today).toBe('2026-11-20');
-    expect(s.ledger.data?.accounts.length).toBe(5);
+    expect(s.ledger.data?.accounts.length).toBe(6);
+    expect(s.ledger.incomeAccounts.map((a) => a.name)).toEqual(['민지 수입통장', '준호 수입통장']);
     expect(s.ledger.living).not.toBeNull();
     expect(s.ledger.eventProjection?.shortages.length).toBeGreaterThan(0);
     expect(s.ledger.shortageFix?.fromReservoir).not.toBeNull();
@@ -71,10 +72,13 @@ describe('state — 체험 모드 흐름', () => {
     const before = s.ledger.living!.todayAvailable;
     const livingAccountId = s.ledger.living!.livingAccountId!;
     await act(async () => {
-      await r.result.current.ledger.addExpense({ date: '2026-11-20', amount: 10_000, accountId: livingAccountId, categoryId: null });
+      await r.result.current.ledger.addExpense({ date: '2026-11-20', amount: 10_000, accountId: livingAccountId, categoryId: 'demo-cat-food' });
     });
     expect(r.result.current.ledger.living!.todayAvailable).toBe(before - 10_000);
-    expect(r.result.current.ledger.judge(1000, 'living')?.signal).toBeDefined();
+    // 항목이 여럿이면 항목을 골라야 생활비 판단을 해요
+    expect(r.result.current.ledger.judge(1000, 'living')).toBeNull();
+    expect(r.result.current.ledger.judge(1000, 'living', 'demo-cat-food')?.message).toContain('식비');
+    expect(r.result.current.ledger.judge(1000, 'living', 'demo-cat-shopping')?.signal).toBeDefined();
     expect(r.result.current.ledger.judge(1000, 'event')).not.toBeNull();
 
     // 일정 완료 → 지출 생성 + 상태 done
@@ -97,6 +101,9 @@ describe('state — 체험 모드 흐름', () => {
     await waitFor(() => expect(r.result.current.ledger.pendingMonthEnd?.month).toBe('2026-11'));
     const leftover = r.result.current.ledger.pendingMonthEnd!.leftover;
     expect(leftover).toBeGreaterThan(0);
+    const pendingItems = r.result.current.ledger.pendingMonthEnd!.items;
+    expect(pendingItems.reduce((a, i) => a + i.leftover, 0)).toBe(leftover);
+    expect(pendingItems.map((i) => i.name)).toContain('식비');
     // 12월 자동 배분이 생김
     await waitFor(() =>
       expect(r.result.current.ledger.data!.transfers.some((t) => t.id === 'auto:demo-rule-event:2026-12')).toBe(true),
@@ -108,6 +115,7 @@ describe('state — 체험 모드 흐름', () => {
     const final = r.result.current.ledger;
     expect(final.pendingMonthEnd).toBeNull();
     expect(final.data!.monthEnds.find((m) => m.month === '2026-11')?.choice).toBe('reservoir');
+    expect(final.data!.monthEnds.find((m) => m.month === '2026-11')?.items?.length).toBe(pendingItems.length);
     const mt = final.data!.transfers.find((t) => t.id === 'monthend:2026-11');
     expect(mt?.amount).toBe(leftover);
     expect(mt?.toAccountId).toBe('demo-acc-reservoir');

@@ -10,6 +10,7 @@ import { Badge, Button, Card, EmptyState, Icon, Money, PageHeader, Skeleton, Sta
 import { RequireLedger, isLedgerReady, type ReadyLedger } from '../_components/RequireLedger';
 import { AccountDetail } from './AccountDetail';
 import { FlowCard } from './FlowCard';
+import { ownerLabel } from '../settings/helpers';
 import { flowSummary, monthFlows, monthTotals, ROLE_ICON, ROLE_LABEL, type MonthFlow } from './selectors';
 import { TransferDialog, type RecordMode } from './TransferDialog';
 import styles from './accounts.module.css';
@@ -135,6 +136,11 @@ function AccountCard({ account, balance, flow, living }: { account: Account; bal
             {living ? (
               <Badge size="sm" tone="brand" dot={false}>
                 생활비
+              </Badge>
+            ) : null}
+            {ownerLabel(account) ? (
+              <Badge size="sm" tone="info" dot={false}>
+                {ownerLabel(account)}
               </Badge>
             ) : null}
           </span>

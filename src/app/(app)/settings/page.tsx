@@ -8,10 +8,11 @@ import { AccountsCard } from './sections/AccountsCard';
 import { CategoriesCard } from './sections/CategoriesCard';
 import { FavoritesCard } from './sections/FavoritesCard';
 import { FixedCard } from './sections/FixedCard';
+import { LivingCard } from './sections/LivingCard';
 import { AccountCard, DisplayCard, InfoCard, LedgerNameCard, QuickLinks } from './sections/GeneralCards';
 import { RulesCard } from './sections/RulesCard';
 
-/** 설정: 가계부 · 통장 · 매달 배분 · 고정 지출 · 카테고리 · 자주 쓰는 지출 · 화면 · 정보 (모바일 '더보기') */
+/** 설정: 가계부 · 통장 · 매달 배분 · 생활비 예산 · 고정 지출 · 카테고리 · 자주 쓰는 지출 · 화면 · 정보 (모바일 '더보기') */
 export default function SettingsPage() {
   return (
     <>
@@ -25,6 +26,7 @@ export default function SettingsPage() {
               <LedgerNameCard key={`name-${ledger.ref.id}`} ledger={ledger} />
               <AccountsCard ledger={ledger} />
               <RulesCard ledger={ledger} />
+              <LivingCard ledger={ledger} />
               <FixedCard ledger={ledger} />
             </div>
             <div className="st-col">

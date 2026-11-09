@@ -70,6 +70,8 @@ export function createDefaultLedger(
     openingBalance: 0,
     openingDate: today,
     order: i,
+    ownerName: null,
+    ownerEmail: null,
     deleted: false,
   }));
   return {
@@ -111,12 +113,25 @@ const DAILY_PATTERN: [0 | 1, string, number, string][][] = [
 /** 오늘 기록은 가볍게 둬요. 체험 첫 화면의 '오늘 써도 되는 생활비'가 날짜와 상관없이 0원보다 크게 보이도록 */
 const TODAY_PATTERN: [0 | 1, string, number, string][] = [[0, 'cafe', 4500, '커피']];
 
-/** 체험 모드용 예시 데이터 (민지·준호 부부 예시: 월급 500만, 배분 고정 200 / 이벤트 30 / 저축투자 150 / 저수지 120, 생활비 60, 이벤트 일정: 설날·제주 여행·5월 결혼식 4건·어버이날 → 5월 부족 발생) — today 기준 상대 날짜
+/** 체험 모드 생활비 항목 예산 [카테고리 key, 금액, 쓰는 방식]. 합 600,000 */
+export const DEMO_LIVING_ITEMS: [string, number, 'daily' | 'monthly'][] = [
+  ['food', 340_000, 'daily'],
+  ['cafe', 80_000, 'daily'],
+  ['transport', 20_000, 'daily'],
+  ['living', 30_000, 'monthly'],
+  ['shopping', 60_000, 'monthly'],
+  ['medical', 20_000, 'monthly'],
+  ['culture', 50_000, 'monthly'],
+];
+
+/** 체험 모드용 예시 데이터 (민지·준호 부부 예시: 월급 민지 300만 + 준호 200만, 배분 합 고정 200 / 이벤트 30 / 저축투자 150 / 저수지 120, 생활비 항목 합 60, 이벤트 일정: 설날·제주 여행·5월 결혼식 4건·어버이날 → 5월 부족 발생) — today 기준 상대 날짜
  *
  * 구성 (today 가 속한 달 M 기준):
- * - 통장 시작 잔액(M-01 기준): 수입 0 / 고정지출 1,350,000 / 이벤트 600,000 / 저수지 5,200,000 / 저축투자 12,400,000
- * - M-01 월급 5,000,000 수입 → 같은 날 월배분 4건 (자동 기록 id 사용)
- * - 고정 지출: 월세 800,000(10일) · 통신비 120,000(15일) · 보험 180,000(20일) · 용돈 민지/준호 각 150,000(1일), 생활비 600,000
+ * - 통장 시작 잔액(M-01 기준): 수입 2개 0 / 고정지출 1,350,000 / 이벤트 600,000 / 저수지 5,200,000 / 저축투자 12,400,000
+ * - 사람별 수입통장: 민지 수입통장(월급 3,000,000) · 준호 수입통장(월급 2,000,000). M-01 월급 수입 → 같은 날 월배분 (자동 기록 id 사용)
+ *   민지 → 고정 1,200,000 · 이벤트 300,000 · 저축투자 900,000 · 저수지 600,000 / 준호 → 고정 800,000 · 저축투자 600,000 · 저수지 600,000
+ * - 고정 지출: 월세 800,000(10일) · 통신비 120,000(15일) · 보험 180,000(20일) · 용돈 민지/준호 각 150,000(1일)
+ * - 생활비 항목: 식비 340,000 · 카페 80,000 · 교통 20,000 (하루에 나눠 쓰기) / 생활 30,000 · 쇼핑 60,000 · 의료 20,000 · 문화 50,000 (한 달 한도만)
  * - 생활비 지출: 1일부터 오늘까지 매일 두 사람이 번갈아 기록 (하루 평균 약 18,000원). 오늘은 커피 한 잔만
  * - 이벤트 일정: M+2 명절 400,000 · M+3 제주 여행 900,000 · M+5 결혼식 4건 800,000 + 어버이날 600,000 → M+5 에 300,000 부족
  */
@@ -128,27 +143,39 @@ export function createDemoLedger(today: string, now: string): LedgerData {
   const who = [minji, junho];
   const cat = (key: string) => `demo-cat-${key}`;
 
-  const acc = (key: string, name: string, role: AccountRole, openingBalance: number, order: number): Account => ({
+  const acc = (
+    key: string,
+    name: string,
+    role: AccountRole,
+    openingBalance: number,
+    order: number,
+    owner: { displayName: string; email: string } | null = null,
+  ): Account => ({
     id: `demo-acc-${key}`,
     name,
     role,
     openingBalance,
     openingDate: first,
     order,
+    ownerName: owner?.displayName ?? null,
+    ownerEmail: owner?.email ?? null,
     deleted: false,
   });
   const accounts: Account[] = [
-    acc('income', '수입통장', 'income', 0, 0),
-    acc('fixed', '고정지출통장', 'fixed', 1_350_000, 1),
-    acc('event', '이벤트통장', 'event', 600_000, 2),
-    acc('reservoir', '저수지통장', 'reservoir', 5_200_000, 3),
-    acc('savings', '저축투자통장', 'savings', 12_400_000, 4),
+    acc('income', '민지 수입통장', 'income', 0, 0, DEMO_MEMBERS[0]),
+    acc('income-junho', '준호 수입통장', 'income', 0, 1, DEMO_MEMBERS[1]),
+    acc('fixed', '고정지출통장', 'fixed', 1_350_000, 2),
+    acc('event', '이벤트통장', 'event', 600_000, 3),
+    acc('reservoir', '저수지통장', 'reservoir', 5_200_000, 4),
+    acc('savings', '저축투자통장', 'savings', 12_400_000, 5),
   ];
-  const [income, fixed, event, reservoir, savings] = accounts as [Account, Account, Account, Account, Account];
+  const [incomeMinji, incomeJunho, fixed, event, reservoir, savings] = accounts as [
+    Account, Account, Account, Account, Account, Account,
+  ];
 
-  const rule = (key: string, to: Account, amount: number): AllocationRule => ({
+  const rule = (key: string, from: Account, to: Account, amount: number): AllocationRule => ({
     id: `demo-rule-${key}`,
-    fromAccountId: income.id,
+    fromAccountId: from.id,
     toAccountId: to.id,
     amount,
     dayOfMonth: 1,
@@ -157,28 +184,33 @@ export function createDemoLedger(today: string, now: string): LedgerData {
     deleted: false,
   });
   const rules: AllocationRule[] = [
-    rule('fixed', fixed, 2_000_000),
-    rule('event', event, 300_000),
-    rule('savings', savings, 1_500_000),
-    rule('reservoir', reservoir, 1_200_000),
+    rule('fixed', incomeMinji, fixed, 1_200_000),
+    rule('event', incomeMinji, event, 300_000),
+    rule('savings', incomeMinji, savings, 900_000),
+    rule('reservoir', incomeMinji, reservoir, 600_000),
+    rule('junho-fixed', incomeJunho, fixed, 800_000),
+    rule('junho-savings', incomeJunho, savings, 600_000),
+    rule('junho-reservoir', incomeJunho, reservoir, 600_000),
   ];
 
+  const salary = (id: string, to: Account, amount: number, author: string): Transfer => ({
+    id,
+    date: first,
+    kind: 'income',
+    fromAccountId: null,
+    toAccountId: to.id,
+    amount,
+    status: 'done',
+    ruleId: null,
+    memo: '월급',
+    author,
+    createdAt: now,
+    updatedAt: now,
+    deleted: false,
+  });
   const transfers: Transfer[] = [
-    {
-      id: 'demo-salary',
-      date: first,
-      kind: 'income',
-      fromAccountId: null,
-      toAccountId: income.id,
-      amount: 5_000_000,
-      status: 'done',
-      ruleId: null,
-      memo: '월급',
-      author: minji,
-      createdAt: now,
-      updatedAt: now,
-      deleted: false,
-    },
+    salary('demo-salary', incomeMinji, 3_000_000, minji),
+    salary('demo-salary-junho', incomeJunho, 2_000_000, junho),
   ];
 
   const fx = (
@@ -189,6 +221,7 @@ export function createDemoLedger(today: string, now: string): LedgerData {
     dayOfMonth: number | null,
     categoryKey: string | null,
     targetEmail: string | null = null,
+    spread: FixedExpense['spread'] = 'daily',
   ): FixedExpense => ({
     id: `demo-fixed-${key}`,
     name,
@@ -198,6 +231,7 @@ export function createDemoLedger(today: string, now: string): LedgerData {
     dayOfMonth,
     kind,
     targetEmail,
+    spread,
     startMonth: M,
     endMonth: null,
     deleted: false,
@@ -206,9 +240,11 @@ export function createDemoLedger(today: string, now: string): LedgerData {
     fx('rent', '월세', 800_000, 'bill', 10, 'living'),
     fx('phone', '통신비', 120_000, 'bill', 15, 'living'),
     fx('insurance', '보험', 180_000, 'bill', 20, 'medical'),
-    fx('living', '생활비', 600_000, 'living', null, null),
     fx('allowance-minji', '용돈(민지)', 150_000, 'allowance', 1, null, minji),
     fx('allowance-junho', '용돈(준호)', 150_000, 'allowance', 1, null, junho),
+    ...DEMO_LIVING_ITEMS.map(([key, amount, spread]) =>
+      fx(`living-${key}`, DEFAULT_CATEGORIES.find((c) => c.key === key)!.name, amount, 'living', null, key, null, spread),
+    ),
   ];
 
   const expenses: Expense[] = [];

@@ -11,7 +11,9 @@ describe('schema', () => {
     expect(canonicalHeaders('transfers')).toEqual([
       'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨',
     ]);
-    expect(canonicalHeaders('monthEnds')).toEqual(['월', '남은생활비', '처리', '처리자', '처리일시']);
+    expect(canonicalHeaders('monthEnds')).toEqual(['월', '남은생활비', '처리', '처리자', '처리일시', '항목별']);
+    expect(canonicalHeaders('accounts')).toEqual(['id', '이름', '역할', '시작잔액', '시작일', '순서', '주인', '주인이메일', '삭제됨']);
+    expect(canonicalHeaders('fixedExpenses')).toContain('나눠쓰기');
   });
 
   it.each(TABLE_NAMES)('%s 행 왕복 변환', (table) => {
@@ -30,7 +32,9 @@ describe('schema', () => {
       '2026-11-09T10:00:00.000Z', '2026-11-09T10:00:00.000Z', false,
     ]);
     expect(encodeRow('accounts', d.accounts[3]!)[2]).toBe('저수지');
-    expect(encodeRow('monthEnds', d.monthEnds[1]!)).toEqual(['2026-09', 0, '미정', '', '']);
+    expect(encodeRow('monthEnds', d.monthEnds[1]!)).toEqual(['2026-09', 0, '미정', '', '', '']);
+    expect(encodeRow('monthEnds', d.monthEnds[0]!)[5]).toBe('{"c1":55000,"":-3000}');
+    expect(encodeRow('fixedExpenses', d.fixedExpenses[1]!)).toContain('한달');
   });
 
   it('머리글 이름으로 매핑: 순서 바뀜·추가 열·빠진 선택 열', () => {
@@ -61,6 +65,33 @@ describe('schema', () => {
     expect(rows.map((r) => r.role)).toEqual(['reservoir', 'fixed', 'other']);
     expect(rows[0]!.openingBalance).toBe(1000);
     expect(rows[0]!.openingDate).toBe('');
+  });
+
+  it('새 열(주인 · 나눠쓰기 · 항목별)이 없거나 비어도 안전하게 읽는다', () => {
+    // 예전 시트: 새 열 머리글이 아예 없음
+    const accounts = decodeTable('accounts', [['id', '이름', '역할'], ['a', '수입통장', '수입']]);
+    expect(accounts[0]).toMatchObject({ ownerName: null, ownerEmail: null });
+    const fixed = decodeTable('fixedExpenses', [['id', '이름', '금액', '종류'], ['f', '생활비', 600000, '생활비']]);
+    expect(fixed[0]).toMatchObject({ kind: 'living', categoryId: null, spread: 'daily' });
+    const ends = decodeTable('monthEnds', [['월', '남은생활비', '처리'], ['2026-10', 1000, '이월']]);
+    expect(ends[0]).toMatchObject({ choice: 'carryover', items: null });
+    // 머리글은 있지만 칸이 비었거나 엉뚱한 값
+    const blank = decodeTable('monthEnds', [
+      ['월', '남은생활비', '처리', '항목별'],
+      ['2026-10', 1000, '이월', ''],
+      ['2026-09', 1000, '이월', '아무 글자'],
+      ['2026-08', 1000, '이월', '{"food":"1,000원","x":"?"}'],
+    ]);
+    expect(blank.map((r) => r.items)).toEqual([null, null, [{ categoryId: 'food', leftover: 1000 }]]);
+    const spread = decodeTable('fixedExpenses', [
+      ['id', '종류', '나눠쓰기', '주인'],
+      ['a', '생활비', '', ''],
+      ['b', '생활비', '한 달', ''],
+      ['c', '생활비', 'monthly', ''],
+    ]);
+    expect(spread.map((r) => r.spread)).toEqual(['daily', 'monthly', 'monthly']);
+    const owner = decodeTable('accounts', [['id', '주인', '주인이메일'], ['a', ' 민지 ', ''], ['b', '', 'x@y.z']]);
+    expect(owner.map((r) => [r.ownerName, r.ownerEmail])).toEqual([['민지', null], [null, 'x@y.z']]);
   });
 
   it('카테고리 이모지 머리글은 아이콘으로 읽는다', () => {

@@ -1,19 +1,20 @@
 import { addMonths, compareMonth, dateInMonth, isValidMonth, localDateOf, monthOf, monthRange } from './dates';
 import { monthEndTransferId } from './ids';
 import { firstAccountByRole, livingAccountIdFor } from './internal';
-import { livingLeftover } from './living';
-import type { ISODate, LedgerData, MonthEnd, Transfer, YearMonth, Won } from './types';
+import { livingLeftoverItems } from './living';
+import type { ISODate, LedgerData, MonthEnd, MonthEndItem, PendingMonthEnd, Transfer, YearMonth, Won } from './types';
 
 /** 월말 처리를 거슬러 묻는 최대 달 수 */
 export const MONTH_END_LOOKBACK = 12;
 
 /**
- * 아직 고르지 않은 가장 오래된 달의 월말 처리 {month, leftover}. 없으면 null.
+ * 아직 고르지 않은 가장 오래된 달의 월말 처리 {month, leftover, items}. 없으면 null.
+ * - leftover = 항목별 남은 돈(음수 포함)의 합. items 는 0 이 아닌 항목
  * - 살펴보는 달: max(가계부 만든 달(이 기기 시간대), 마지막으로 고른 달 + 1, 지난달 − 11) ~ 지난달
  * - 이미 결정(choice ≠ pending)했거나 leftover ≤ 0 인 달은 건너뛴다
  * - 한 달을 고르면 다음 호출이 그다음 달을 돌려준다 (이월하면 다음 달 남은 돈에 더해진다)
  */
-export function pendingMonthEnd(data: LedgerData, today: ISODate): { month: YearMonth; leftover: Won } | null {
+export function pendingMonthEnd(data: LedgerData, today: ISODate): PendingMonthEnd | null {
   const last = addMonths(monthOf(today), -1);
   let from = addMonths(last, -(MONTH_END_LOOKBACK - 1));
   const created = localDateOf(data.settings.createdAt);
@@ -29,13 +30,17 @@ export function pendingMonthEnd(data: LedgerData, today: ISODate): { month: Year
   for (const month of monthRange(from, last)) {
     const existing = data.monthEnds.find((m) => m.month === month);
     if (existing && existing.choice !== 'pending') continue;
-    const leftover = livingLeftover(data, month);
-    if (leftover > 0) return { month, leftover };
+    const items = livingLeftoverItems(data, month);
+    const leftover = items.reduce((s, i) => s + i.leftover, 0);
+    if (leftover > 0) return { month, leftover, items };
   }
   return null;
 }
 
-/** 결정 기록: MonthEnd 행 + reservoir 면 생활비 통장 → 저수지 transfer(done, 다음 달 1일). 저수지 통장 없으면 transfer 없음 */
+/**
+ * 결정 기록: MonthEnd 행(항목별 남은 돈 포함) + reservoir 면 생활비 통장 → 저수지 transfer(done, 다음 달 1일, 합계 한 건).
+ * 저수지 통장 없으면 transfer 없음. 이월이면 다음 달 computeLiving 이 items 를 같은 항목에 더한다
+ */
 export function decideMonthEnd(
   data: LedgerData,
   month: YearMonth,
@@ -43,8 +48,14 @@ export function decideMonthEnd(
   choice: 'reservoir' | 'carryover',
   author: string,
   now: string,
+  items: MonthEndItem[] | null = null,
 ): { monthEnd: MonthEnd; transfer: Transfer | null } {
-  const monthEnd: MonthEnd = { month, leftover, choice, decidedBy: author, decidedAt: now };
+  const clean = items
+    ? items.filter((i) => i.leftover !== 0).map((i) => ({ categoryId: i.categoryId, leftover: i.leftover }))
+    : null;
+  const monthEnd: MonthEnd = {
+    month, leftover, choice, decidedBy: author, decidedAt: now, items: clean && clean.length > 0 ? clean : null,
+  };
   if (choice !== 'reservoir' || leftover <= 0) return { monthEnd, transfer: null };
   const reservoir = firstAccountByRole(data, 'reservoir');
   const from = livingAccountIdFor(data, month);

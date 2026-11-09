@@ -31,7 +31,8 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
   const formId = `transfer-${useId().replace(/:/g, '')}`;
   const accounts = ledger.activeAccounts;
   const preset = accountId && accounts.some((a) => a.id === accountId) ? accountId : null;
-  const incomeId = ledger.accountByRole('income')?.id ?? null;
+  const incomeAccounts = ledger.incomeAccounts;
+  const incomeId = incomeAccounts[0]?.id ?? null;
 
   const [mode, setMode] = useState<RecordMode>(initialMode);
   const [from, setFrom] = useState<string>(() => preset ?? incomeId ?? accounts[0]?.id ?? '');
@@ -103,6 +104,11 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
   }
 
   const options = accounts.map((a) => ({ value: a.id, label: a.name }));
+  // 수입은 사람별 수입통장을 앞에 둬요 (누구 월급인지 고르기 쉽게)
+  const incomeOptions = [
+    ...incomeAccounts.map((a) => ({ value: a.id, label: a.ownerName && !a.name.includes(a.ownerName) ? `${a.name} (${a.ownerName})` : a.name })),
+    ...accounts.filter((a) => a.role !== 'income').map((a) => ({ value: a.id, label: a.name })),
+  ];
   const future = isISODate(date) && date > ledger.today;
 
   return (
@@ -157,8 +163,13 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
             </Field>
           </div>
         ) : (
-          <Field label="받는 통장" error={errors.to} required>
-            <Select value={to} onChange={setTo} options={options} placeholder={options.length === 0 ? '통장이 없어요' : '통장 고르기'} />
+          <Field
+            label={incomeAccounts.length > 1 ? '누구 수입인가요' : '받는 통장'}
+            error={errors.to}
+            required
+            hint={incomeAccounts.length > 1 ? '월급을 받은 사람의 수입통장을 골라 주세요.' : undefined}
+          >
+            <Select value={to} onChange={setTo} options={incomeOptions} placeholder={options.length === 0 ? '통장이 없어요' : '통장 고르기'} />
           </Field>
         )}
 
