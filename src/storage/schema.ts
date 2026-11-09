@@ -134,6 +134,14 @@ const optInt: Codec = {
 };
 const bool: Codec = { enc: (v) => v === true, dec: toBool };
 const date: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toISODate(c) ?? '' };
+/** 빈 셀 · 날짜가 아닌 값은 null */
+const optDate: Codec = {
+  enc: (v) => (v ? String(v) : ''),
+  dec: (c) => {
+    const d = toISODate(c);
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+  },
+};
 const month: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toYearMonth(c) ?? '' };
 const optMonth: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toYearMonth(c) };
 const ts: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toTimestamp(c) ?? '' };
@@ -286,6 +294,9 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('accountId', '통장', str), c('categoryId', '카테고리', optStr), c('memo', '내용', str, ['메모']),
       c('eventId', '일정id', optStr), c('fixedExpenseId', '고정지출id', optStr),
       ...audit,
+      // 청구(돌려받기). 나중에 더한 열이라 빈 칸 = 보통 지출
+      c('paidBy', '낸사람', optStr, ['청구자']), c('claimAccountId', '돌려받을통장', optStr),
+      c('claimDue', '정산일', optDate, ['돌려줄날']),
     ],
   },
   monthEnds: {
@@ -452,10 +463,22 @@ export const SETTINGS_DEFS: SettingDef[] = [
   { field: 'sharedLedgerId', key: '공용가계부ID', codec: optStr },
   { field: 'schemaVersion', key: '스키마버전', codec: { enc: int.enc, dec: (v) => toNumber(v) ?? 1 } },
   { field: 'createdAt', key: '생성일시', codec: ts },
+  // 청구 정산일(매달 며칠). 빈 값 = 자동(수입통장 → 이벤트통장 배분 이체일, 없으면 21일)
+  {
+    field: 'settleDay',
+    key: '정산일',
+    codec: {
+      enc: (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 31 ? v : ''),
+      dec: (c) => {
+        const n = toNumber(c);
+        return n !== null && n >= 1 && n <= 31 ? n : null;
+      },
+    },
+  },
 ];
 
 export const DEFAULT_SETTINGS: LedgerSettings = {
-  name: '', kind: 'shared', sharedLedgerId: null, schemaVersion: 1, createdAt: '',
+  name: '', kind: 'shared', sharedLedgerId: null, schemaVersion: 1, createdAt: '', settleDay: null,
 };
 
 /** 앱이 모르는 설정 키 (예: 사용자가 추가한 행) — 다시 쓸 때 그대로 보존 */

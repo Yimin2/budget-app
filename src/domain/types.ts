@@ -139,6 +139,16 @@ export interface Expense {
   memo: string;
   eventId: Id | null; // 이벤트 일정을 쓴 지출
   fixedExpenseId: Id | null; // 자동 기록된 고정 지출 (생활비 계산에서 제외)
+  /**
+   * 청구(돌려받기, PLAN 4-9): 개인 돈으로 낸 사람 이름. 비어 있으면(null · 없음) 통장에서 바로 나간 보통 지출.
+   * 청구 지출은 accountId(함께 쓰는 통장)의 예산·일정에는 바로 잡히지만, 그 통장 잔액에서는 돌려줄 때
+   * (이체 claim:<지출id>) 빠진다. 시트 빈 셀은 null
+   */
+  paidBy?: string | null;
+  /** 청구: 낸 사람의 통장 (돌려받을 통장, 보통 그 사람 수입통장). 없으면 null — 잔액은 어느 통장에서도 빠지지 않는다 */
+  claimAccountId?: Id | null;
+  /** 청구: 돌려줄 날 (정산일). 빈 셀이면 지출 날짜 기준 다음 정산일로 본다 */
+  claimDue?: ISODate | null;
   author: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -201,6 +211,10 @@ export interface LedgerSettings {
   sharedLedgerId: Id | null;
   schemaVersion: number;
   createdAt: Timestamp;
+  /**
+   * 청구 정산일(매달 며칠). null · 없음 = 자동: 수입통장 → 이벤트통장 매달 배분의 이체일, 그것도 없으면 21일 (PLAN 4-9)
+   */
+  settleDay?: number | null;
 }
 
 export interface LedgerData {
@@ -279,6 +293,8 @@ export interface ProjectionMonth {
   extra: Won; // 가정 지출 (사도 돼? 판단용)
   /** 오늘 뒤 날짜로 이미 기록한 지출 (0 이면 생략) */
   scheduledSpending?: Won;
+  /** 그달 돌려줄 청구 (아직 안 돌려준 개인 돈 지출, 정산일 기준. 지난 정산일은 이번 달). 0 이면 생략 */
+  claims?: Won;
   endBalance: Won;
   events: { id: Id; name: string; date: ISODate; amount: Won }[];
 }
@@ -318,4 +334,33 @@ export interface Verdict {
 export interface AutoRecords {
   transfers: Transfer[];
   expenses: Expense[];
+}
+
+/** 아직 돌려주지 않은 청구 하나 (PLAN 4-9) */
+export interface PendingClaim {
+  expense: Expense;
+  /** 낸 사람 이름 */
+  payer: string;
+  amount: Won;
+  /** 돌려주는 통장 (지출의 통장) */
+  accountId: Id;
+  /** 돌려받을 통장 (없으면 null) */
+  claimAccountId: Id | null;
+  /** 돌려줄 날 */
+  due: ISODate;
+  /** 정산일이 오늘이거나 지났는지 */
+  dueNow: boolean;
+}
+
+export interface ClaimSummary {
+  /** 돌려받을 돈 합 */
+  total: Won;
+  /** 사람별 합 (많은 순) */
+  byPayer: { name: string; amount: Won }[];
+  /** 가장 이른 정산일 (없으면 null) */
+  nextDue: ISODate | null;
+  /** 오늘 돌려줄 청구 (정산일이 오늘이거나 지남), 정산일 순 */
+  dueNow: PendingClaim[];
+  /** 아직 안 돌려준 청구 모두, 정산일 순 */
+  pending: PendingClaim[];
 }

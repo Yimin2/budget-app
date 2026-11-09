@@ -18,7 +18,7 @@ import {
   isIconName,
   useToast,
 } from '@/ui';
-import { RequireLedger, type ReadyLedger } from '../_components';
+import { ClaimsCard, RequireLedger, type ReadyLedger } from '../_components';
 import { CompleteDialog } from './CompleteDialog';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
@@ -190,6 +190,7 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel }: Bod
       {projection && hasEventAccount ? (
         <>
           <SummaryCard projection={projection} />
+          <ClaimsCard />
           <ProjectionCard projection={projection} today={today} />
           {projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />

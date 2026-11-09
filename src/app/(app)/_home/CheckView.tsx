@@ -8,6 +8,7 @@ import { useLedger } from '@/state';
 import {
   Banner, Button, Chip, ChipGroup, Field, Icon, MoneyInput, PageHeader, SegmentedControl, VerdictCard, isIconName, useToast, cx,
 } from '@/ui';
+import { claimToastSuffix } from '../_components/ClaimFields';
 import { CheckSkeleton, useLedgerFallback } from './LedgerGate';
 import { ProjectionChart } from './ProjectionChart';
 import { RecordSheet } from './RecordSheet';
@@ -123,7 +124,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
 
   function onRecorded(expense: Expense, label: string) {
     setSheetOpen(false);
-    toast.success(`${label} ${formatWon(expense.amount)} 기록했어요`, {
+    toast.success(`${label} ${formatWon(expense.amount)} 기록했어요${claimToastSuffix(expense, ledger.today)}`, {
       action: { label: '되돌리기', onClick: () => void undo(expense.id) },
     });
     router.push('/');

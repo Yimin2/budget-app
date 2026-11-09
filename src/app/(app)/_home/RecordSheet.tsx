@@ -1,10 +1,11 @@
 'use client';
 
 import { useId, useState, type FormEvent } from 'react';
-import { formatWon } from '@/domain';
+import { canClaimOnAccount, formatWon } from '@/domain';
 import type { Expense, Id } from '@/domain';
 import { useLedger } from '@/state';
 import { Badge, Button, DateInput, Dialog, Field, Select, TextInput, useToast, focusFirstInvalid } from '@/ui';
+import { ClaimFields } from '../_components/ClaimFields';
 import { accountIdForCategory, accountIdForSource, errorMessage, expenseTitle, type Source } from './selectors';
 import styles from './home.module.css';
 
@@ -36,6 +37,8 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
     () => accountIdForSource(source, livingAccountId, ledger.accountByRole) ?? ledger.activeAccounts[0]?.id ?? '',
   );
   const [accountTouched, setAccountTouched] = useState(false);
+  const [paidBy, setPaidBy] = useState<string | null>(null);
+  const [payerError, setPayerError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -56,7 +59,9 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
     const badDate = !/^\d{4}-\d{2}-\d{2}$/.test(date);
     setDateError(badDate ? '날짜를 골라 주세요' : null);
     setAccountError(accountId ? null : '기록할 통장을 골라 주세요');
-    if (badDate || !accountId) {
+    const payer = paidBy !== null && ledger.data && canClaimOnAccount(ledger.data, accountId) ? paidBy.trim() : null;
+    setPayerError(payer === '' ? '누가 냈는지 골라 주세요' : undefined);
+    if (badDate || !accountId || payer === '') {
       focusFirstInvalid();
       return;
     }
@@ -69,6 +74,7 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
         accountId,
         categoryId: category || null,
         memo: memo.trim(),
+        paidBy: payer,
       });
       onRecorded(expense, expenseTitle(expense, categories));
     } catch (err) {
@@ -129,6 +135,17 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
             options={ledger.activeAccounts.map((a) => ({ value: a.id, label: a.name }))}
           />
         </Field>
+        <ClaimFields
+          accountId={accountId}
+          amount={amount}
+          paidBy={paidBy}
+          onChange={(v) => {
+            setPaidBy(v);
+            setPayerError(undefined);
+          }}
+          disabled={saving}
+          error={payerError}
+        />
       </form>
     </Dialog>
   );

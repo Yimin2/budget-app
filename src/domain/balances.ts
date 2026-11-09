@@ -1,5 +1,5 @@
 import { activeAccountsSorted } from './internal';
-import type { Id, ISODate, LedgerData, Transfer, Won } from './types';
+import type { Expense, Id, ISODate, LedgerData, Transfer, Won } from './types';
 
 const MONTH_END_PREFIX = 'monthend:';
 
@@ -16,7 +16,23 @@ export function isCountedTransfer(data: LedgerData, t: Transfer): boolean {
   return true;
 }
 
-/** 통장 잔액 = 시작 잔액 + 들어온 돈(done) − 나간 돈(done) − 지출. openingDate ≤ 날짜 ≤ asOf 만. 삭제 행 제외 */
+/** 개인 돈으로 내고 돌려받는 지출(청구, PLAN 4-9)인지: 낸 사람 이름이 있으면 */
+export function isClaimExpense(e: Pick<Expense, 'paidBy'>): boolean {
+  return typeof e.paidBy === 'string' && e.paidBy.trim() !== '';
+}
+
+/**
+ * 지출이 잔액에서 빠지는 통장. 보통 지출은 지출의 통장, 청구 지출은 낸 사람 통장(없으면 null — 어느 통장 잔액도 줄지 않음).
+ * 청구는 함께 쓰는 통장에서 돌려줄 때(이체 claim:<지출id>) 비로소 그 통장 잔액이 줄어든다 (두 번 빠지지 않게)
+ */
+export function expenseBalanceAccountId(e: Expense): Id | null {
+  return isClaimExpense(e) ? (e.claimAccountId ?? null) : e.accountId;
+}
+
+/**
+ * 통장 잔액 = 시작 잔액 + 들어온 돈(done) − 나간 돈(done) − 지출. openingDate ≤ 날짜 ≤ asOf 만. 삭제 행 제외.
+ * 청구 지출은 낸 사람 통장에서 빠지고, 함께 쓰는 통장은 돌려준 이체로 줄어든다 (expenseBalanceAccountId)
+ */
 export function accountBalance(data: LedgerData, accountId: Id, asOf: ISODate): Won {
   const account = data.accounts.find((a) => a.id === accountId);
   if (!account) return 0;
@@ -30,7 +46,7 @@ export function accountBalance(data: LedgerData, accountId: Id, asOf: ISODate): 
     if (t.fromAccountId === accountId) balance -= t.amount;
   }
   for (const e of data.expenses) {
-    if (e.deleted || e.accountId !== accountId || !inRange(e.date)) continue;
+    if (e.deleted || expenseBalanceAccountId(e) !== accountId || !inRange(e.date)) continue;
     balance -= e.amount;
   }
   return balance;

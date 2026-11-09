@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
-import { formatDateKo, formatShortDate, formatWon } from '@/domain';
+import { canClaimOnAccount, formatDateKo, formatShortDate, formatWon, isClaimSettled } from '@/domain';
 import type { Category, Expense, Id, ISODate } from '@/domain/types';
 import { useLedger } from '@/state';
 import {
   Badge, Banner, Button, Chip, ChipGroup, DateInput, Dialog, Field, Icon, isIconName, MoneyInput, Select, TextInput, useToast, focusFirstInvalid,
 } from '@/ui';
+import { ClaimFields, claimToastSuffix } from '../_components/ClaimFields';
 import { accountForCategory, errorText, expenseTitle, isISODate, linkableEvents } from './selectors';
 import styles from './expenses.module.css';
 
@@ -22,7 +23,7 @@ export interface ExpenseDialogProps {
   returnFocus?: () => HTMLElement | null | undefined;
 }
 
-type Errors = Partial<Record<'amount' | 'date' | 'account', string>>;
+type Errors = Partial<Record<'amount' | 'date' | 'account' | 'payer', string>>;
 
 /** 카테고리 아이콘 이름 (모르는 이름이면 dots) */
 export function categoryIcon(category: Pick<Category, 'icon'> | null | undefined) {
@@ -73,6 +74,14 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
   const [memo, setMemo] = useState(expense?.memo ?? '');
   const [eventId, setEventId] = useState<string>(expense?.eventId ?? '');
   const [markDone, setMarkDone] = useState(true);
+  const [paidBy, setPaidBy] = useState<string | null>(expense?.paidBy?.trim() ? expense.paidBy.trim() : null);
+  const claimSettled = !!expense && !!data && isClaimSettled(data, expense.id);
+  // 청구할 수 없는 통장으로 바꾸면 저장할 때 낸 사람을 비워요 (이미 돌려준 청구는 그대로)
+  const effectivePaidBy = claimSettled
+    ? (expense?.paidBy ?? null)
+    : paidBy !== null && data && canClaimOnAccount(data, accountId)
+      ? paidBy.trim()
+      : null;
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState<'save' | 'delete' | null>(null);
   const [step, setStep] = useState<'form' | 'confirm'>('form');
@@ -109,6 +118,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     if (amount === null || amount <= 0) next.amount = '금액을 입력해 주세요';
     if (!isISODate(date)) next.date = '날짜를 골라 주세요';
     if (!accountId) next.account = '어느 통장에서 나갔는지 골라 주세요';
+    if (effectivePaidBy !== null && !effectivePaidBy) next.payer = '누가 냈는지 골라 주세요';
     setErrors(next);
     if (Object.keys(next).length > 0) focusFirstInvalid();
     return Object.keys(next).length === 0;
@@ -129,6 +139,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           accountId,
           memo: memo.trim(),
           eventId: eventId || null,
+          paidBy: effectivePaidBy,
         };
         await ledger.updateExpense(next);
         toast.success('지출을 고쳤어요');
@@ -143,6 +154,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
         categoryId,
         memo: memo.trim(),
         eventId: eventId || null,
+        paidBy: effectivePaidBy,
       });
       let completed = false;
       if (eventId && markDone) {
@@ -154,10 +166,11 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
         }
       }
       const label = `${expenseTitle(created, selectedCategory)} ${formatWon(value)}`;
+      const claimNote = claimToastSuffix(created, ledger.today);
       if (completed) {
-        toast.success(`${label} 기록하고 일정을 완료했어요`);
+        toast.success(`${label} 기록하고 일정을 완료했어요${claimNote}`);
       } else {
-        toast.success(`${label} 기록했어요`, {
+        toast.success(`${label} 기록했어요${claimNote}`, {
           action: {
             label: '되돌리기',
             onClick: () => {
@@ -333,6 +346,22 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
         <Field label="내용" optional>
           <TextInput value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 점심, 운동화" maxLength={100} enterKeyHint="done" />
         </Field>
+
+        {!expense?.fixedExpenseId ? (
+          <ClaimFields
+            accountId={accountId}
+            amount={amount}
+            paidBy={claimSettled ? (expense?.paidBy ?? null) : paidBy}
+            onChange={(v) => {
+              setPaidBy(v);
+              if (errors.payer) setErrors((x) => ({ ...x, payer: undefined }));
+            }}
+            expense={expense}
+            settled={claimSettled}
+            disabled={!!saving}
+            error={errors.payer}
+          />
+        ) : null}
 
         {showEventField ? (
           <Field

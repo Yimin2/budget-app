@@ -5,6 +5,7 @@ export * from './ids';
 export * from './balances';
 export * from './living';
 export * from './events';
+export * from './claims';
 export * from './verdict';
 export * from './recurring';
 export * from './monthEnd';

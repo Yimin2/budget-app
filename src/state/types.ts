@@ -1,5 +1,5 @@
 import type {
-  Account, AllocationRule, Category, EventProjection, Expense, Favorite, FixedExpense, Id,
+  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id,
   ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer, Verdict, Won, YearMonth,
 } from '@/domain/types';
 import type { LedgerRef } from '@/storage/types';
@@ -41,6 +41,11 @@ export interface NewExpense {
   categoryId: Id | null;
   memo?: string;
   eventId?: Id | null;
+  /**
+   * 개인 돈으로 낸 사람 이름 (청구, PLAN 4-9). 주면 돌려받을 통장(그 사람 수입통장)과 정산일을 정해 함께 적어요.
+   * 이벤트통장 · 고정지출통장 지출만 돼요
+   */
+  paidBy?: string | null;
 }
 export interface NewEvent {
   date: ISODate;
@@ -81,6 +86,23 @@ export interface LedgerApi {
    * categoryId 를 안 주면(undefined) 항목이 하나뿐일 때만 그 항목으로, 여럿이면 null
    */
   judge(amount: Won, source: 'living' | 'event', categoryId?: Id | null): Verdict | null;
+
+  // 청구 (개인 돈으로 내고 돌려받기)
+  /** 돌려받을 돈 요약 (data 가 있을 때) */
+  claims: ClaimSummary | null;
+  /** 낸 사람으로 고를 수 있는 이름 (통장 주인 · 멤버) */
+  claimPayers: string[];
+  /** 이 통장에서 이 금액을 개인 돈으로 내면 돌려줄 날 (청구할 수 없는 통장이면 null). expenseId: 고치는 지출 */
+  previewClaimDue(accountId: Id, amount: Won, expenseId?: Id): ISODate | null;
+  /**
+   * 돌려줬어요: 청구마다 이체 claim:<지출id> (함께 쓰는 통장 → 낸 사람 통장, 없으면 받는 통장 없이)를 남겨요.
+   * 이미 돌려준 청구는 건너뛰어 다시 눌러도 한 번만 기록돼요
+   */
+  settleClaims(expenseIds: Id[], date?: ISODate): Promise<void>;
+  /** 돌려준 기록 되돌리기 (이체를 지워요) */
+  unsettleClaims(expenseIds: Id[]): Promise<void>;
+  /** 정산일(매달 며칠). null = 자동 (수입통장 → 이벤트통장 배분 이체일, 없으면 21일) */
+  saveSettleDay(day: number | null): Promise<void>;
 
   // 지출
   addExpense(input: NewExpense): Promise<Expense>;

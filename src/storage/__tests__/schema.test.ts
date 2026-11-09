@@ -94,6 +94,31 @@ describe('schema', () => {
     expect(owner.map((r) => [r.ownerName, r.ownerEmail])).toEqual([['민지', null], [null, 'x@y.z']]);
   });
 
+  it('청구 열(낸사람 · 돌려받을통장 · 정산일)이 없거나 비면 보통 지출로 읽는다', () => {
+    const old = decodeTable('expenses', [['id', '날짜', '금액', '통장'], ['x', '2026-11-01', 1000, 'a']]);
+    expect(old[0]).toMatchObject({ paidBy: null, claimAccountId: null, claimDue: null });
+    const rows = decodeTable('expenses', [
+      ['id', '금액', '낸사람', '돌려받을통장', '정산일'],
+      ['a', 1000, '', '', ''],
+      ['b', 1000, ' 기쁜 ', 'inc-g', '2026. 11. 21.'],
+      ['c', 1000, '민구', '', '아무 글자'],
+    ]);
+    expect(rows.map((r) => [r.paidBy, r.claimAccountId, r.claimDue])).toEqual([
+      [null, null, null],
+      ['기쁜', 'inc-g', '2026-11-21'],
+      ['민구', null, null],
+    ]);
+  });
+
+  it('설정 정산일: 빈 값은 자동(null), 1~31 만', () => {
+    const read = (v: RawCell) => decodeSettings([['키', '값'], ['종류', '공용'], ['정산일', v]]).settings.settleDay;
+    expect(read('')).toBeNull();
+    expect(read(25)).toBe(25);
+    expect(read('21일')).toBeNull();
+    expect(read(40)).toBeNull();
+    expect(encodeSettings({ ...sampleLedger().settings, settleDay: 25 })).toContainEqual(['정산일', 25]);
+  });
+
   it('카테고리 이모지 머리글은 아이콘으로 읽는다', () => {
     const rows = decodeTable('categories', [['id', '이름', '이모지'], ['c', '식비', 'utensils']]);
     expect(rows[0]!.icon).toBe('utensils');

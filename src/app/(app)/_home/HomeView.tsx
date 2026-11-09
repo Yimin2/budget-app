@@ -9,13 +9,13 @@ import {
   AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
   useToast, cx, ACCOUNT_ROLE_ICON, useMediaQuery, WIDE_QUERY, isIconName,
 } from '@/ui';
-import { LedgerSwitcher } from '../_components';
+import { ClaimsCard, LedgerSwitcher } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
 import { ProjectionChart } from './ProjectionChart';
 import { errorMessage, expenseTitle, recentExpenses, shortageBannerText, upcomingEvents } from './selectors';
 import styles from './home.module.css';
 
-/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 이벤트통장 · 최근 지출 */
+/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 이벤트통장 · 최근 지출 */
 export function HomeView() {
   const ledger = useLedger();
   const session = useSession();
@@ -79,6 +79,7 @@ function HomeBody() {
             {banner.description}
           </Banner>
         ) : null}
+        <ClaimsCard className={styles.oClaims} />
         <EventAccountCard />
         {wide ? null : <RecentExpenses />}
         <BalancesCard />

@@ -1,4 +1,5 @@
-import { accountBalance, isCountedTransfer } from './balances';
+import { accountBalance, expenseBalanceAccountId, isCountedTransfer } from './balances';
+import { pendingClaims } from './claims';
 import { addMonths, compareMonth, dateInMonth, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
 import { autoTransferId } from './ids';
 import { firstAccountByRole } from './internal';
@@ -86,6 +87,7 @@ export function spentOnEvent(data: LedgerData, eventId: Id): Won {
  * 통장 하나의 월별 예측 (월배분·예정 이체·그 통장의 예정 일정 반영). 이벤트통장 예측과 저수지 예상 잔액에 함께 쓴다.
  * - 오늘보다 뒤 날짜로 이미 기록한 이체·지출(done)은 오늘 잔액에 없으므로 그 날짜의 달에 넣는다
  * - 예정 일정에 이미 연결해 쓴 지출이 있으면 그 행 회차에서는 남은 금액만 뺀다 (반복으로 펼친 다음 회차는 전액)
+ * - 아직 돌려주지 않은 청구(PLAN 4-9)는 정산일 달에 나갈 돈 (잔액에는 아직 없어서 두 번 빠지지 않는다)
  * - 이번 달 월배분: 자동 이체가 이미 기록됐거나, 날짜가 지났는데 통장 시작일 전이라 기록되지 않을 회차는 넣지 않는다
  */
 function projectAccount(
@@ -121,9 +123,13 @@ function projectAccount(
   const laterTransfers = data.transfers.filter(
     (t) => t.date > today && t.date >= opening && isCountedTransfer(data, t) && (t.toAccountId === accountId || t.fromAccountId === accountId),
   );
+  // 청구 지출은 낸 사람 통장에서 빠진다 (함께 쓰는 통장은 아래 pending 청구로 정산일에)
   const laterExpenses = data.expenses.filter(
-    (e) => !e.deleted && e.accountId === accountId && e.date > today && e.date >= opening,
+    (e) => !e.deleted && expenseBalanceAccountId(e) === accountId && e.date > today && e.date >= opening,
   );
+  // 아직 돌려주지 않은 청구: 돌려주는 통장은 정산일 달에 나가고(지난 정산일은 이번 달), 돌려받을 통장은 그달에 들어온다
+  const claims = pendingClaims(data, today).filter((c) => c.accountId === accountId || c.claimAccountId === accountId);
+  const claimMonth = (due: ISODate) => (monthOf(due) < thisMonth ? thisMonth : monthOf(due));
   const plannedEvents = data.events.filter((e) => !e.deleted && e.status === 'planned' && e.accountId === accountId);
   const spent = new Map<Id, Won>();
   for (const x of data.expenses) {
@@ -148,6 +154,12 @@ function projectAccount(
       if (t.fromAccountId === accountId) transfersOut += t.amount;
     }
     const scheduledSpending = laterExpenses.reduce((s, e) => (monthOf(e.date) === month ? s + e.amount : s), 0);
+    let claimsOut = 0;
+    for (const c of claims) {
+      if (claimMonth(c.due) !== month || c.accountId === c.claimAccountId) continue;
+      if (c.accountId === accountId) claimsOut += c.amount;
+      if (c.claimAccountId === accountId) transfersIn += c.amount;
+    }
     const events: ProjectionMonth['events'] = [];
     for (const e of plannedEvents) {
       const paid = spent.get(e.id) ?? 0;
@@ -169,7 +181,7 @@ function projectAccount(
     const extraAmount = extra && extra.month === month ? extra.amount : 0;
     const startBalance = balance;
     const endBalance =
-      startBalance + contributions + transfersIn - transfersOut - planned - scheduledSpending - extraAmount;
+      startBalance + contributions + transfersIn - transfersOut - planned - scheduledSpending - claimsOut - extraAmount;
     months.push({
       month,
       startBalance,
@@ -179,6 +191,7 @@ function projectAccount(
       planned,
       extra: extraAmount,
       ...(scheduledSpending > 0 ? { scheduledSpending } : {}),
+      ...(claimsOut > 0 ? { claims: claimsOut } : {}),
       endBalance,
       events,
     });

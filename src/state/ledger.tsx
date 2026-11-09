@@ -6,12 +6,19 @@ import {
   adjustmentDelta,
   allBalances,
   autoTransferId,
+  canClaimOnAccount,
+  claimAccountFor,
+  claimPayers as claimPayersDomain,
+  claimTransferId,
   compareMonth,
+  computeClaimDue,
   computeLiving,
   dateInMonth,
   decideMonthEnd as decideMonthEndDomain,
   judgeEvent,
   judgeLiving,
+  isClaimExpense,
+  isClaimSettled,
   isMonthActive,
   monthOf,
   newId,
@@ -19,10 +26,12 @@ import {
   nextOccurrenceId,
   pendingAllowanceIncome,
   pendingAutoRecords,
+  pendingClaims,
   pendingMonthEnd as pendingMonthEndDomain,
   projectEventAccount,
   seriesAnchorDay,
   suggestShortageFixes,
+  summarizeClaims,
   toISODate,
 } from '@/domain';
 import type {
@@ -431,6 +440,15 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [data, today, eventProjection],
   );
   const pendingMonthEnd = useMemo(() => (data ? pendingMonthEndDomain(data, today) : null), [data, today]);
+  const claims = useMemo(() => (data ? summarizeClaims(data, today) : null), [data, today]);
+  const claimPayers = useMemo(() => (data ? claimPayersDomain(data) : []), [data]);
+  const previewClaimDue = useCallback<LedgerApi['previewClaimDue']>(
+    (accountId, amount, expenseId) => {
+      if (!data || !canClaimOnAccount(data, accountId)) return null;
+      return computeClaimDue(data, { accountId, amount: Math.max(0, amount), expenseId }, today);
+    },
+    [data, today],
+  );
 
   const judge = useCallback<LedgerApi['judge']>(
     (amount, source, categoryId) => {
@@ -463,26 +481,145 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const addExpense = useCallback(
     async (input: NewExpense): Promise<Expense> => {
       if (!(input.amount > 0)) throw new Error('금액을 입력해 주세요');
+      const amount = Math.round(input.amount);
+      const payer = input.paidBy?.trim() || null;
+      let claim: Pick<Expense, 'paidBy' | 'claimAccountId' | 'claimDue'> = {};
+      if (payer) {
+        const { data: d } = requireData();
+        if (!canClaimOnAccount(d, input.accountId)) {
+          throw new Error('개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 기록해 주세요');
+        }
+        claim = {
+          paidBy: payer,
+          claimAccountId: claimAccountFor(d, payer),
+          claimDue: computeClaimDue(d, { accountId: input.accountId, amount }, todayRef.current),
+        };
+      }
       const row: Expense = {
         id: newId(),
         date: input.date,
-        amount: Math.round(input.amount),
+        amount,
         accountId: input.accountId,
         categoryId: input.categoryId,
         memo: input.memo ?? '',
         eventId: input.eventId ?? null,
         fixedExpenseId: null,
         ...stamp(),
+        ...claim,
       };
       await insertRows('expenses', [row], '지출을 기록하지 못했어요');
       return row;
     },
-    [insertRows, stamp],
+    [insertRows, stamp, requireData],
   );
 
+  /**
+   * 고치기. 아직 돌려주지 않은 청구는 낸 사람 · 통장 · 금액이 바뀌면 돌려받을 통장과 정산일을 다시 정해요.
+   * 낸 사람을 비우면 보통 지출이 돼요. 이미 돌려준 청구는 청구 칸을 그대로 둬요
+   */
   const updateExpense = useCallback(
-    (expense: Expense) => upsertRow('expenses', { ...expense, updatedAt: nowIso() }, '지출을 고치지 못했어요'),
-    [upsertRow, nowIso],
+    async (expense: Expense) => {
+      const { data: d } = requireData();
+      const prev = d.expenses.find((e) => e.id === expense.id);
+      let next: Expense = { ...expense, updatedAt: nowIso() };
+      if (prev && isClaimExpense(prev) && isClaimSettled(d, prev.id)) {
+        next = { ...next, paidBy: prev.paidBy, claimAccountId: prev.claimAccountId ?? null, claimDue: prev.claimDue ?? null };
+      } else if (isClaimExpense(next)) {
+        const payer = next.paidBy!.trim();
+        const changed =
+          !prev || !isClaimExpense(prev) || prev.paidBy?.trim() !== payer || prev.accountId !== next.accountId || prev.amount !== next.amount;
+        if (changed) {
+          if (!canClaimOnAccount(d, next.accountId)) {
+            throw new Error('개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 기록해 주세요');
+          }
+          next = {
+            ...next,
+            paidBy: payer,
+            claimAccountId: claimAccountFor(d, payer),
+            claimDue: computeClaimDue(d, { accountId: next.accountId, amount: next.amount, expenseId: next.id }, todayRef.current),
+          };
+        }
+      } else if (prev && isClaimExpense(prev)) {
+        next = { ...next, paidBy: null, claimAccountId: null, claimDue: null };
+      }
+      await upsertRow('expenses', next, '지출을 고치지 못했어요');
+    },
+    [requireData, upsertRow, nowIso],
+  );
+
+  /* ---------- 청구 ---------- */
+
+  const settleClaims = useCallback<LedgerApi['settleClaims']>(
+    async (expenseIds, date) => {
+      const { data: d } = requireData();
+      const ids = new Set(expenseIds);
+      const due = pendingClaims(d, todayRef.current).filter((c) => ids.has(c.expense.id));
+      if (due.length === 0) return;
+      const s = stamp();
+      const day = date ?? todayRef.current;
+      const rows: Transfer[] = due.map((c) => {
+        const cat = c.expense.categoryId ? d.categories.find((x) => x.id === c.expense.categoryId)?.name : undefined;
+        const what = c.expense.memo.trim() || cat || '지출';
+        return {
+          id: claimTransferId(c.expense.id),
+          date: day,
+          kind: 'transfer',
+          fromAccountId: c.accountId,
+          toAccountId: c.claimAccountId,
+          amount: c.amount,
+          status: 'done',
+          ruleId: null,
+          memo: `${c.payer}에게 돌려줌 · ${what}`,
+          ...s,
+        };
+      });
+      // 처음 쓰는 행은 한 번에 추가(같은 id 는 건너뜀), 되돌리기로 지운 행은 되살린다
+      const existing = new Set(d.transfers.map((t) => t.id));
+      const fresh = rows.filter((r) => !existing.has(r.id));
+      const revive = rows.filter((r) => existing.has(r.id));
+      await mutate(
+        (x) => ({ ...x, transfers: rows.reduce((list, r) => upsertIn(list, r), x.transfers) }),
+        async (repo) => {
+          if (fresh.length) await repo.insert('transfers', fresh);
+          for (const r of revive) await repo.upsert('transfers', r);
+        },
+        '돌려준 기록을 저장하지 못했어요',
+        { multiStep: revive.length > 0 },
+      );
+    },
+    [requireData, stamp, mutate],
+  );
+
+  const unsettleClaims = useCallback<LedgerApi['unsettleClaims']>(
+    async (expenseIds) => {
+      const { data: d } = requireData();
+      const ids = new Set(expenseIds.map(claimTransferId));
+      const rows = d.transfers
+        .filter((t) => ids.has(t.id) && !t.deleted)
+        .map((t) => ({ ...t, deleted: true, updatedAt: nowIso() }));
+      if (rows.length === 0) return;
+      await mutate(
+        (x) => ({ ...x, transfers: rows.reduce((list, r) => upsertIn(list, r), x.transfers) }),
+        async (repo) => {
+          for (const r of rows) await repo.upsert('transfers', r);
+        },
+        '되돌리지 못했어요',
+        { multiStep: rows.length > 1 },
+      );
+    },
+    [requireData, mutate, nowIso],
+  );
+
+  const saveSettleDay = useCallback<LedgerApi['saveSettleDay']>(
+    async (day) => {
+      const value = day !== null && Number.isInteger(day) && day >= 1 && day <= 31 ? day : null;
+      await mutate(
+        (d) => ({ ...d, settings: { ...d.settings, settleDay: value } }),
+        (r) => r.updateSettings({ settleDay: value }),
+        '정산일을 저장하지 못했어요',
+      );
+    },
+    [mutate],
   );
 
   const deleteExpense = useCallback(
@@ -1055,6 +1192,12 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       accountByRole,
       incomeAccounts,
       judge,
+      claims,
+      claimPayers,
+      previewClaimDue,
+      settleClaims,
+      unsettleClaims,
+      saveSettleDay,
       addExpense,
       updateExpense,
       deleteExpense,
@@ -1087,7 +1230,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     }),
     [
       status, error, needsReconnect, ref, data, today, savingCount, reload, living, balances, eventProjection, shortageFix,
-      pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, addExpense, updateExpense,
+      pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
+      previewClaimDue, settleClaims, unsettleClaims, saveSettleDay, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
       changeRuleAmount, saveFixed, addFixed, saveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,

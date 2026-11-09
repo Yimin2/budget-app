@@ -31,6 +31,9 @@
 .oBanner {
   order: 4;
 }
+.oClaims {
+  order: 4;
+}
 .oEvent {
   order: 5;
 }

@@ -6,7 +6,7 @@ const audit = { author: 'minji@example.com', createdAt: now, updatedAt: now, del
 /** 모든 표에 null / 비 null 값이 고루 들어간 예시 */
 export function sampleLedger(): LedgerData {
   return {
-    settings: { name: '우리집 가계부', kind: 'shared', sharedLedgerId: null, schemaVersion: 1, createdAt: now },
+    settings: { name: '우리집 가계부', kind: 'shared', sharedLedgerId: null, schemaVersion: 1, createdAt: now, settleDay: null },
     accounts: [
       { id: 'a-inc', name: '수입통장', role: 'income', openingBalance: 1200000, openingDate: '2026-11-01', order: 0, ownerName: '민지', ownerEmail: 'minji@example.com', deleted: false },
       { id: 'a-fix', name: '고정지출통장', role: 'fixed', openingBalance: 0, openingDate: '2026-11-01', order: 1, ownerName: null, ownerEmail: null, deleted: false },
@@ -36,8 +36,8 @@ export function sampleLedger(): LedgerData {
       { id: 'e3', date: '2027-05-10', name: '결혼식', amount: 100000, accountId: 'a-evt', categoryId: null, status: 'canceled', repeat: 'none', memo: '', ...audit, deleted: true },
     ],
     expenses: [
-      { id: 'x1', date: '2026-11-09', amount: 12000, accountId: 'a-fix', categoryId: 'c1', memo: '점심', eventId: null, fixedExpenseId: null, ...audit },
-      { id: 'x2', date: '2026-11-05', amount: 700000, accountId: 'a-fix', categoryId: null, memo: '', eventId: 'e2', fixedExpenseId: 'f1', ...audit, deleted: true },
+      { id: 'x1', date: '2026-11-09', amount: 12000, accountId: 'a-fix', categoryId: 'c1', memo: '점심', eventId: null, fixedExpenseId: null, ...audit, paidBy: null, claimAccountId: null, claimDue: null },
+      { id: 'x2', date: '2026-11-05', amount: 700000, accountId: 'a-fix', categoryId: null, memo: '', eventId: 'e2', fixedExpenseId: 'f1', ...audit, deleted: true, paidBy: '민지', claimAccountId: 'a-inc', claimDue: '2026-11-21' },
     ],
     monthEnds: [
       { month: '2026-10', leftover: 52000, choice: 'reservoir', decidedBy: 'minji@example.com', decidedAt: now, items: [{ categoryId: 'c1', leftover: 55000 }, { categoryId: null, leftover: -3000 }] },

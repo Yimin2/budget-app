@@ -1,3 +1,4 @@
+import { claimTransferId, computeClaimDue } from './claims';
 import { addDays, addMonths, dateInMonth, monthOf } from './dates';
 import { newId } from './ids';
 import { pendingAutoRecords } from './recurring';
@@ -134,8 +135,10 @@ export const DEMO_LIVING_ITEMS: [string, number, 'daily' | 'monthly'][] = [
  * - 생활비 항목: 식비 340,000 · 카페 80,000 · 교통 20,000 (하루에 나눠 쓰기) / 생활 30,000 · 쇼핑 60,000 · 의료 20,000 · 문화 50,000 (한 달 한도만)
  * - 생활비 지출: 1일부터 오늘까지 매일 두 사람이 번갈아 기록 (하루 평균 약 18,000원). 오늘은 커피 한 잔만
  * - 이벤트 일정: M+2 명절 400,000 · M+3 제주 여행 900,000 · M+5 결혼식 4건 800,000 + 어버이날 600,000 → M+5 에 300,000 부족
+ * - 청구(opts.claims, 체험 모드에서 켬. 다른 숫자 테스트가 기대는 기본 예시는 그대로 두려고 따로 켜요): 민지 제주 항공권 300,000 (이벤트통장 · 제주 여행 일정 연결, 잔액이 넉넉해 오늘 돌려줌) ·
+ *   준호 마트 장보기 24,000 (식비, 다음 월급날) · 1일 준호 세제·휴지 8,000 (생활, 돌려줌). 일정 합은 그대로라 부족 금액은 같다
  */
-export function createDemoLedger(today: string, now: string): LedgerData {
+export function createDemoLedger(today: string, now: string, opts: { claims?: boolean } = {}): LedgerData {
   const M = monthOf(today);
   const first = `${M}-01`;
   const minji = DEMO_MEMBERS[0].email;
@@ -329,5 +332,62 @@ export function createDemoLedger(today: string, now: string): LedgerData {
   const auto = pendingAutoRecords(data, today, minji, now);
   data.transfers.push(...auto.transfers);
   data.expenses.push(...auto.expenses);
+
+  if (!opts.claims) return data;
+  // 청구: 개인 돈으로 내고 돌려받을 지출 (정산일은 앱과 같은 규칙으로)
+  const atLeastFirst = (date: string) => (date < first ? first : date);
+  const claim = (
+    key: string,
+    date: string,
+    amount: number,
+    account: Account,
+    categoryKey: string,
+    memo: string,
+    payer: (typeof DEMO_MEMBERS)[number],
+    payerAccount: Account,
+    eventId: string | null = null,
+  ): Expense => ({
+    id: `demo-claim-${key}`,
+    date,
+    amount,
+    accountId: account.id,
+    categoryId: cat(categoryKey),
+    memo,
+    eventId,
+    fixedExpenseId: null,
+    author: payer.email,
+    createdAt: `${date}T12:00:00.000Z`,
+    updatedAt: `${date}T12:00:00.000Z`,
+    deleted: false,
+    paidBy: payer.displayName,
+    claimAccountId: payerAccount.id,
+    claimDue: computeClaimDue(data, { accountId: account.id, amount }, today),
+  });
+  data.expenses.push(
+    claim('jeju', atLeastFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], incomeMinji, 'demo-event-jeju'),
+  );
+  // 1일에는 어제가 지난달이라 오늘 날짜가 돼요. 오늘 써도 되는 돈이 0원 아래로 가지 않게 한 달 한도 항목(쇼핑)으로
+  const martDate = atLeastFirst(addDays(today, -1));
+  data.expenses.push(
+    claim('mart', martDate, 24_000, fixed, martDate === today ? 'shopping' : 'food', '마트 장보기', DEMO_MEMBERS[1], incomeJunho),
+  );
+  // 이미 돌려준 청구 (1일에 준호가 낸 생활용품, 같은 날 돌려줌)
+  const done: Expense = { ...claim('done', first, 8_000, fixed, 'living', '세제·휴지', DEMO_MEMBERS[1], incomeJunho), claimDue: first };
+  data.expenses.push(done);
+  data.transfers.push({
+    id: claimTransferId(done.id),
+    date: first,
+    kind: 'transfer',
+    fromAccountId: fixed.id,
+    toAccountId: incomeJunho.id,
+    amount: done.amount,
+    status: 'done',
+    ruleId: null,
+    memo: '준호에게 돌려줌 · 세제·휴지',
+    author: minji,
+    createdAt: `${first}T13:00:00.000Z`,
+    updatedAt: `${first}T13:00:00.000Z`,
+    deleted: false,
+  });
   return data;
 }

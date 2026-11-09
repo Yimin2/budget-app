@@ -1,4 +1,5 @@
 import { accountBalance } from './balances';
+import { isClaimSettled, summarizeClaims } from './claims';
 import { createDefaultLedger, createDemoLedger } from './defaults';
 import { projectEventAccount, suggestShortageFixes } from './events';
 import { computeLiving } from './living';
@@ -64,6 +65,35 @@ describe('createDemoLedger', () => {
       expect(fix.increaseMonthly!.amount).toBe(60_000);
       expect(fix.fromReservoir!.amount).toBe(300_000);
       expect(pendingMonthEnd(d, today)).toBeNull();
+    });
+  }
+
+  for (const today of ['2026-11-09', '2026-11-30', '2027-02-01', '2026-12-31']) {
+    it(`claims (체험 모드) are consistent for ${today}`, () => {
+      const plain = createDemoLedger(today, NOW);
+      const d = createDemoLedger(today, NOW, { claims: true });
+      const ids = [...d.transfers, ...d.expenses].map((r) => r.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      // 민지 · 준호가 개인 돈으로 내고 아직 돌려받지 않은 만큼 각자 수입통장이 비어 있다 (돌려받은 8,000원은 제자리)
+      const incomes = d.accounts.filter((a) => a.role === 'income');
+      expect(incomes.map((a) => accountBalance(d, a.id, today))).toEqual([-300_000, -24_000]);
+      // 아직 돌려주지 않은 청구는 이벤트통장 · 고정지출통장 잔액에서 빠지지 않는다
+      expect(accountBalance(d, byRole(d, 'event').id, today)).toBe(900_000);
+      // 고정지출통장은 돌려준 8,000원만 줄었다
+      expect(accountBalance(d, byRole(d, 'fixed').id, today)).toBe(accountBalance(plain, byRole(plain, 'fixed').id, today) - 8_000);
+      const claims = summarizeClaims(d, today);
+      expect(claims.total).toBe(324_000);
+      expect(claims.byPayer).toEqual([
+        { name: '민지', amount: 300_000 },
+        { name: '준호', amount: 24_000 },
+      ]);
+      // 이벤트통장 잔액이 넉넉해 제주 항공권은 오늘 돌려줄 차례
+      expect(claims.dueNow.map((c) => c.expense.id)).toContain('demo-claim-jeju');
+      expect(isClaimSettled(d, 'demo-claim-done')).toBe(true);
+      // 항공권은 제주 여행 일정에 연결돼 일정 합이 그대로 → 부족 금액도 그대로
+      expect(projectEventAccount(d, today).shortages).toEqual(projectEventAccount(plain, today).shortages);
+      expect(computeLiving(d, today).todayAvailable).toBeGreaterThan(0);
+      expect(computeLiving(d, today).items.some((i) => i.unbudgeted)).toBe(false);
     });
   }
 
