@@ -1,0 +1,312 @@
+/* 설정 · 멤버 화면 (src/ui/components.css 규칙을 따라요) */
+
+.st-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (min-width: 768px) {
+  .st-grid {
+    gap: var(--space-6);
+  }
+}
+@media (min-width: 1280px) {
+  .st-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.st-grid .card[id] {
+  scroll-margin-top: var(--space-6);
+}
+.st-grid .card[id]:focus {
+  outline: none;
+}
+.st-grid .card[id]:focus-visible {
+  outline: 2px solid var(--focus, var(--primary));
+  outline-offset: 2px;
+}
+.st-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .st-col {
+    gap: var(--space-6);
+  }
+}
+
+/* 모바일(<768)에서만: 하단 메뉴 '더보기' 바로 가기 */
+@media (min-width: 768px) {
+  .st-mobile-only {
+    display: none !important;
+  }
+}
+
+.st-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.st-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.st-group-title {
+  margin: var(--space-2) 0 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.st-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.st-summary .line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.st-summary .line strong {
+  color: var(--text);
+}
+.st-trail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.st-cap {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
+.st-trail .money {
+  font-weight: 700;
+}
+.st-sub {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  max-width: 100%;
+}
+.st-sub > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.st-sub .badge {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 좁은 휴대폰: 지금 잔액을 이름 아래 줄로 내려 이름·역할·시작 잔액이 잘리지 않게 */
+@media (max-width: 419.98px) {
+  .st-acc-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 20px;
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+  }
+  .st-acc-row .lead {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
+  .st-acc-row .main {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .st-acc-row .trail {
+    grid-column: 2;
+    grid-row: 2;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .st-acc-row .trail .st-trail {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .st-acc-row .chev {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+}
+
+/* 이름 바꾸기 줄 */
+.st-inline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+@media (min-width: 480px) {
+  .st-inline {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+  .st-inline > .field {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* 대화 상자 안 위험한 동작 */
+.st-danger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.st-danger .btn.ghost {
+  color: var(--danger-text);
+}
+.st-danger .btn.ghost:hover {
+  background: var(--danger-subtle);
+  color: var(--danger-text);
+}
+
+/* 아이콘 고르기 */
+.st-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: var(--space-2);
+}
+.st-icons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+.st-icons button:hover {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.st-icons button[aria-checked='true'] {
+  border: 2px solid var(--primary);
+  background: var(--primary-subtle);
+  color: var(--primary-subtle-text);
+}
+.st-icons-label {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+/* 계정 */
+.st-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.st-user .txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.st-user strong {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-user span {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 정보 */
+.st-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+.st-facts dt {
+  color: var(--text-muted);
+}
+.st-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 멤버 */
+.mb-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: mb;
+}
+.mb-steps li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  font-size: 15px;
+  line-height: 22px;
+  counter-increment: mb;
+}
+.mb-steps li::before {
+  content: counter(mb);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--primary-subtle);
+  color: var(--primary-subtle-text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 카테고리 목록: 넓으면 여러 줄로 */
+@media (min-width: 768px) {
+  .st-cats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-6);
+  }
+  .st-cats > li > .lrow {
+    border-top: 0 !important;
+    border-bottom: 1px solid var(--border);
+  }
+}

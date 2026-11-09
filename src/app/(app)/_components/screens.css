@@ -1,0 +1,323 @@
+/* 앱 틀 공용 화면 부품 (가계부 전환 · 월말 처리 · 로딩 · 사이드바 아래)
+   규칙은 src/ui/components.css 와 같아요: 의미 토큰만, 글자 12·14·15·16·18·22·28, 굵기 400·500·700·800 */
+
+/* ───────── 가계부 전환 (LedgerSwitcher) ───────── */
+.lsw {
+  position: relative;
+  min-width: 0;
+}
+.lsw.block {
+  width: 100%;
+}
+.lsw-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lsw-trigger .icon {
+  color: var(--text-muted);
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.lsw-trigger[aria-expanded='true'] .icon.chev {
+  transform: rotate(180deg);
+}
+.lsw-trigger .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 사이드바·설정 카드: 테두리 있는 상자 */
+.lsw.block .lsw-trigger {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.lsw.block .lsw-trigger:hover {
+  background: var(--surface-subtle);
+}
+.lsw.block .lsw-trigger .txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lsw.block .lsw-trigger .cap {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.lsw.block .lsw-trigger .line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.lsw.block .lsw-trigger .nm {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+/* 화면 머리 제목 자리 (모바일 홈 목업과 같아요) */
+.lsw.title .lsw-trigger {
+  padding: 0;
+  gap: var(--space-1);
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+}
+.lsw.title .lsw-trigger .icon {
+  color: var(--text);
+}
+@media (min-width: 1280px) {
+  .lsw.title .lsw-trigger {
+    font-size: 28px;
+    line-height: 36px;
+  }
+}
+
+.lsw-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  z-index: var(--z-dropdown);
+  width: max(100%, 280px);
+  max-width: calc(100vw - var(--space-8));
+  max-height: min(480px, calc(100dvh - 160px));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: lsw-drop var(--duration-base) var(--ease-out) both;
+}
+.lsw.block .lsw-menu {
+  width: 100%;
+  min-width: 248px;
+}
+.lsw.title .lsw-menu {
+  width: 320px;
+}
+@keyframes lsw-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lsw-group-label {
+  padding: var(--space-1) var(--space-3) 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.lsw-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.lsw-item:hover,
+.lsw-item:focus-visible {
+  background: var(--surface-subtle);
+}
+.lsw-item[aria-checked='true'] {
+  font-weight: 700;
+}
+.lsw-item[aria-disabled='true'] {
+  color: var(--disabled-text);
+  cursor: not-allowed;
+}
+.lsw-item[aria-disabled='true']:hover {
+  background: none;
+}
+.lsw-item .main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lsw-item .main .t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lsw-item .main .s {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.lsw-item .check {
+  color: var(--primary-text);
+}
+.lsw-sep {
+  height: 1px;
+  margin: var(--space-1);
+  background: var(--border);
+}
+
+/* ───────── 월말 처리 (MonthEndDialog) ───────── */
+.me-amount {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--brand-surface);
+}
+.me-amount .lbl {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.me-amount .val {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.me-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.me-choice {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  font-size: 15px;
+  line-height: 22px;
+}
+.me-choice .icon {
+  margin-top: 1px;
+  color: var(--primary-text);
+}
+.me-choice strong {
+  display: block;
+  font-size: 16px;
+  line-height: 24px;
+}
+.me-choice span {
+  color: var(--text-muted);
+}
+.me-note {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.me-note .icon {
+  margin-top: 1px;
+}
+
+/* ───────── 로딩 뼈대 ───────── */
+.sx-skel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sx-skel .head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+@media (min-width: 768px) {
+  .sx-skel {
+    gap: var(--space-6);
+  }
+}
+.sx-side-skel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* ───────── 사이드바 아래: 사용자 ───────── */
+.sx-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.sx-user .txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sx-user strong {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sx-user span {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sx-foot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* 오류 카드 */
+.sx-error .actions {
+  flex-wrap: wrap;
+  justify-content: center;
+}

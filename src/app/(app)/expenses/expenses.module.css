@@ -1,0 +1,566 @@
+/* 지출 화면 전용 배치. 색·간격·모서리·시간은 토큰만 써요.
+   글자 크기 12·14·15·16·18·22·28·36·48, 굵기 400·500·700·800. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+@media (max-width: 767.98px) {
+  /* 아래 떠 있는 '지출 추가' 버튼에 마지막 줄이 가리지 않게 */
+  .page {
+    padding-bottom: var(--space-16);
+  }
+}
+@media (min-width: 1280px) {
+  .page {
+    gap: var(--space-6);
+  }
+}
+
+/* ───────── 머리 · 추가 버튼 ───────── */
+.headerAdd:global(.btn) {
+  display: none;
+}
+@media (min-width: 768px) {
+  .headerAdd:global(.btn) {
+    display: inline-flex;
+  }
+}
+.fab:global(.btn.lg) {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--dock-height) + var(--space-8) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-sticky);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-float);
+  padding: 0 var(--space-5);
+}
+@media (min-width: 768px) {
+  .fab:global(.btn.lg) {
+    display: none;
+  }
+}
+
+/* ───────── 달 고르기 · 필터 버튼 ───────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.monthBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-left: calc(var(--space-3) * -1);
+}
+.monthTitle {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+  text-align: center;
+}
+.filterToggle:global(.btn) {
+  padding: 0 var(--space-4);
+}
+.filterToggle :global(.icon:last-child) {
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.filterToggle[aria-expanded='true'] :global(.icon:last-child) {
+  transform: rotate(180deg);
+}
+
+/* ───────── 필터 ───────── */
+.filters {
+  gap: var(--space-4);
+}
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.filterLabel {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.filterFoot {
+  display: flex;
+  justify-content: flex-end;
+  margin: calc(var(--space-2) * -1) calc(var(--space-3) * -1) calc(var(--space-2) * -1) 0;
+}
+
+/* ───────── 합계 ───────── */
+.totalCard {
+  gap: var(--space-4);
+}
+.totalMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.totalLabel {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.totalLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.totalValue {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.count {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.splitBar {
+  display: flex;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--surface-subtle);
+  overflow: hidden;
+  margin-top: var(--space-2);
+}
+.splitBar > span {
+  height: 100%;
+  min-width: 2px;
+}
+.splitBar > span + span {
+  box-shadow: inset 2px 0 0 var(--surface);
+}
+.legend {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.legend > li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: 40px;
+  font-size: 16px;
+  line-height: 24px;
+}
+.legend > li + li {
+  border-top: 1px solid var(--border);
+}
+.legendName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.legendPct {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  text-align: right;
+}
+.legendAmt {
+  font-weight: 700;
+  min-width: 96px;
+  text-align: right;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+}
+.s_living {
+  background: var(--chart-1);
+}
+.s_event {
+  background: var(--chart-3);
+}
+.s_fixed {
+  background: var(--chart-6);
+}
+.s_other {
+  background: var(--chart-4);
+}
+@media (min-width: 768px) {
+  .totalCard:global(.card) {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    column-gap: var(--space-8);
+    align-items: center;
+  }
+}
+
+/* ───────── 목록 ───────── */
+.listCard {
+  overflow: hidden;
+  gap: 0;
+}
+.row,
+.colHead {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  grid-template-areas: 'icon main who amt';
+  align-items: center;
+  column-gap: var(--space-3);
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+}
+.colHead {
+  display: none;
+}
+.row {
+  min-height: 64px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.row:hover {
+  background: var(--surface-subtle);
+}
+.row:focus-visible {
+  outline-offset: -2px;
+}
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rows > li + li > .row {
+  box-shadow: inset 0 1px 0 var(--border);
+}
+.rowIcon {
+  grid-area: icon;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.row:hover .rowIcon {
+  background: var(--surface);
+}
+.rowMain {
+  grid-area: main;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rowTitle,
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.rowTitle {
+  font-size: 16px;
+  line-height: 24px;
+}
+.rowSub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.cCat,
+.cMemo,
+.cAcc,
+.chev {
+  display: none;
+}
+.cWho {
+  grid-area: who;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.whoName {
+  display: none;
+}
+.cAmt {
+  grid-area: amt;
+  justify-self: end;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.day + .day {
+  border-top: 1px solid var(--border);
+}
+.dayHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  background: var(--surface-subtle);
+}
+.dayHead h3 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.dayTotal {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 데스크톱: 열이 있는 넓은 목록 */
+@media (min-width: 1280px) {
+  .row,
+  .colHead {
+    grid-template-columns: 40px minmax(0, 1.1fr) minmax(0, 1.8fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(112px, auto) 20px;
+    grid-template-areas: 'icon cat memo acc who amt chev';
+    padding: var(--space-2) var(--space-6);
+    column-gap: var(--space-4);
+  }
+  .row {
+    min-height: 56px;
+  }
+  .colHead {
+    display: grid;
+    min-height: 44px;
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 700;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .colHead > :nth-child(1) {
+    grid-area: icon;
+  }
+  .colHead > :nth-child(2) {
+    grid-area: cat;
+  }
+  .colHead > :nth-child(3) {
+    grid-area: memo;
+  }
+  .colHead > :nth-child(4) {
+    grid-area: acc;
+  }
+  .colHead > :nth-child(5) {
+    grid-area: who;
+  }
+  .colHead > :nth-child(6) {
+    grid-area: amt;
+    text-align: right;
+  }
+  .rowMain {
+    display: none;
+  }
+  .cCat,
+  .cMemo,
+  .cAcc {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .cCat {
+    grid-area: cat;
+  }
+  .cMemo {
+    grid-area: memo;
+  }
+  .cAcc {
+    grid-area: acc;
+    color: var(--text-muted);
+  }
+  .whoName {
+    display: inline;
+    font-size: 14px;
+    line-height: 22px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chev {
+    grid-area: chev;
+    display: inline-flex;
+    color: var(--text-muted);
+  }
+  .dayHead {
+    padding: var(--space-3) var(--space-6) var(--space-2);
+  }
+}
+
+.empty {
+  padding: var(--space-8) var(--space-4);
+}
+
+/* ───────── 기록 창 ───────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.fieldset > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.formGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+}
+@media (min-width: 768px) {
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+}
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  cursor: pointer;
+}
+.check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 3px 0 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.check > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.check strong {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.checkHint {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.note {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--text-muted);
+}
+.dangerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.dangerBtn:global(.btn.ghost) {
+  color: var(--danger-text);
+  margin-right: calc(var(--space-3) * -1);
+}
+.dangerBtn:global(.btn.ghost:hover) {
+  background: var(--danger-subtle);
+}
+
+/* ───────── 뼈대 ───────── */
+.skel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.skelRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* 긴 기록 창: 아래 버튼 줄을 창 아래에 붙여 둬요 (스크롤해도 보여요) */
+.sheet:global(.dialog) :global(.actions) {
+  position: sticky;
+  /* 창의 안쪽 여백만큼 내려야 창 아래 끝에 붙어요 */
+  bottom: calc(-1 * (var(--space-6) + env(safe-area-inset-bottom, 0px)));
+  z-index: 1;
+  flex-direction: row;
+  margin: 0 calc(var(--space-4) * -1) calc(-1 * (var(--space-6) + env(safe-area-inset-bottom, 0px)));
+  padding: var(--space-3) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.sheet:global(.dialog) :global(.actions .btn) {
+  flex: 1;
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .sheet:global(.dialog) :global(.actions) {
+    bottom: calc(var(--space-6) * -1);
+    margin: 0 calc(var(--space-6) * -1) calc(var(--space-6) * -1);
+    padding: var(--space-4) var(--space-6) var(--space-6);
+  }
+  .sheet:global(.dialog) :global(.actions .btn) {
+    flex: none;
+  }
+}

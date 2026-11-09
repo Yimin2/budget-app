@@ -203,10 +203,12 @@ export interface ProjectionMonth {
   month: YearMonth;
   startBalance: Won;
   contributions: Won; // 아직 반영 안 된 월배분 적립
-  transfersIn: Won; // 예정 이체(planned) 들어옴
-  transfersOut: Won; // 예정 이체(planned) 나감
+  transfersIn: Won; // 예정 이체(planned) + 오늘 뒤 날짜로 기록한 이체 들어옴
+  transfersOut: Won; // 예정 이체(planned) + 오늘 뒤 날짜로 기록한 이체 나감
   planned: Won; // 그달 예정 일정 합 (반복 펼침 포함)
   extra: Won; // 가정 지출 (사도 돼? 판단용)
+  /** 오늘 뒤 날짜로 이미 기록한 지출 (0 이면 생략) */
+  scheduledSpending?: Won;
   endBalance: Won;
   events: { id: Id; name: string; date: ISODate; amount: Won }[];
 }

@@ -7,7 +7,7 @@ import type { LedgerRef } from '@/storage/types';
 export type SessionMode = 'google' | 'demo';
 
 export interface SessionUser {
-  email: string; // 체험 모드 'demo@local'
+  email: string; // 체험 모드 'minji@demo' (DEMO_USER)
   name: string;
   picture: string | null;
 }
@@ -30,6 +30,8 @@ export interface SessionApi {
   /** 공유받은 가계부 열기 (sheets: 구글 파일 선택 창) */
   openSharedLedger(): Promise<LedgerRef | null>;
   forgetLedger(id: string): void;
+  /** 구글 연결 다시 맺기 (버튼 클릭 안에서). 조용한 복구가 막혀 가계부를 못 불러올 때 */
+  reconnectGoogle(): Promise<void>;
 }
 
 export interface NewExpense {
@@ -54,6 +56,8 @@ export interface NewEvent {
 export interface LedgerApi {
   status: 'idle' | 'loading' | 'ready' | 'error';
   error: string | null;
+  /** 오류가 구글 연결 끊김(토큰을 조용히 받지 못함 · 401)이라 '구글 다시 연결'이 필요한지 */
+  needsReconnect: boolean;
   ref: LedgerRef | null;
   data: LedgerData | null;
   today: ISODate;
