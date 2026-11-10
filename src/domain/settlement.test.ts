@@ -6,7 +6,7 @@ import { autoTransferId } from './ids';
 import { projectEventAccount } from './events';
 import {
   allocateClaims, balanceWithScheduled, eventMonthUsage, eventUsageNoteText, checkSettlementSelection, isCarriedOverClaim, selectionLimitText, settleExplanation, settleRefusal, shortfallText, claimsBySource, computeSettlement, defaultSettlementSelection, expenseLoanTransferId, followLoanTransfers,
-  loanCandidates, loanRepayId, loanStatus, planSettlement, settledReservoirEventClaims, settlementSplitText, settlementSummary, settleRoster,
+  loanCandidates, loanRepayId, loanStatus, planSettlement, settledReservoirEventClaims, settlementSummary, settleRoster,
 } from './settlement';
 import { usualHistory } from './usual';
 import type { Category, Expense, LedgerData, PendingClaim, Transfer } from './types';
@@ -493,7 +493,6 @@ describe('정산 화면 · 한 줄 요약 (settleRoster · settlementSummary · 
     expect(sum.total).toBe(1_224_000);
     expect(sum.people).toEqual([{ name: '가람', amount: 1_200_000 }, { name: '나래', amount: 24_000 }]);
     expect(sum).toMatchObject({ fromEvent: 300_000, fromFixed: 0, fromReservoir: 0, borrow: 24_000, rest: 900_000, payable: 600_000 });
-    expect(settlementSplitText(sum)).toBe('이벤트통장에서 30만 · 저수지에서 빌려 2.4만 · 나머지 90만은 저수지에서 빌리거나 다음 달로');
     expect(sum.date).toBe('2026-11-21');
     expect(sum.carry?.amount).toBe(900_000);
     expect(sum.next).toEqual({ date: '2026-12-21', amount: 10_000 });
@@ -666,7 +665,6 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     // 55만은 한도 50만에 안 들어가요 (청구는 쪼개지 않아요) → 기쁜 15만만 이벤트통장에서
     expect(sum.fromEvent).toBe(150_000);
     expect(sum.rest).toBe(550_000);
-    expect(settlementSplitText(sum)).toBe('이벤트통장에서 15만 · 나머지 55만은 저수지에서 빌리거나 다음 달로');
   });
 
   it('이번 달 날짜의 일정만 빼요 (지난달 날짜인데 아직 예정인 일정은 정산 한도에서 빼지 않아요)', () => {
@@ -683,17 +681,11 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     expect(projectEventAccount(d, TODAY).months[0]!.planned).toBe(580_000);
   });
 
-  it('모두 이벤트통장에서 줄 수 있으면 그렇게 말해요', () => {
+  it('모두 이벤트통장에서 줄 수 있으면 나머지는 0', () => {
     const d = base({ expenses: [due('g1', '기쁜', 130_000, '2026-10-20')] });
     const sum = settlementSummary(computeSettlement(d, TODAY));
     expect(sum.total).toBe(130_000);
-    expect(settlementSplitText(sum)).toBe('모두 이벤트통장에서 줄 수 있어요');
-  });
-
-  it('한 건이 한도보다 크면 한도를 함께 알려요', () => {
-    const d = base({ expenses: [due('m1', '민구', 550_000, '2026-10-05')] });
-    const sum = settlementSummary(computeSettlement(d, TODAY));
-    expect(settlementSplitText(sum)).toBe('이벤트통장에서 줄 수 있는 50만에 안 들어가 55만은 저수지에서 빌리거나 다음 달로');
+    expect(sum).toMatchObject({ fromEvent: 130_000, rest: 0 });
   });
 
   it('카드 머리말은 이번 달 이벤트통장 쓴 돈 + 예정 · 들어올 돈, 줄 수 있는 돈보다 큰 줄 돈은 없어요 (eventMonthUsage)', () => {
