@@ -510,6 +510,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       // 고정비 시작일 · 해지일 · 세부 항목 (PLAN 4-15). 나중에 더한 열이라 빈 칸 = 없음 (시작월 · 종료월 · 금액으로 셈)
       c('startDate', '시작일', laterDate), c('endDate', '종료일', laterDate, ['해지일', '만기일']),
       c('subItems', '세부', subItemsCodec, ['세부항목']),
+      // 생활비 '이 달만 다른 금액' (PLAN 4-1). 나중에 더한 열이라 빈 칸 = 평소 행
+      c('override', '이달만', yesFlag, ['이달만다른금액']),
     ],
   },
   events: {

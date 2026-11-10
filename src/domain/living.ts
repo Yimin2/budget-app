@@ -24,11 +24,114 @@ export function livingItemKey(categoryId: Id | null): string {
   return categoryId ?? '';
 }
 
-/** 그달 유효한 생활비 항목 예산 행 */
+/** '이 달만 다른 금액' 행인지 (PLAN 4-1). 빈 칸 = 평소 행 */
+export function isLivingOverride(f: Pick<FixedExpense, 'kind' | 'override'>): boolean {
+  return f.kind === 'living' && f.override === true;
+}
+
+/** 생활비 항목 행 id 의 항목 id ('food@2026-12' · 'food@once-2026-12' → 'food') */
+export function livingSeriesId(rowId: Id): Id {
+  const i = rowId.indexOf('@');
+  return i < 0 ? rowId : rowId.slice(0, i);
+}
+
+/** 이번 달부터 바꾼 생활비 행의 결정적 id */
+export function livingSegmentId(seriesId: Id, month: YearMonth): Id {
+  return `${seriesId}@${month}`;
+}
+
+/** '이 달만 다른 금액' 행의 결정적 id */
+export function livingOverrideId(seriesId: Id, month: YearMonth): Id {
+  return `${seriesId}@once-${month}`;
+}
+
+/** 이달만 행이 어느 항목을 바꾸는지: 같은 통장 · 같은 카테고리 */
+function livingGroupKey(f: Pick<FixedExpense, 'accountId' | 'categoryId'>): string {
+  return `${f.accountId}|${f.categoryId ?? ''}`;
+}
+
+/**
+ * 그달 유효한 생활비 항목 예산 행 (그달 금액 = 실제로 쓰는 금액).
+ * '이 달만 다른 금액' 행이 있으면 같은 통장 · 같은 항목의 평소 행 대신 그 금액을 쓴다 (쓰는 방식 · 쓰는 날은 평소 행 그대로).
+ * 평소 행이 없는 달의 이달만 행은 그 행 하나가 항목이 된다
+ */
 export function activeLivingRows(data: LedgerData, month: YearMonth): FixedExpense[] {
-  return data.fixedExpenses.filter(
+  const active = data.fixedExpenses.filter(
     (f) => !f.deleted && f.kind === 'living' && isMonthActive(month, f.startMonth, f.endMonth),
   );
+  const overrides = new Map<string, FixedExpense>();
+  for (const o of active) {
+    if (!isLivingOverride(o)) continue;
+    const k = livingGroupKey(o);
+    const prev = overrides.get(k);
+    overrides.set(k, prev ? { ...prev, amount: prev.amount + o.amount } : o);
+  }
+  const normal = active.filter((f) => !isLivingOverride(f));
+  if (overrides.size === 0) return normal;
+  const out: FixedExpense[] = [];
+  const used = new Set<string>();
+  for (const r of normal) {
+    const k = livingGroupKey(r);
+    const o = overrides.get(k);
+    if (!o) out.push(r);
+    else if (!used.has(k)) {
+      used.add(k);
+      out.push({ ...r, amount: o.amount });
+    }
+  }
+  for (const [k, o] of overrides) if (!used.has(k)) out.push({ ...o, override: undefined });
+  return out;
+}
+
+/** 이 생활비 항목(같은 통장 · 같은 카테고리)의 '이 달만 다른 금액' 행, from 달 이후(포함), 달 순 */
+export function livingOverridesOf(fixedExpenses: FixedExpense[], row: Pick<FixedExpense, 'accountId' | 'categoryId'>, from: YearMonth): FixedExpense[] {
+  const k = livingGroupKey(row);
+  return fixedExpenses
+    .filter((f) => !f.deleted && isLivingOverride(f) && livingGroupKey(f) === k && f.startMonth >= from)
+    .sort((a, b) => a.startMonth.localeCompare(b.startMonth));
+}
+
+/**
+ * '이 달만 다른 금액' 행 (만들거나 고칠 때). 그 달에 이미 이 항목의 이달만 행이 있으면 그 행을 고친다 (다시 해도 같은 행)
+ */
+export function livingOverrideRow(fixedExpenses: FixedExpense[], row: FixedExpense, month: YearMonth, amount: Won): FixedExpense {
+  const existing = fixedExpenses.find(
+    (f) => isLivingOverride(f) && livingGroupKey(f) === livingGroupKey(row) && f.startMonth === month,
+  );
+  return {
+    id: existing?.id ?? livingOverrideId(livingSeriesId(row.id), month),
+    name: row.name,
+    amount: Math.round(amount),
+    accountId: row.accountId,
+    categoryId: row.categoryId,
+    dayOfMonth: null,
+    kind: 'living',
+    targetEmail: null,
+    spread: row.spread,
+    startMonth: month,
+    endMonth: month,
+    override: true,
+    deleted: false,
+  };
+}
+
+const scheduleKey = (f: FixedExpense) =>
+  JSON.stringify([f.spread, f.spread === 'daily' ? (f.useDays ?? null) : null, f.spread === 'daily' ? f.skipHolidays === true : false, f.spread === 'daily' ? (f.perWeek ?? null) : null]);
+
+/**
+ * 생활비 항목 고치기 (PLAN 4-1). 쓰는 순서대로 행을 돌려준다: [새 행, 앞 행 끝내기] 또는 [그 자리에서 고친 행].
+ * - 금액 · 쓰는 방식 · 쓰는 날이 바뀌면 이번 달(month)부터만: 앞 행은 지난달로 끝내고, id '<항목id>@<month>' 새 행이 이번 달부터
+ *   (끝 달은 이어받는다). 지난달까지의 계산은 그대로
+ * - 이번 달 이후에 시작한 행 · 이미 끝난 행 · 그 밖의 칸만 바뀐 경우는 그 자리에서 고친다
+ */
+export function splitLivingRow(prev: FixedExpense, next: FixedExpense, month: YearMonth): FixedExpense[] {
+  const changed = prev.amount !== next.amount || scheduleKey(prev) !== scheduleKey(next);
+  const startedBefore = prev.startMonth < month;
+  const stillActive = prev.endMonth === null || prev.endMonth === '' || prev.endMonth >= month;
+  if (!changed || !startedBefore || !stillActive || isLivingOverride(prev)) return [{ ...next, id: prev.id }];
+  const created: FixedExpense = { ...next, id: livingSegmentId(livingSeriesId(prev.id), month), startMonth: month, endMonth: prev.endMonth, deleted: false };
+  const ended: FixedExpense = { ...prev, endMonth: addMonths(month, -1) };
+  return [created, ended];
 }
 
 function livingExpenses(data: LedgerData, month: YearMonth, accountId: string | null) {
@@ -69,6 +172,22 @@ function carryItems(data: LedgerData, month: YearMonth, accountId: Id | null, pr
   const all: MonthEndItem[] =
     prev.items && prev.items.length > 0 ? prev.items : prev.leftover !== 0 ? [{ categoryId: null, leftover: prev.leftover }] : [];
   return all.filter((i) => (i.accountId ? i.accountId === accountId : accountId === primary));
+}
+
+/**
+ * 생활비 항목 저장 (고치기 · 이번 달까지만 · 지우기)에 쓸 행들, 쓰는 순서대로.
+ * splitLivingRow 행 + 이 항목의 이달만 행 맞추기: 항목이 끝나면 끝 달 뒤 이달만 행은 지우고(지우면 모두),
+ * 통장 · 카테고리가 바뀌면 이번 달 이후 이달만 행도 따라 옮긴다
+ */
+export function livingItemChanges(fixedExpenses: FixedExpense[], prev: FixedExpense, next: FixedExpense, month: YearMonth): FixedExpense[] {
+  const out = splitLivingRow(prev, next, month);
+  const ownOverrides = livingOverridesOf(fixedExpenses, prev, '');
+  const moved = livingGroupKey(prev) !== livingGroupKey(next);
+  for (const o of ownOverrides) {
+    if (next.deleted || (next.endMonth && o.startMonth > next.endMonth)) out.push({ ...o, deleted: true });
+    else if (moved && o.startMonth >= month) out.push({ ...o, accountId: next.accountId, categoryId: next.categoryId, name: next.name });
+  }
+  return out;
 }
 
 /** 그달 생활비 통장들 (사람별 생활비 통장이면 여럿, PLAN 4-14). 그달 생활비 예산 행의 통장 → 없으면 예전처럼 하나 */

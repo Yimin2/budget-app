@@ -324,6 +324,13 @@ export interface LedgerApi {
    * from 뒤 결제가 이미 기록됐으면 오류 (지난 기록은 그대로)
    */
   changeFixedAmount(rowId: Id, amount: Won, from: ISODate): Promise<void>;
+  /**
+   * 생활비 항목 저장 (PLAN 4-1). 금액 · 쓰는 방식 · 쓰는 날이 바뀌면 이번 달부터만: 앞 행은 지난달로 끝내고 '<id>@<이번 달>' 새 행.
+   * 이번 달에 시작한 행은 그 자리에서. 끝내거나 지우면 끝 달 뒤 '이 달만 다른 금액'도 지워요
+   */
+  saveLivingItem(rowId: Id, next: FixedExpense): Promise<void>;
+  /** 생활비 항목의 '이 달만 다른 금액' (그 달만 평소 금액 대신). amount=null 이면 지우기 */
+  setLivingOverride(rowId: Id, month: YearMonth, amount: Won | null): Promise<void>;
   /** 고정비 끝내기: end = 해지일 (그 뒤 시작하는 행은 지움), null = 모든 행 지우기 */
   endFixedSeries(seriesId: Id, end: ISODate | null): Promise<void>;
   /** 수입 계획 추가 (PLAN 4-13). 받는 날이 지난 이번 달 회차는 바로 기록해요 */

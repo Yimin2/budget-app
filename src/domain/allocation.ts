@@ -16,6 +16,7 @@ import {
 import { addDays, addMonths, dateInMonth, formatShortDate, isMonthActive, isValidDate, isValidMonth, monthOf } from './dates';
 import { autoTransferId } from './ids';
 import { installmentGroups, installmentPayments, installmentPlanId } from './installments';
+import { activeLivingRows } from './living';
 import { formatWon } from './money';
 import type { Account, AllocationRule, FixedExpense, Id, ISODate, LedgerData, Won, YearMonth } from './types';
 
@@ -112,10 +113,10 @@ export function accountCharges(data: LedgerData, accountId: Id, from: ISODate, t
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.name.localeCompare(b.name)));
 }
 
-/** 이 통장의 그달 생활비 항목 예산 합 */
+/** 이 통장의 그달 생활비 항목 예산 합 ('이 달만 다른 금액'이 있으면 그 금액, PLAN 4-1) */
 export function livingBudgetOf(data: LedgerData, accountId: Id, month: YearMonth): Won {
-  return data.fixedExpenses
-    .filter((f) => !f.deleted && f.kind === 'living' && f.accountId === accountId && isMonthActive(month, f.startMonth, f.endMonth))
+  return activeLivingRows(data, month)
+    .filter((f) => f.accountId === accountId)
     .reduce((s, f) => s + Math.max(0, f.amount), 0);
 }
 

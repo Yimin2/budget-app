@@ -263,6 +263,24 @@ describe('schema', () => {
     expect(decodeTable('expenses', encodeTable('expenses', [{ ...ex, excluded: true }]))[0]!.excluded).toBe(true);
   });
 
+  it('고정지출 이달만 열: 없거나 비면 평소 행, 예 · TRUE 면 이 달만 다른 금액, 쓸 때는 예 또는 빈 칸', () => {
+    const old = decodeTable('fixedExpenses', [['id', '이름', '금액', '종류'], ['f', '식비', 500000, '생활비']]);
+    expect(old[0]!.override).toBeUndefined();
+    const rows = decodeTable('fixedExpenses', [
+      ['id', '이름', '금액', '종류', '시작월', '종료월', '이달만'],
+      ['a', '식비', 700000, '생활비', '2026-12', '2026-12', '예'],
+      ['b', '식비', 500000, '생활비', '2026-06', '', ''],
+      ['c', '식비', 700000, '생활비', '2026-12', '2026-12', true],
+      ['d', '식비', 700000, '생활비', '2026-12', '2026-12', '아니오'],
+    ]);
+    expect(rows.map((r) => r.override)).toEqual([true, undefined, true, undefined]);
+    const headers = canonicalHeaders('fixedExpenses');
+    expect(headers[headers.length - 1]).toBe('이달만');
+    expect(encodeRow('fixedExpenses', rows[0]!)[headers.indexOf('이달만')]).toBe('예');
+    expect(encodeRow('fixedExpenses', rows[1]!)[headers.indexOf('이달만')]).toBe('');
+    expect(decodeTable('fixedExpenses', encodeTable('fixedExpenses', [rows[0]!]))[0]!.override).toBe(true);
+  });
+
   it('일정 음력 열: 없거나 비면 양력, 여러 꼴을 MM-DD 로 읽고 쓸 때는 MM-DD 또는 빈 칸', () => {
     const old = decodeTable('events', [['id', '날짜', '이름', '반복'], ['x', '2027-02-07', '설날', '매년']]);
     expect(old[0]!.lunar).toBeUndefined();

@@ -23,6 +23,8 @@ import {
   isDatedBill,
   normalizeBill,
   splitBillAmount,
+  livingItemChanges,
+  livingOverrideRow,
   canClaimOnAccount,
   claimAccountFor,
   linkAccountsToEmail,
@@ -59,6 +61,7 @@ import {
   isClaimSettled,
   isMonthActive,
   monthOf,
+  isValidMonth,
   newId,
   nextEventDate,
   seriesBaseId,
@@ -2158,6 +2161,43 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     },
     [requireData, mutate, syncAutoNow],
   );
+  /** 생활비 항목 고치기 · 끝내기 · 지우기: 금액 · 쓰는 방식 · 쓰는 날은 이번 달부터만 (PLAN 4-1) */
+  const saveLivingItem = useCallback<LedgerApi['saveLivingItem']>(
+    async (prevId, next) => {
+      const { data: d } = requireData();
+      const prev = d.fixedExpenses.find((f) => f.id === prevId);
+      if (!prev) throw new Error('생활비 예산을 찾을 수 없어요');
+      const rows = livingItemChanges(d.fixedExpenses, prev, next, monthOf(todayRef.current));
+      await mutate(
+        (x) => ({ ...x, fixedExpenses: rows.reduce((list, r) => upsertIn(list, r), x.fixedExpenses) }),
+        async (repo) => {
+          // 새 행을 먼저 (결정적 id), 앞 행 끝내기는 그다음
+          for (const r of rows) await repo.upsert('fixedExpenses', r);
+        },
+        '생활비 예산을 저장하지 못했어요',
+        { multiStep: rows.length > 1 },
+      );
+      await syncAutoNow();
+    },
+    [requireData, mutate, syncAutoNow],
+  );
+  /** 생활비 항목의 '이 달만 다른 금액' 넣기 · 고치기 (amount=null 이면 지우기) */
+  const setLivingOverride = useCallback<LedgerApi['setLivingOverride']>(
+    async (rowId, month, amount) => {
+      const { data: d } = requireData();
+      const base = d.fixedExpenses.find((f) => f.id === rowId);
+      if (!base) throw new Error('생활비 예산을 찾을 수 없어요');
+      if (!isValidMonth(month)) throw new Error('달을 골라 주세요');
+      if (amount !== null && !(amount >= 0)) throw new Error('금액을 입력해 주세요');
+      const row = livingOverrideRow(d.fixedExpenses, base, month, amount ?? 0);
+      const exists = d.fixedExpenses.some((f) => f.id === row.id && !f.deleted);
+      if (amount === null && !exists) return;
+      const saved = amount === null ? { ...(d.fixedExpenses.find((f) => f.id === row.id) ?? row), deleted: true } : row;
+      await upsertRow('fixedExpenses', saved, amount === null ? '이 달 금액을 지우지 못했어요' : '이 달 금액을 저장하지 못했어요');
+      await syncAutoNow();
+    },
+    [requireData, upsertRow, syncAutoNow],
+  );
   /** 고정비 그만 내기 (해지일) · 지우기 (모든 행) */
   const endFixedSeries = useCallback<LedgerApi['endFixedSeries']>(
     async (seriesId, end) => {
@@ -2533,6 +2573,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       changeRuleAmount,
       changeFixedAmount,
       endFixedSeries,
+      saveLivingItem,
+      setLivingOverride,
       addIncomePlan,
       saveIncomePlan,
       saveFixed,
@@ -2563,7 +2605,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       restoreTrip, addExpense, updateExpense,
       deleteExpense, setExpenseExclusions, addEvent, registerAnnualEvents, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, changeFixedAmount, endFixedSeries, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
+      changeRuleAmount, changeFixedAmount, endFixedSeries, saveLivingItem, setLivingOverride, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );
