@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import Link from 'next/link';
-import { eventMonthlyCosts, formatMan, formatShortDate, formatWon, highOnlyShortageMessage, monthOf } from '@/domain';
+import { eventMonthlyCosts, formatManShort, formatShortDate, formatWon, highOnlyShortageMessage, monthOf } from '@/domain';
 import type { EventProjection, ISODate, LedgerData, ProjectionMonth, ProjectionRangeMonth, ShortageFix, YearMonth } from '@/domain';
 import { Badge, Button, Card, Icon, cx, useMediaQuery } from '@/ui';
 import { FoldHead, useMobileFold, foldStyles } from './FoldCard';
@@ -363,7 +363,7 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
                     {m.endBalance < 0 ? (
                       <span className={cx(styles.upBadge, shared.bad)}>
                         <Icon name="alert-triangle" size={16} />
-                        {formatMan(-m.endBalance)} 모자라요
+                        {formatManShort(-m.endBalance)} 모자라요
                       </span>
                     ) : null}
                   </button>

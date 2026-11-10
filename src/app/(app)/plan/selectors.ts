@@ -1,5 +1,5 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { dateInMonth, formatDateKo, formatMan, formatMonthKo, formatShortDate, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
+import { dateInMonth, formatDateKo, formatMan, formatManShort, formatMonthKo, formatShortDate, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
   EventMonthUsage,
   LedgerData,
@@ -156,11 +156,11 @@ export function aheadOutflow(m: ProjectionMonth): Won {
 
 /** 그달 들어오는 쪽 한 줄: '달 시작 잔액 50만 · 적립 +30만 · 옮겨 올 돈 +30만' (이번 달은 '지금 잔액' · '아직 안 들어온 적립') */
 export function aheadInflowText(m: ProjectionMonth, isThisMonth: boolean): string {
-  const parts = [`${isThisMonth ? '지금 잔액' : '달 시작 잔액'} ${formatMan(m.startBalance)}`];
+  const parts = [`${isThisMonth ? '지금 잔액' : '달 시작 잔액'} ${formatManShort(m.startBalance)}`];
   if (m.contributions !== 0) {
-    parts.push(`${isThisMonth ? '아직 안 들어온 적립' : '적립'} ${m.contributions > 0 ? '+' : '−'}${formatMan(Math.abs(m.contributions))}`);
+    parts.push(`${isThisMonth ? '아직 안 들어온 적립' : '적립'} ${m.contributions > 0 ? '+' : '−'}${formatManShort(Math.abs(m.contributions))}`);
   }
-  if (m.transfersIn > 0) parts.push(`옮겨 올 돈 +${formatMan(m.transfersIn)}`);
+  if (m.transfersIn > 0) parts.push(`옮겨 올 돈 +${formatManShort(m.transfersIn)}`);
   return parts.join(' · ');
 }
 

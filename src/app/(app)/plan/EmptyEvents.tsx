@@ -1,7 +1,7 @@
 'use client';
 
 import type { Category } from '@/domain';
-import { Button, Card, Chip, ChipGroup, EmptyState, isIconName } from '@/ui';
+import { Button, Chip, ChipGroup, EmptyState, isIconName } from '@/ui';
 import type { EventPreset } from './EventDialog';
 import styles from './EmptyEvents.module.css';
 
@@ -14,9 +14,10 @@ const EXAMPLES: { label: string; name: string; category: string; repeat?: EventP
   { label: '생일 선물', name: '생일 선물', category: '선물', repeat: 'yearly' },
 ];
 
+/** '일정' 카드 안의 빈 상태 (일정도 다가오는 여행도 없을 때) */
 export function EmptyEvents({ categories, onAdd }: { categories: Category[]; onAdd: (preset?: EventPreset) => void }) {
   return (
-    <Card as="section" aria-label="일정">
+    <div className={styles.embedded}>
       <EmptyState
         icon="calendar"
         title="아직 넣은 일정이 없어요"
@@ -44,6 +45,6 @@ export function EmptyEvents({ categories, onAdd }: { categories: Category[]; onA
           </div>
         }
       />
-    </Card>
+    </div>
   );
 }

@@ -49,14 +49,27 @@ describe('범위 띠 (아끼면 ~ 많이 쓰면)', () => {
   });
 });
 
-describe('매년 돌아오는 일', () => {
+describe('매년 돌아오는 일 (일정 카드의 [기록에서 찾기])', () => {
+  /** '일정' 카드의 [기록에서 찾기]를 눌러 같은 자리에서 펼쳐요 */
+  function openRecurring() {
+    const schedule = screen.getByRole('region', { name: /^일정 · / });
+    const btn = within(schedule).getByRole('button', { name: /^기록에서 찾기/ });
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    return { btn, card: within(schedule).getByRole('region', { name: '매년 돌아오는 일' }) };
+  }
+
   it('작년 기록을 찾아 제안하고 [넣기]는 같은 날 매년 일정으로, 그 뒤엔 제안이 사라져요', async () => {
     const h = await renderEvents();
+    const schedule = screen.getByRole('region', { name: /^일정 · / });
+    expect(within(schedule).getByRole('button', { name: /^기록에서 찾기/ }).textContent).toBe('기록에서 찾기');
     expect(screen.queryByRole('region', { name: '매년 돌아오는 일' })).toBeNull();
     await act(async () => {
       await h.probe.ledger!.addExpense({ date: '2025-12-08', amount: 120_000, accountId: 'demo-acc-event', categoryId: null, memo: '하늘 생신' });
     });
-    const card = await screen.findByRole('region', { name: '매년 돌아오는 일' });
+    // 찾은 제안 수가 버튼에 보여요
+    await waitFor(() => expect(within(screen.getByRole('region', { name: /^일정 · / })).getByRole('button', { name: /^기록에서 찾기/ }).textContent).toBe('기록에서 찾기1건'));
+    const { card } = openRecurring();
     expect(card.textContent).toContain("작년 12월에 '하늘 생신' 120,000원이 있었어요. 올해도 일정으로 넣을까요?");
     await act(async () => {
       fireEvent.click(within(card).getByRole('button', { name: '‘하늘 생신’ 일정으로 넣기' }));
@@ -64,7 +77,8 @@ describe('매년 돌아오는 일', () => {
     await screen.findByText(/‘하늘 생신’을 12월 8일 일정으로 넣었어요/);
     const ev = h.probe.ledger!.data!.events.find((e) => e.name === '하늘 생신')!;
     expect(ev).toMatchObject({ date: '2026-12-08', amount: 120_000, repeat: 'yearly', status: 'planned', accountId: 'demo-acc-event' });
-    await waitFor(() => expect(screen.queryByRole('region', { name: '매년 돌아오는 일' })).toBeNull());
+    await waitFor(() => expect(within(card).getByTestId('recurring-summary').textContent).toBe('지난 기록에서 해마다 나올 만한 지출을 아직 찾지 못했어요'));
+    expect(within(card).queryByRole('button', { name: /일정으로 넣기/ })).toBeNull();
   });
 
   it('[괜찮아요]는 가계부 설정에 숨겨 다시 보이지 않아요', async () => {
@@ -72,13 +86,13 @@ describe('매년 돌아오는 일', () => {
     await act(async () => {
       await h.probe.ledger!.addExpense({ date: '2025-12-24', amount: 80_000, accountId: 'demo-acc-event', categoryId: null, memo: '조카 생일 선물' });
     });
-    const card = await screen.findByRole('region', { name: '매년 돌아오는 일' });
+    const { card } = openRecurring();
     await act(async () => {
       fireEvent.click(within(card).getByRole('button', { name: '‘조카 생일 선물’ 괜찮아요' }));
     });
     await screen.findByText('‘조카 생일 선물’ 제안은 다시 보이지 않아요');
     expect(h.probe.ledger!.data!.settings.dismissedRecurring).toEqual(['12|조카 생일 선물']);
-    await waitFor(() => expect(screen.queryByRole('region', { name: '매년 돌아오는 일' })).toBeNull());
+    await waitFor(() => expect(within(card).queryByRole('button', { name: /괜찮아요/ })).toBeNull());
   });
 });
 

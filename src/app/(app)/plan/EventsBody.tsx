@@ -8,22 +8,20 @@ import {
   recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { ExclusionDraft, Id, PlannedEvent, RepayMonths } from '@/domain';
+import type { ExclusionDraft, Id, PlannedEvent, RepayMonths, TripStatus } from '@/domain';
 import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
-import { AnnualCard } from './AnnualCard';
 import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import type { EventPreset } from './EventDialog';
-import { EventLists } from './EventLists';
-import { EmptyEvents } from './EmptyEvents';
 import { NoEventAccount } from './NoEventAccount';
 import { AheadCard } from './AheadCard';
-import { RecurringCard } from './RecurringCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
+import { ScheduleCard } from './ScheduleCard';
 import { ThisMonthCard } from './ThisMonthCard';
-import { TripsCard } from './trips/TripsCard';
 import { UsualCard } from './UsualCard';
 import styles from './EventsBody.module.css';
+
+const NO_TRIPS: TripStatus[] = [];
 
 export interface EventsBodyProps {
   ledger: ReadyLedger;
@@ -93,29 +91,27 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
             fix={ledger.shortageFix}
             showShortage={!tried}
           />
-          <AnnualCard data={data} today={today} onEdit={onEdit} />
-          <RecurringCard data={data} today={today} categories={data.categories} />
         </>
       ) : (
         <NoEventAccount ledger={ledger} />
       )}
-      {hasEventAccount ? <TripsCard trips={ledger.trips} onAdd={onAddTrip} /> : null}
-      {sections.total === 0 ? (
-        <EmptyEvents categories={eventCategories(ledger.activeCategories)} onAdd={onAdd} />
-      ) : (
-        <EventLists
-          sections={sections}
-          today={today}
-          categories={data.categories}
-          spent={spent}
-          displayName={ledger.displayName}
-          busyId={busyId}
-          onAdd={() => onAdd()}
-          onEdit={onEdit}
-          onComplete={onComplete}
-          onCancel={onCancel}
-        />
-      )}
+      <ScheduleCard
+        sections={sections}
+        today={today}
+        categories={data.categories}
+        spent={spent}
+        displayName={ledger.displayName}
+        busyId={busyId}
+        trips={hasEventAccount ? ledger.trips : NO_TRIPS}
+        planning={Boolean(projection && hasEventAccount)}
+        data={data}
+        emptyCategories={eventCategories(ledger.activeCategories)}
+        onAdd={onAdd}
+        onAddTrip={onAddTrip}
+        onEdit={onEdit}
+        onComplete={onComplete}
+        onCancel={onCancel}
+      />
     </div>
   );
 }

@@ -58,6 +58,9 @@
   align-self: flex-start;
   flex-wrap: wrap;
 }
+.details {
+  container-type: inline-size;
+}
 .split {
   display: flex;
   flex-direction: column;
@@ -67,7 +70,8 @@
 .tableCol {
   min-width: 0;
 }
-@media (min-width: 768px) {
+/* 카드 칸이 넓을 때만 도넛과 표를 나란히 (이벤트 화면에서는 반 칸 카드라 칸 너비로 봐요) */
+@container (min-width: 640px) {
   .split {
     display: grid;
     grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);

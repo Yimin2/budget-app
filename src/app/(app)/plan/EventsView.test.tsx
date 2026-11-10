@@ -159,9 +159,9 @@ describe('EventsView — 체험 가계부', () => {
 
   it('다가오는 일정은 달별로, 반복 · 작성자 · 카테고리를 함께 보여요', async () => {
     await renderEvents();
-    const upcoming = screen.getByRole('region', { name: '다가오는 일정' });
-    // 제주 여행은 일정이 아닌 여행으로 따로 보여요
-    expect(within(upcoming).getByText('7건 · 1,900,000원')).toBeTruthy();
+    // 일정 7건 1,900,000원 + 제주 여행 남은 예산 450,000원을 날짜순으로 한 목록에
+    const card = screen.getByRole('region', { name: '일정 · 8건 235만' });
+    const upcoming = within(card).getByRole('region', { name: '다가오는 일정' });
     expect(within(upcoming).getByRole('heading', { level: 3, name: '2027년 1월' })).toBeTruthy();
     const jan = within(upcoming).getByRole('list', { name: '2027년 1월' });
     expect(within(jan).getByText('명절 부모님 용돈')).toBeTruthy();
@@ -268,13 +268,17 @@ describe('EventsView — 체험 가계부', () => {
     await waitFor(() => expect(within(upcoming).queryByText('지수 결혼식')).toBeNull());
   });
 
-  it('여행 카드: 다가오는 여행의 쓴 돈 · 남은 예산, 누르면 여행 화면으로 가요', async () => {
+  it('일정 카드의 여행 줄: 여행 표시 · 쓴 돈 / 예산 · 남은 예산, 누르면 여행 화면, [+ 추가]로 여행 추가', async () => {
     const h = await renderEvents();
-    const card = screen.getByRole('region', { name: '여행' });
+    const card = screen.getByRole('region', { name: /^일정 · / });
     const link = within(card).getByRole('link', { name: /제주 여행/ });
     expect(link.getAttribute('href')).toBe('/plan/trips?id=demo-trip-jeju');
-    expect(link.textContent).toContain('450,000원 / 900,000원');
-    expect(link.textContent).toContain('남은 예산 450,000원');
+    expect(link.textContent).toContain('여행');
+    expect(link.textContent).toContain('45만 / 90만');
+    expect(link.textContent).toContain('남은 45만');
+    // 일정과 함께 떠나는 날의 달에, 날짜순으로
+    const febList = within(card).getByRole('list', { name: '2027년 2월' });
+    expect(within(febList).getByRole('link', { name: /제주 여행/ })).toBe(link);
     // 링크 이름은 짧게 한 번씩만: 막대는 화면 읽기에서 숨기고 숫자는 이름에 한 번
     expect(within(card).queryByRole('progressbar')).toBeNull();
     expect(link.getAttribute('aria-label')).toMatch(/^제주 여행, .+, 900,000원 중 450,000원 썼어요, 남은 예산 450,000원$/);
@@ -282,6 +286,12 @@ describe('EventsView — 체험 가계부', () => {
     const feb = h.probe.ledger!.eventProjection!.months.find((m) => m.tripList?.length)!;
     expect(feb.trips).toBe(450_000);
 
+    // [+ 추가]는 같은 자리에서 [새 일정] · [여행 추가]를 펼쳐요
+    const add = within(card).getByRole('button', { name: '추가' });
+    expect(add.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(add);
+    expect(add.getAttribute('aria-expanded')).toBe('true');
+    expect(within(card).getByRole('button', { name: '새 일정' })).toBeTruthy();
     fireEvent.click(within(card).getByRole('button', { name: '여행 추가' }));
     const dialog = await screen.findByRole('dialog', { name: '여행 추가' });
     fireEvent.click(within(dialog).getByRole('button', { name: '추가하기' }));
@@ -293,7 +303,7 @@ describe('EventsView — 체험 가계부', () => {
     await screen.findByText('‘오사카’ 여행을 추가했어요');
     const added = h.probe.ledger!.trips.find((t) => t.trip.name === '오사카')!;
     expect(added.budget).toBe(400_000);
-    expect(within(card).getByRole('link', { name: /오사카/ })).toBeTruthy();
+    expect(await within(screen.getByRole('region', { name: /^일정 · / })).findByRole('link', { name: /오사카/ })).toBeTruthy();
   });
 
   it('일정이 하나도 없으면 예시와 함께 빈 상태를 보여요', async () => {
@@ -303,6 +313,8 @@ describe('EventsView — 체험 가계부', () => {
     });
     expect(await screen.findByText('아직 넣은 일정이 없어요')).toBeTruthy();
     expect(screen.getByText(/결혼식, 명절, 여행처럼 고정비가 아닌 큰 지출을 미리 넣어 두세요/)).toBeTruthy();
+    // 다가오는 여행은 빈 상태 아래에 그대로 보여요
+    expect(within(screen.getByRole('region', { name: /^일정/ })).getByRole('link', { name: /제주 여행/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '명절' }));
     const dialog = await screen.findByRole('dialog', { name: '일정 추가' });
     expect((within(dialog).getByLabelText(/이름/) as HTMLInputElement).value).toBe('설날');
