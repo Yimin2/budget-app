@@ -280,3 +280,77 @@ export function tripPeriodText(trip: Pick<Trip, 'startDate' | 'endDate'>): strin
   const nights = daysBetween(trip.startDate, end);
   return `${md(trip.startDate)}~${sameMonth ? `${Number(end.slice(8, 10))}일` : md(end)} (${nights}박 ${nights + 1}일)`;
 }
+
+/** 날짜별 한 줄: 여행 전(미리 낸 돈) · 여행 날 하루 · 여행 뒤 */
+export interface TripDayRow {
+  kind: 'before' | 'day' | 'after';
+  /** 여행 날의 날짜 (여행 전 · 뒤는 null) */
+  date: ISODate | null;
+  /** 몇째 날 (1부터, 여행 전 · 뒤는 null) */
+  dayIndex: number | null;
+  total: Won;
+  /** 그 줄의 지출 (날짜 → 기록한 순) */
+  expenses: Expense[];
+}
+
+export interface TripDailySpending {
+  /** 여행 전(0 보다 클 때만) → 여행 날마다 한 줄(0원 날 포함) → 여행 뒤(지출이 있을 때만) */
+  rows: TripDayRow[];
+  /** 가장 큰 줄의 합 (막대 기준, 없으면 0) */
+  max: Won;
+  /** 여행 날 수 */
+  dayCount: number;
+  /** 여행 날(떠나는 날 ~ 돌아오는 날)에 쓴 돈 합 */
+  daysTotal: Won;
+  /** 여행 날 하루 평균 (원 단위 반올림) */
+  average: Won;
+  /** 여행 날 중 가장 많이 쓴 날 (같으면 앞 날, 여행 날에 쓴 돈이 없으면 null) */
+  peak: TripDayRow | null;
+  /** 여행 전 · 뒤에 쓴 돈 */
+  before: Won;
+  after: Won;
+}
+
+/**
+ * 여행 지출을 날짜별로 묶는다 (떠나는 날 ~ 돌아오는 날). 떠나는 날 전 지출(항공권 · 숙소 미리 낸 돈)은 '여행 전',
+ * 돌아오는 날 뒤 지출은 '여행 뒤' 한 줄로. 지운 지출 · 다른 여행 지출은 뺀다
+ */
+export function tripDailySpending(
+  trip: Pick<Trip, 'id' | 'startDate' | 'endDate'>,
+  expenses: readonly Expense[],
+): TripDailySpending {
+  const start = trip.startDate;
+  const end = tripEndDate(trip);
+  const mine = expenses
+    .filter((e) => isTripExpense(e, trip.id))
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.createdAt === b.createdAt ? 0 : a.createdAt < b.createdAt ? -1 : 1));
+  const dayCount = daysBetween(start, end) + 1;
+  const days: TripDayRow[] = Array.from({ length: dayCount }, (_, i) => ({
+    kind: 'day',
+    date: addDays(start, i),
+    dayIndex: i + 1,
+    total: 0,
+    expenses: [],
+  }));
+  const before: TripDayRow = { kind: 'before', date: null, dayIndex: null, total: 0, expenses: [] };
+  const after: TripDayRow = { kind: 'after', date: null, dayIndex: null, total: 0, expenses: [] };
+  for (const e of mine) {
+    const row = e.date < start ? before : e.date > end ? after : days[daysBetween(start, e.date)]!;
+    row.total += e.amount;
+    row.expenses.push(e);
+  }
+  const rows = [...(before.total > 0 ? [before] : []), ...days, ...(after.expenses.length > 0 ? [after] : [])];
+  const daysTotal = days.reduce((s, d) => s + d.total, 0);
+  let peak: TripDayRow | null = null;
+  for (const d of days) if (d.total > 0 && (!peak || d.total > peak.total)) peak = d;
+  return {
+    rows,
+    max: rows.reduce((m, r) => Math.max(m, r.total), 0),
+    dayCount,
+    daysTotal,
+    average: Math.round(daysTotal / dayCount),
+    peak,
+    before: before.total,
+    after: after.total,
+  };
+}

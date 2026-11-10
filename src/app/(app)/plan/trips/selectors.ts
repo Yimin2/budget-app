@@ -1,6 +1,8 @@
 /* 여행 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { formatMan, formatMonthKo, formatWon, TRIP_ITEMS, tripSpendState } from '@/domain';
-import type { Expense, ISODate, TripItem, TripItemLine, TripLeftoverPool, TripSpendState, TripStatus, Won } from '@/domain';
+import { formatMan, formatMonthKo, formatShortDate, formatWon, TRIP_ITEMS, tripSpendState } from '@/domain';
+import type {
+  Expense, ISODate, TripDailySpending, TripDayRow, TripItem, TripItemLine, TripLeftoverPool, TripSpendState, TripStatus, Won,
+} from '@/domain';
 
 /** '/plan/trips?id=…' 여행 하나 주소 */
 export function tripHref(id: string): string {
@@ -92,4 +94,27 @@ export function itemBudgetHint(budget: Won | null, items: Record<TripItem, Won |
   if (!budget) return `총예산을 비우면 항목 합 ${formatWon(sum)}을 예산으로 잡아요`;
   if (sum > budget) return `항목 합 ${formatWon(sum)}이 총예산보다 ${formatWon(sum - budget)} 많아요`;
   return `항목 합 ${formatWon(sum)} · 나머지 ${formatWon(budget - sum)}은 항목 없이 써요`;
+}
+
+/** 날짜별 한 줄 이름: "여행 전 (미리 낸 돈)" · "12/20 (1일차)" · "여행 뒤" */
+export function dayRowLabel(row: Pick<TripDayRow, 'kind' | 'date' | 'dayIndex'>): string {
+  if (row.kind === 'before') return '여행 전 (미리 낸 돈)';
+  if (row.kind === 'after') return '여행 뒤';
+  return `${formatShortDate(row.date!)} (${row.dayIndex}일차)`;
+}
+
+/**
+ * 날짜별 카드를 접었을 때 보이는 한 줄 (정리할 지출이 없으면 null)
+ * - "하루 평균 18만 · 가장 많이 쓴 날 12/20 23만" · 하루 여행은 "12/20 하루 8만"
+ * - 여행 날에 쓴 돈이 없으면 "여행 전 45만 · 여행 날에 쓴 돈은 아직 없어요"
+ */
+export function dailySummaryText(d: Pick<TripDailySpending, 'dayCount' | 'daysTotal' | 'average' | 'peak' | 'before' | 'after'>): string | null {
+  if (d.daysTotal > 0 && d.peak) {
+    if (d.dayCount === 1) return `${formatShortDate(d.peak.date!)} 하루 ${formatMan(d.daysTotal)}`;
+    // 평균은 천 원 단위로 반올림해 짧게 (12.6667만 → 12.7만)
+    return `하루 평균 ${formatMan(Math.round(d.average / 1000) * 1000)} · 가장 많이 쓴 날 ${formatShortDate(d.peak.date!)} ${formatMan(d.peak.total)}`;
+  }
+  const parts = [d.before > 0 ? `여행 전 ${formatMan(d.before)}` : '', d.after > 0 ? `여행 뒤 ${formatMan(d.after)}` : ''].filter(Boolean);
+  if (parts.length === 0) return null;
+  return `${parts.join(' · ')} · 여행 날에 쓴 돈은 아직 없어요`;
 }
