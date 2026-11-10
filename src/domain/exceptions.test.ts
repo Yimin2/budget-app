@@ -41,7 +41,8 @@ describe('예외 표시는 평소 쓰는 돈 · 범위 · 매년 찾기에서 �
     expect(usualHistory(flagged, eventAcc.id).byMonth.get('2026-08')!.get('c-fam')).toBeUndefined();
     const before = estimateUsual(usualHistory(data, eventAcc.id), '2026-12', '2026-11');
     const after = estimateUsual(usualHistory(flagged, eventAcc.id), '2026-12', '2026-11');
-    expect(before.total - after.total).toBe(Math.round(1_000_000 / 6));
+    // 기록 시작이 1월이라 최근 12개월 중 기록 달은 1~10월 10개
+    expect(before.total - after.total).toBe(Math.round(1_000_000 / 10));
     // 잔액에는 그대로 쓴 돈
     expect(allBalances(flagged, TODAY)[eventAcc.id]).toBe(allBalances(data, TODAY)[eventAcc.id]);
   });
@@ -139,7 +140,7 @@ describe('미리 보기 (저장하지 않는 덮어씌우기)', () => {
     const last = after.months.length - 1;
     expect(after.months[last]!.endBalance).toBeGreaterThan(before.months[last]!.endBalance);
     expect(exclusionPreviewMessage(before, after, TODAY)).toMatch(
-      /^평소 쓰는 돈 한 달 평균 26\.7만원 → 15\.6만원 · 12월 등 6개월 부족이 없어져요 · 2027년 10월 예상 잔액 \+133\.3만원$/,
+      /^평소 쓰는 돈 한 달 평균 24만원 → 14만원 · 2027년 6월 · 2027년 7월 부족이 없어져요 · 2027년 10월 예상 잔액 \+120만원$/,
     );
   });
 });

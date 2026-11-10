@@ -23,7 +23,7 @@ const spend = (date: string, amount: number, p: Partial<Expense> = {}) => expens
 
 /**
  * 2025-11 ~ 2026-10 (12개월): 경조사 매달 10만, 선물은 9개월 5만 → 최근 3개월 11만.
- * 최근 6개월 평균: 경조사 10만 · 선물 8만 = 18만. 선물 최근 3개월 11만 − 1년 평균 6.5만 = 4.5만 넘음
+ * 최근 12개월 평균: 경조사 10만 · 선물 6.5만 = 16.5만. 선물 최근 3개월 11만 − 1년 평균 6.5만 = 4.5만 넘음
  */
 function history(): Expense[] {
   const months = monthRange('2025-11', '2026-10');
@@ -54,21 +54,21 @@ describe('필요 적립', () => {
     expect(requiredContribution(0, 0)).toBe(0);
   });
 
-  it('가계부에서: 최근 6개월 평균 18만 + 매년 일정 60만 ÷ 12 = 23만', () => {
+  it('가계부에서: 최근 12개월 평균 16.5만 + 매년 일정 60만 ÷ 12 = 21.5만 → 만 원 올림 22만', () => {
     const data = ledger();
     const plan = recommendCompromise(data, TODAY, projectEventAccount(data, TODAY), { loanBalance: 0 })!;
-    expect(plan.monthlyUsual).toBe(180_000);
+    expect(plan.monthlyUsual).toBe(165_000);
     expect(plan.monthlyPlanned).toBe(50_000);
-    expect(plan.required).toBe(230_000);
+    expect(plan.required).toBe(220_000);
     expect(plan.current).toBe(200_000);
-    expect(plan.raise).toBe(30_000);
-    expect(plan.recommended).toBe(230_000);
+    expect(plan.raise).toBe(20_000);
+    expect(plan.recommended).toBe(220_000);
   });
 
   it('예외로 표시한 지출은 필요 적립에서 빠진다', () => {
     const data = ledger({ expenses: [...history(), spend('2026-10-20', 1_200_000, { excluded: true })] });
     const plan = recommendCompromise(data, TODAY, projectEventAccount(data, TODAY), { loanBalance: 0 })!;
-    expect(plan.required).toBe(230_000);
+    expect(plan.required).toBe(220_000);
   });
 });
 
@@ -122,10 +122,10 @@ describe('카테고리별 줄일 금액', () => {
 
   it('평소보다 많이 쓰는 카테고리(선물 +4.5만)부터, 나머지는 평소 쓰는 돈에 비례, 천 원 단위로 합이 맞게', () => {
     const plan = allocateCuts(ledger(), eventAcc.id, '2026-11', 84_000);
-    // 선물 4.5만 먼저 → 남은 3.9만을 10만 : 8만 = 2.2만 : 1.7만
+    // 선물 4.5만 먼저 → 남은 3.9만을 10만 : 6.5만 = 2.4만(23.6 → 큰 나머지로 올림) : 1.5만
     expect(plan.cuts.map((c) => [c.name, c.amount])).toEqual([
-      ['선물', 62_000],
-      ['경조사', 22_000],
+      ['선물', 60_000],
+      ['경조사', 24_000],
     ]);
     expect(plan.total).toBe(84_000);
     expect(plan.unallocated).toBe(0);
@@ -143,9 +143,9 @@ describe('카테고리별 줄일 금액', () => {
     const plan = allocateCuts(ledger(), eventAcc.id, '2026-11', 300_000);
     expect(plan.cuts.map((c) => [c.name, c.amount])).toEqual([
       ['경조사', 100_000],
-      ['선물', 80_000],
+      ['선물', 65_000],
     ]);
-    expect(plan.unallocated).toBe(120_000);
+    expect(plan.unallocated).toBe(135_000);
   });
 
   it('기록이 3개월 이하면 1년 평균과 비교하지 않고 평소 쓰는 돈에 비례', () => {
@@ -173,8 +173,8 @@ describe('추천 타협안 · 12개월 확인 · 요약', () => {
     expect(plan.monthlyRepay).toBe(161_000);
     expect(plan.cut.total).toBe(161_000);
     expect(plan.shortages).toEqual([]);
-    expect(plan.summary).toBe('추천: 적립 월 23만(+3만) · 쓰는 돈 월 16.1만 줄이기 → 12개월 부족 없음 · 저수지 빚 385만을 24개월에 갚아요');
-    expect(plan.raiseMessage).toBe('적립이 실제 필요보다 월 3만원 적어요 → 월 23만원으로 올려야 해요');
+    expect(plan.summary).toBe('추천: 적립 월 22만(+2만) · 쓰는 돈 월 16.1만 줄이기 → 12개월 부족 없음 · 저수지 빚 385만을 24개월에 갚아요');
+    expect(plan.raiseMessage).toBe('적립이 실제 필요보다 월 2만원 적어요 → 월 22만원으로 올려야 해요');
     expect(plan.cutMessage).toBe('저수지 빚을 24개월에 갚으려면 쓰는 돈을 월 16.1만원 줄여야 해요');
     expect(plan.cutGapMessage).toBeNull();
     expect(plan.shortageMessage).toBeNull();
@@ -184,7 +184,7 @@ describe('추천 타협안 · 12개월 확인 · 요약', () => {
     const data = ledger();
     const plan = recommendCompromise(data, TODAY, projectEventAccount(data, TODAY), { loanBalance: 3_850_000, repayMonths: 36 })!;
     expect(plan.monthlyRepay).toBe(107_000);
-    expect(plan.summary).toBe('추천: 적립 월 23만(+3만) · 쓰는 돈 월 10.7만 줄이기 → 12개월 부족 없음 · 저수지 빚 385만을 36개월에 갚아요');
+    expect(plan.summary).toBe('추천: 적립 월 22만(+2만) · 쓰는 돈 월 10.7만 줄이기 → 12개월 부족 없음 · 저수지 빚 385만을 36개월에 갚아요');
   });
 
   it('저수지 빚이 없으면 적립만, 적립이 충분하면 "그대로"', () => {
@@ -197,14 +197,14 @@ describe('추천 타협안 · 12개월 확인 · 요약', () => {
   });
 
   it('추천대로 해도 모자라면 어느 달에 얼마인지 알려 준다', () => {
-    // 평소 쓰는 돈(18만)보다 훨씬 많이 갚아야 해서 못 나눈 금액이 잔액을 깎는다
+    // 평소 쓰는 돈(16.5만)보다 훨씬 많이 갚아야 해서 못 나눈 금액이 잔액을 깎는다
     const data = ledger();
     const before = projectEventAccount(data, TODAY);
     expect(before.shortages).toEqual([]);
     const plan = recommendCompromise(data, TODAY, before, { loanBalance: 12_000_000, repayMonths: 12 })!;
     expect(plan.monthlyRepay).toBe(1_000_000);
-    expect(plan.cut.unallocated).toBe(820_000);
-    expect(plan.cutGapMessage).toBe('평소 쓰는 돈을 모두 줄여도 월 82만원이 모자라요');
+    expect(plan.cut.unallocated).toBe(835_000);
+    expect(plan.cutGapMessage).toBe('평소 쓰는 돈을 모두 줄여도 월 83.5만원이 모자라요');
     expect(plan.shortages.length).toBeGreaterThan(0);
     const first = plan.shortages[0]!;
     expect(first.month).toBe('2026-12');
