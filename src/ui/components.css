@@ -2067,6 +2067,16 @@ button.lrow {
   }
   .shell-side {
     display: block;
+    border-right: 0;
+  }
+  /* 사이드바는 화면에 고정 (sticky 는 Safari 에서 맨 아래까지 내려 튕길 때 본문과 함께 올라가요). 격자 칸은 자리만 차지 */
+  .side {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: var(--rail-width);
+    border-right: 1px solid var(--border);
+    z-index: var(--z-sticky);
   }
   .dock {
     display: none;
@@ -2151,6 +2161,7 @@ button.lrow {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }
   .side {
+    width: var(--sidebar-width);
     align-items: stretch;
     padding: var(--space-5) var(--space-4);
     overflow-y: auto;
