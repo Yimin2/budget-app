@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { isGoogleError } from '@/google';
 import { useSession } from '@/state';
 import { Banner, Button, Icon, type IconName, useToast } from '@/ui';
+import { InAppNotice } from './EnvNotices';
+import { useBrowserEnv } from './useBrowserEnv';
 
 const FEATURES: { icon: IconName; title: string; desc: string }[] = [
   { icon: 'cart', title: '사도 돼? 를 신호등으로', desc: '오늘 생활비와 앞으로의 일정을 보고 바로 알려 드려요' },
@@ -21,6 +23,7 @@ export function Welcome({ onGoogleStart, onGoogleFail }: { onGoogleStart?: () =>
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState<'google' | 'demo' | null>(null);
+  const env = useBrowserEnv();
 
   async function signIn() {
     setBusy('google');
@@ -76,6 +79,8 @@ export function Welcome({ onGoogleStart, onGoogleFail }: { onGoogleStart?: () =>
           구글로 시작하기를 누르면 같은 계정으로 이어서 쓸 수 있어요.
         </Banner>
       ) : null}
+
+      {session.googleAvailable ? <InAppNotice env={env} /> : null}
 
       <div className="sp-cta">
         <Button

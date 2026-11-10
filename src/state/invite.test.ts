@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LedgerRef } from '@/storage/types';
 import {
-  INVITE_MESSAGES, buildInviteLink, normalizeSpreadsheetId, openInvitedLedger, parseInviteSearch, shouldPromptShared,
+  INVITE_MESSAGES, buildInviteLink, normalizeSpreadsheetId, openInviteDirect, openInvitedLedger, parseInviteInput, parseInviteSearch,
+  shouldPromptShared,
 } from './invite';
 
 const ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd';
@@ -111,6 +112,29 @@ describe('초대 링크로 열기', () => {
     };
     await expect(openInvitedLedger({ describe: describeFn, pick: async (id) => ({ id, name: '' }) }, ID)).rejects.toThrow(
       '이 파일은 가계부로 열 수 없어요',
+    );
+  });
+});
+
+describe('붙여 넣은 초대 링크 (아이폰 홈 화면 앱)', () => {
+  it('초대 링크 · 시트 주소 · id · 앞뒤 글이 있는 메시지에서 id 를 꺼내요', () => {
+    expect(parseInviteInput(`https://budget.example/start?open=${ID}`)).toBe(ID);
+    expect(parseInviteInput(`  https://budget.example/start?utm=k&open=${ID}  `)).toBe(ID);
+    expect(parseInviteInput(`https://docs.google.com/spreadsheets/d/${ID}/edit#gid=0`)).toBe(ID);
+    expect(parseInviteInput(ID)).toBe(ID);
+    expect(parseInviteInput(`가계부 같이 써요! https://budget.example/start?open=${ID} 눌러 주세요`)).toBe(ID);
+    expect(parseInviteInput(`?open=${ID}`)).toBe(ID);
+    expect(parseInviteInput('https://budget.example/start')).toBeNull();
+    expect(parseInviteInput('아무 글')).toBeNull();
+    expect(parseInviteInput('')).toBeNull();
+  });
+
+  it('바로 열기: 읽히면 열고, 권한이 없으면 denied, 그 밖의 오류는 그대로', async () => {
+    await expect(openInviteDirect({ describe: async () => REF }, ID)).resolves.toEqual({ kind: 'opened', ref: REF });
+    await expect(openInviteDirect({ describe: async () => Promise.reject(new HttpError('x', 403)) }, ID)).resolves.toEqual({ kind: 'denied' });
+    await expect(openInviteDirect({ describe: async () => Promise.reject(new HttpError('x', 404)) }, ID)).resolves.toEqual({ kind: 'denied' });
+    await expect(openInviteDirect({ describe: async () => Promise.reject(new HttpError('Failed to fetch', 0)) }, ID)).rejects.toThrow(
+      INVITE_MESSAGES.failed,
     );
   });
 });

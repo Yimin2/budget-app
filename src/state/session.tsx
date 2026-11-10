@@ -5,7 +5,7 @@ import { createDefaultLedger, createDemoLedger, toISODate } from '@/domain';
 import * as googleModule from '@/google';
 import { createLedgerCache, LocalBackend, SheetsBackend, type LedgerCache } from '@/storage';
 import type { LedgerBackend, LedgerRef } from '@/storage/types';
-import { openInvitedLedger as runInviteOpen, type InviteOpenResult } from './invite';
+import { openInviteDirect, openInvitedLedger as runInviteOpen, type DirectOpenResult, type InviteOpenResult } from './invite';
 import { DEMO_LEDGER_ID, REMEMBER_KEY, SESSION_KEY, browserStorage, readJson, removeKey, writeJson, type SessionStorageLike } from './storageKeys';
 import type { SessionApi, SessionMode, SessionUser } from './types';
 
@@ -454,6 +454,17 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
     [deps, selectLedger],
   );
 
+  const openLedgerDirect = useCallback(
+    async (spreadsheetId: string): Promise<DirectOpenResult> => {
+      const s = stateRef.current;
+      if (s.status !== 'signedIn' || s.mode !== 'google') throw new Error('공유받은 가계부는 구글로 로그인해야 열 수 있어요');
+      const result = await openInviteDirect({ describe: (id) => deps.sheets.describe(id) }, spreadsheetId);
+      if (result.kind === 'opened') selectLedger(result.ref);
+      return result;
+    },
+    [deps, selectLedger],
+  );
+
   const forgetLedger = useCallback(
     (id: string) => {
       update((s) => ({
@@ -505,12 +516,13 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       createLedger,
       openSharedLedger,
       openInvitedLedger,
+      openLedgerDirect,
       forgetLedger,
       reconnectGoogle,
     }),
     [
       state, googleAvailable, signInWithGoogle, startDemo, signOut, activeLedger, selectLedger, createLedger, openSharedLedger,
-      openInvitedLedger, forgetLedger, reconnectGoogle,
+      openInvitedLedger, openLedgerDirect, forgetLedger, reconnectGoogle,
     ],
   );
 

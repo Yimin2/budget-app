@@ -11,7 +11,7 @@ import type { InstallmentInput, InstallmentPatch } from '@/domain/installments';
 import type { ImportFile, ImportPlan } from '@/domain/importFile';
 import type { Settlement } from '@/domain/settlement';
 import type { LedgerRef } from '@/storage/types';
-import type { InviteOpenResult } from './invite';
+import type { DirectOpenResult, InviteOpenResult } from './invite';
 
 export type SessionMode = 'google' | 'demo';
 
@@ -50,6 +50,11 @@ export interface SessionApi {
    * 열리면 최근 목록에 넣고 지금 가계부로 골라요. 선택 창을 닫으면 { kind: 'cancelled' }
    */
   openInvitedLedger(spreadsheetId: string): Promise<InviteOpenResult>;
+  /**
+   * 선택 창 없이 바로 열기 (아이폰 홈 화면 앱 · 앱 안 브라우저, 구글 모드만). 열리면 최근 목록에 넣고 지금 가계부로 골라요.
+   * 아직 이 앱에 허락되지 않은 파일이면 { kind: 'denied' } (Safari 에서 한 번 골라야 해요)
+   */
+  openLedgerDirect(spreadsheetId: string): Promise<DirectOpenResult>;
   forgetLedger(id: string): void;
   /** 구글 연결 다시 맺기 (버튼 클릭 안에서). 조용한 복구가 막혀 가계부를 못 불러올 때 */
   reconnectGoogle(): Promise<void>;
