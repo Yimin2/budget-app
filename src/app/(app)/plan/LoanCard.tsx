@@ -1,10 +1,10 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { formatShortDate, formatWon } from '@/domain';
+import { formatMan, formatShortDate, formatWon, settledReservoirEventClaims } from '@/domain';
 import type { Expense, LedgerData } from '@/domain';
 import { useLedger } from '@/state';
-import { Badge, Button, Card, Icon, Money, useToast } from '@/ui';
+import { Badge, Button, Card, Icon, cx, useToast } from '@/ui';
 import styles from '../_components/claims.module.css';
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
@@ -17,8 +17,10 @@ function expenseTitle(data: LedgerData, e: Expense): string {
 }
 
 /**
- * 저수지에 갚을 돈 (PLAN 4-9). 이벤트통장이 모자라 저수지에서 빌린 돈과 갚기 제안,
- * 저수지에서 쓴 이벤트 지출을 '이벤트통장이 갚을 돈'으로 바꾸는 곳이에요. 자동으로 옮기지 않아요
+ * 저수지에 갚을 돈 (PLAN 4-9). 저수지에 '줄' 돈은 없고, 빌린 돈을 '갚을' 돈만 있어요.
+ * 한 줄: '저수지에 갚을 돈 385만 · 이번 달 갚기 제안 10만 [갚았어요]'. 누르면 자세히: 갚은 기록 되돌리기 ·
+ * 저수지에서 이미 지급한 이벤트 청구를 한 번에 갚을 돈으로 바꾸기 · 저수지에서 쓴 이벤트 지출을 하나씩 바꾸기 · 빌리고 갚은 기록.
+ * 자동으로 옮기지 않아요
  */
 export function LoanCard() {
   const ledger = useLedger();
@@ -30,7 +32,8 @@ export function LoanCard() {
   if (!s || !data || !s.reservoirAccountId) return null;
   const { loan, repay } = s;
   const candidates = ledger.loanCandidates;
-  if (loan.borrowed === 0 && loan.repaid === 0 && candidates.length === 0) return null;
+  const settled = settledReservoirEventClaims(data);
+  if (loan.borrowed === 0 && loan.repaid === 0 && candidates.length === 0 && settled.length === 0) return null;
   const expenseById = new Map(data.expenses.map((e) => [e.id, e]));
 
   async function act(key: string, work: () => Promise<void>, message: string, undo?: () => Promise<void>) {
@@ -61,52 +64,85 @@ export function LoanCard() {
     }
   }
 
+  const settledIds = settled.map((e) => e.id);
+  const settledTotal = settled.reduce((t, e) => t + e.amount, 0);
+  const extra = candidates.length + settled.length;
+
   return (
-    <Card
-      as="section"
-      aria-labelledby={titleId}
-      title={<span id={titleId}>저수지에 갚을 돈</span>}
-      aside={<Money amount={loan.balance} />}
-    >
-      <p className={styles.summaryLine}>이벤트통장이 모자라 저수지에서 빌린 돈이에요. 남는 달에 갚아요</p>
-
+    <Card as="section" aria-label="저수지에 갚을 돈" className={styles.lineCard}>
+      <p className={styles.oneLine}>
+        저수지에 갚을 돈 <strong>{formatMan(loan.balance)}</strong>
+        {repay ? <span className={styles.oneLineSub}> · 이번 달 갚기 제안 {formatMan(repay.amount)}</span> : null}
+        {!repay && loan.repaidThisMonth ? (
+          <span className={styles.oneLineSub}> · 이번 달 {formatMan(loan.repaidThisMonth.amount)} 갚았어요</span>
+        ) : null}
+      </p>
       {repay ? (
-        <div className={styles.suggest}>
-          <span className={styles.dueText}>
-            <strong>이번 달 저수지에 {formatWon(repay.amount)} 갚기</strong>
-            <span>갚아도 3개월 동안 이벤트통장이 모자라지 않아요</span>
-          </span>
-          <Button
-            icon="check"
-            loading={busy === 'repay'}
-            disabled={busy !== null && busy !== 'repay'}
-            onClick={() =>
-              void act('repay', () => ledger.repayLoan(repay.amount), `저수지에 ${formatWon(repay.amount)} 갚았다고 기록했어요`, () =>
-                ledger.undoRepayLoan(),
-              )
-            }
-            aria-label={`저수지에 ${formatWon(repay.amount)} 갚았어요`}
-          >
-            갚았어요
-          </Button>
-        </div>
+        <Button
+          icon="check"
+          className={styles.lineBtn}
+          loading={busy === 'repay'}
+          disabled={busy !== null && busy !== 'repay'}
+          onClick={() =>
+            void act('repay', () => ledger.repayLoan(repay.amount), `저수지에 ${formatWon(repay.amount)} 갚았다고 기록했어요`, () =>
+              ledger.undoRepayLoan(),
+            )
+          }
+          aria-label={`저수지에 ${formatWon(repay.amount)} 갚았어요`}
+        >
+          갚았어요
+        </Button>
       ) : null}
 
-      {loan.repaidThisMonth ? (
-        <div className={styles.suggest}>
-          <span className={styles.dueText}>
-            <strong>이번 달 {formatWon(loan.repaidThisMonth.amount)} 갚았어요</strong>
-          </span>
-          <Button
-            variant="ghost"
-            loading={busy === 'undoRepay'}
-            disabled={busy !== null && busy !== 'undoRepay'}
-            onClick={() => void act('undoRepay', () => ledger.undoRepayLoan(), '갚은 기록을 되돌렸어요')}
-          >
-            되돌리기
-          </Button>
-        </div>
-      ) : null}
+      <details className={styles.lineDetails}>
+        <summary>
+          <span>{extra > 0 ? `자세히 · 바꿀 수 있는 기록 ${extra}건` : '자세히'}</span>
+          <Icon name="chevron-down" size={20} className={styles.moreChev} />
+        </summary>
+        <p className={styles.note}>
+          이벤트통장이 모자라 저수지에서 빌린 돈이에요. 저수지에 줘야 할 돈은 없고, 빌린 만큼만 남는 달에 갚아요
+        </p>
+        {repay ? <p className={styles.note}>{formatWon(repay.amount)}을 갚아도 3개월 동안 이벤트통장이 모자라지 않아요</p> : null}
+
+        {loan.repaidThisMonth ? (
+          <div className={styles.suggest}>
+            <span className={styles.dueText}>
+              <strong>이번 달 {formatWon(loan.repaidThisMonth.amount)} 갚았어요</strong>
+            </span>
+            <Button
+              variant="ghost"
+              loading={busy === 'undoRepay'}
+              disabled={busy !== null && busy !== 'undoRepay'}
+              onClick={() => void act('undoRepay', () => ledger.undoRepayLoan(), '갚은 기록을 되돌렸어요')}
+            >
+              되돌리기
+            </Button>
+          </div>
+        ) : null}
+
+        {settled.length > 0 ? (
+          <div className={cx(styles.borrow, styles.convertBox)}>
+            <p>
+              저수지에서 이미 지급한 이벤트 지출이 <strong>{settled.length}건</strong> 있어요 (
+              {[...new Set(settled.map((e) => e.paidBy ?? ''))].filter(Boolean).join(' · ')}). 이벤트통장이 저수지에서 빌린 돈이에요
+            </p>
+            <Button
+              icon="arrow-right"
+              loading={busy === 'convert'}
+              disabled={busy !== null && busy !== 'convert'}
+              onClick={() =>
+                void act(
+                  'convert',
+                  () => ledger.convertSettledReservoirClaims(settledIds),
+                  `${settledIds.length}건 ${formatWon(settledTotal)}을 저수지에 갚을 돈으로 바꿨어요`,
+                  () => ledger.undoReservoirClaims(settledIds, 'converted'),
+                )
+              }
+            >
+              {settled.length}건 {formatWon(settledTotal)}을 저수지에 갚을 돈으로 바꿔요
+            </Button>
+          </div>
+        ) : null}
 
       {candidates.length > 0 ? (
         <details className={styles.more}>
@@ -196,6 +232,7 @@ export function LoanCard() {
           </ul>
         </details>
       ) : null}
+      </details>
     </Card>
   );
 }

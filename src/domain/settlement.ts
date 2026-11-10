@@ -9,10 +9,10 @@
  *   다음 청구가 안 들어가면 건너뛰고 그 뒤의 더 작은 청구를 넣어 본다 (first-fit). 안 들어간 청구는 '다음 달로 넘어가요'
  * - 고정지출통장(생활비) 청구는 그 통장에서 돌려주므로 금액 한도 없이 이번 달 지급에 들어간다
  * - 저수지통장 청구 중 이벤트 지출(이벤트 카테고리 · 일정 · 여행)은 이벤트통장에 돈이 없어 저수지 돈으로 낸 것이라
- *   '저수지에서 빌려 줄 돈'으로 묶는다. 지급하면 지출을 이벤트통장으로 옮기고 빌린 이체 loan:claim:<지출id>(저수지 → 이벤트통장)와
+ *   '저수지에서 빌려 지급'할 청구로 묶는다 (사람에게 줄 돈이고, 저수지는 받는 쪽이 아니다). 지급하면 지출을 이벤트통장으로 옮기고 빌린 이체 loan:claim:<지출id>(저수지 → 이벤트통장)와
  *   돌려준 이체 claim:<지출id>(이벤트통장 → 낸 사람)를 남긴다 → 저수지에 갚을 돈이 늘어난다
  * - 저수지에서 이미 돌려준 이벤트 청구(가져온 기록)도 한 번에 갚을 돈으로 바꿀 수 있다 (settledReservoirEventClaims)
- * - 그 밖의 저수지통장 청구(저수지에 쓸 돈을 개인 돈으로 낸 것)는 '저수지에 쓸 돈'으로 따로 묶는다. 저수지에서 돌려주고 빌린 돈이 아니다
+ * - 그 밖의 저수지통장 청구(저수지통장 지출을 개인 돈으로 낸 것)는 '저수지에서 지급'할 청구로 따로 묶는다. 저수지에서 돌려주고 빌린 돈이 아니다
  * - 넘어가는 청구의 지급 예상 달 = 그 청구들을 뺀 예측(평소 쓰는 돈 포함)에서, 오래된 순 누적 금액을 그달부터 12개월 끝까지
  *   예상 잔액이 감당하는 첫 달
  *
@@ -249,10 +249,10 @@ export interface Settlement {
   /** 다음 달로 넘어가요 (이벤트통장 몫 중 안 들어간 것) */
   carry: CarryPerson[];
   carryTotal: Won;
-  /** 저수지에 쓸 돈 (저수지통장의 이벤트 아닌 청구, 돌려줄 날 상관없이 모두). 저수지에서 돌려주고 빌린 돈이 아니다 */
+  /** 저수지에서 지급할 청구 (저수지통장의 이벤트 아닌 청구, 돌려줄 날 상관없이 모두). 사람에게 줄 돈이고, 빌린 돈이 아니다 */
   reservoir: PersonClaims[];
   reservoirTotal: Won;
-  /** 저수지에서 빌려 줄 돈 (저수지통장의 이벤트 청구, 돌려줄 날 상관없이 모두). 지급하면 저수지에 갚을 돈이 된다 */
+  /** 저수지에서 빌려 지급할 청구 (저수지통장의 이벤트 청구, 돌려줄 날 상관없이 모두). 사람에게 줄 돈이고, 지급하면 저수지에 갚을 돈이 된다 */
   reservoirLoan: PersonClaims[];
   reservoirLoanTotal: Won;
   /** 아직 돌려줄 날이 안 된 이벤트 · 고정지출통장 청구 */
@@ -421,7 +421,7 @@ export function followLoanTransfers(data: LedgerData, next: Expense): Transfer[]
   return out;
 }
 
-/** 정산 카드에서 고를 수 있는 청구 묶음 */
+/** 정산 화면에서 고를 수 있는 청구 묶음 */
 export type SettlementGroup = 'pay' | 'carry' | 'reservoir' | 'reservoirLoan' | 'upcoming';
 
 /**
@@ -488,4 +488,148 @@ export function settledReservoirEventClaims(data: LedgerData): Expense[] {
       return Boolean(settle && settle.fromAccountId === e.accountId && !live.has(claimLoanTransferId(e.id)));
     })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1));
+}
+
+/* ───────── 정산 화면 (/plan/settle) · 이벤트 화면 한 줄 요약 ───────── */
+
+/**
+ * 정산 화면의 항목 종류
+ * - pay: 이번 달 지급 (이벤트통장 · 고정지출통장)
+ * - carry: 지급할 수 있는 돈에 안 들어가 다음 달로 넘어가는 이벤트통장 청구
+ * - borrow: 저수지통장 이벤트 청구 = 저수지에서 빌려 지급 (지급하면 저수지에 갚을 돈)
+ * - reservoir: 저수지통장의 이벤트 아닌 청구 = 저수지에서 지급 (빌린 돈이 아니다)
+ * - upcoming: 아직 정산일 전
+ */
+export type SettleItemKind = 'pay' | 'carry' | 'borrow' | 'reservoir' | 'upcoming';
+
+export interface SettleItem {
+  claim: PendingClaim;
+  kind: SettleItemKind;
+}
+
+export interface SettlePerson {
+  name: string;
+  /** 그 사람의 모든 항목 합 */
+  amount: Won;
+  /** 오래된 순 */
+  items: SettleItem[];
+}
+
+/** 정산 화면: 모든 청구를 사람마다 한 목록으로 (사람 순서 = 이번 달 지급 → 넘어가요 → 저수지 → 정산일 전에 처음 나온 순) */
+export function settleRoster(s: Settlement): SettlePerson[] {
+  const groups: [SettleItemKind, PersonClaims[]][] = [
+    ['pay', s.pay],
+    ['carry', s.carry],
+    ['borrow', s.reservoirLoan],
+    ['reservoir', s.reservoir],
+    ['upcoming', s.upcoming],
+  ];
+  const out: SettlePerson[] = [];
+  const seen = new Set<Id>();
+  for (const [kind, list] of groups) {
+    for (const g of list) {
+      for (const claim of g.claims) {
+        if (seen.has(claim.expense.id)) continue;
+        seen.add(claim.expense.id);
+        let p = out.find((x) => x.name === claim.payer);
+        if (!p) {
+          p = { name: claim.payer, amount: 0, items: [] };
+          out.push(p);
+        }
+        p.amount += claim.amount;
+        p.items.push({ claim, kind });
+      }
+    }
+  }
+  for (const p of out) p.items.sort((a, b) => oldestFirst(a.claim, b.claim));
+  return out;
+}
+
+export interface SettlementSummary {
+  /** 이번 달 줄 돈 = 처음 골라 둘 청구 (이번 달 지급 + 돌려줄 날이 된 저수지 청구) */
+  total: Won;
+  /** 사람마다 (많은 순) */
+  people: { name: string; amount: Won }[];
+  /** 정산일 */
+  date: ISODate;
+  /** 줄 돈이 없을 때 다음에 줄 돈: 가장 이른 정산일과 그날 줄 돈 (없으면 null) */
+  next: { date: ISODate; amount: Won } | null;
+  /** 넘어가는 돈 합과 가장 늦은 지급 예상 달 (12개월 안에 어려우면 null) */
+  carry: { amount: Won; estimate: YearMonth | null } | null;
+  /** 아직 안 돌려준 청구가 하나라도 있는지 (정산 화면을 열 만한지) */
+  hasClaims: boolean;
+}
+
+/** 이벤트 화면 · 홈의 한 줄 요약: '이번 달 줄 돈 32.4만 (민구 30만 · 기쁜 2.4만) · 11/21' */
+export function settlementSummary(s: Settlement): SettlementSummary {
+  const picked = defaultSettlementSelection(s);
+  const roster = settleRoster(s);
+  const people = roster
+    .map((p) => ({ name: p.name, amount: p.items.filter((i) => picked.has(i.claim.expense.id)).reduce((t, i) => t + i.claim.amount, 0) }))
+    .filter((p) => p.amount > 0)
+    .sort((a, b) => b.amount - a.amount || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const later = roster.flatMap((p) => p.items).filter((i) => !picked.has(i.claim.expense.id) && i.kind !== 'carry');
+  let next: SettlementSummary['next'] = null;
+  if (later.length > 0) {
+    const date = later.reduce((m, i) => (i.claim.due < m ? i.claim.due : m), later[0]!.claim.due);
+    next = { date, amount: later.filter((i) => i.claim.due === date).reduce((t, i) => t + i.claim.amount, 0) };
+  }
+  let carry: SettlementSummary['carry'] = null;
+  if (s.carry.length > 0) {
+    let estimate: YearMonth | null = s.carry[0]!.estimate;
+    for (const g of s.carry) {
+      if (g.estimate === null || estimate === null) {
+        estimate = null;
+        break;
+      }
+      if (g.estimate > estimate) estimate = g.estimate;
+    }
+    carry = { amount: s.carryTotal, estimate };
+  }
+  return {
+    total: people.reduce((t, p) => t + p.amount, 0),
+    people,
+    date: s.date,
+    next,
+    carry,
+    hasClaims: roster.length > 0,
+  };
+}
+
+export interface SettlePlan {
+  /** 고른 청구 (오래된 순) */
+  claims: PendingClaim[];
+  total: Won;
+  /** 그냥 지급 (이벤트통장 몫 중 한도 안 + 고정지출통장 + 저수지에서 지급) */
+  settle: Id[];
+  /** 저수지에서 빌려 지급하는 이벤트통장 청구 (지급할 수 있는 돈을 넘는 것) */
+  over: Id[];
+  /** 저수지에서 빌려 지급하는 저수지통장 이벤트 청구 */
+  borrow: Id[];
+  /** 지급할 수 있는 돈보다 많은 금액 */
+  excess: Won;
+  /** 넘는 돈 없이 지급할 수 있는지 */
+  fits: boolean;
+}
+
+/**
+ * 정산 화면에서 고른 청구를 어떻게 지급할지 나눈다. 저수지통장 이벤트 청구는 늘 저수지에서 빌려 지급하고,
+ * 나머지는 checkSettlementSelection 으로 지급할 수 있는 돈과 견준다 (넘는 이벤트통장 청구 = over)
+ */
+export function planSettlement(data: LedgerData, s: Settlement, selected: Iterable<Id>): SettlePlan {
+  const ids = new Set(selected);
+  const borrowIds = new Set(s.reservoirLoan.flatMap((g) => g.claims.map((c) => c.expense.id)).filter((id) => ids.has(id)));
+  const rest = [...ids].filter((id) => !borrowIds.has(id));
+  const check = checkSettlementSelection(data, s, rest);
+  const borrowClaims = s.reservoirLoan.flatMap((g) => g.claims).filter((c) => borrowIds.has(c.expense.id));
+  const claims = [...check.claims, ...borrowClaims].sort(oldestFirst);
+  return {
+    claims,
+    total: sumOf(claims),
+    settle: check.within,
+    over: check.over,
+    borrow: borrowClaims.map((c) => c.expense.id),
+    excess: check.excess,
+    fits: check.fits,
+  };
 }

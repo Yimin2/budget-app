@@ -438,3 +438,52 @@
     transition: none;
   }
 }
+
+/* 한 줄 요약 카드 (이번 달 정산 · 저수지에 갚을 돈) */
+.lineCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.oneLine {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.oneLine strong {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.oneLineSub {
+  color: var(--text-muted);
+}
+.lineBtn {
+  flex: none;
+}
+.lineDetails {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.lineDetails > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--primary);
+  cursor: pointer;
+  list-style: none;
+}
+.lineDetails > summary::-webkit-details-marker {
+  display: none;
+}
+.lineDetails[open] .moreChev {
+  transform: rotate(180deg);
+}

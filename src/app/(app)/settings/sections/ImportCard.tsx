@@ -201,21 +201,21 @@ export function ImportPreview({ plan }: { plan: ImportPlan }) {
             ) : null}
             {plan.claims.reservoirLoanPending.length > 0 ? (
               <li>
-                그중 저수지에서 빌려 줄 돈 (이벤트 지출){' '}
+                그중 저수지에서 빌려 지급할 이벤트 청구{' '}
                 {plan.claims.reservoirLoanPending.map((p) => `${p.payer} ${p.count}건 ${formatWon(p.amount)}`).join(' · ')}
                 {' '}· 지급하면 저수지에 갚을 돈이 돼요
               </li>
             ) : null}
             {plan.claims.reservoirPending.length > 0 ? (
               <li>
-                그중 저수지에 쓸 돈{' '}
+                그중 저수지에서 지급할 청구{' '}
                 {plan.claims.reservoirPending.map((p) => `${p.payer} ${p.count}건 ${formatWon(p.amount)}`).join(' · ')}
               </li>
             ) : null}
             {plan.claims.reservoirLoanSettled.count > 0 ? (
               <li>
                 저수지에서 돌려준 이벤트 지출 {plan.claims.reservoirLoanSettled.count}건 ·{' '}
-                {formatWon(plan.claims.reservoirLoanSettled.amount)} · 가져온 뒤 정산 카드에서 저수지에 갚을 돈으로 바꿀 수 있어요
+                {formatWon(plan.claims.reservoirLoanSettled.amount)} · 가져온 뒤 이벤트 화면의 '저수지에 갚을 돈'에서 갚을 돈으로 바꿀 수 있어요
               </li>
             ) : null}
             {plan.claims.settledCount > 0 ? (
