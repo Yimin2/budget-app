@@ -268,7 +268,7 @@ describe('EventsView — 체험 가계부', () => {
     await waitFor(() => expect(within(upcoming).queryByText('지수 결혼식')).toBeNull());
   });
 
-  it('일정 카드의 여행 줄: 여행 표시 · 쓴 돈 / 예산 · 남은 예산, 누르면 여행 화면, [+ 추가]로 여행 추가', async () => {
+  it('일정 카드의 여행 줄: 여행 표시 · 쓴 돈 / 예산 · 남은 예산, 누르면 여행 화면, [+ 추가] 메뉴로 여행 추가', async () => {
     const h = await renderEvents();
     const card = screen.getByRole('region', { name: /^일정 · / });
     const link = within(card).getByRole('link', { name: /제주 여행/ });
@@ -286,13 +286,16 @@ describe('EventsView — 체험 가계부', () => {
     const feb = h.probe.ledger!.eventProjection!.months.find((m) => m.tripList?.length)!;
     expect(feb.trips).toBe(450_000);
 
-    // [+ 추가]는 같은 자리에서 [새 일정] · [여행 추가]를 펼쳐요
+    // [+ 추가] 메뉴의 '여행 추가'로 여행 창을 열어요
     const add = within(card).getByRole('button', { name: '추가' });
+    expect(add.getAttribute('aria-haspopup')).toBe('menu');
     expect(add.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(add);
     expect(add.getAttribute('aria-expanded')).toBe('true');
-    expect(within(card).getByRole('button', { name: '새 일정' })).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { name: '여행 추가' }));
+    const menu = within(card).getByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: '새 일정' })).toBeTruthy();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '여행 추가' }));
+    expect(within(card).queryByRole('menu')).toBeNull();
     const dialog = await screen.findByRole('dialog', { name: '여행 추가' });
     fireEvent.click(within(dialog).getByRole('button', { name: '추가하기' }));
     expect(await within(dialog).findByText('여행 이름을 입력해 주세요')).toBeTruthy();

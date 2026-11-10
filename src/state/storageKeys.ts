@@ -63,3 +63,5 @@ export function removeKey(storage: SessionStorageLike | null, key: string): void
 export const REPAY_MONTHS_KEY = 'budget:repayMonths';
 /** 통장 고르기에서 최근 고른 통장 id (기기마다, 최근 것이 앞). 시트 칸 없음 */
 export const RECENT_ACCOUNTS_KEY = 'budget:recentAccounts';
+/** 이벤트 '일정' 카드의 '지난 기록에서 매년 반복되는 일 N건을 찾았어요' 안내를 이 기기에서 닫았는지 ('1'). 시트 칸 없음 */
+export const RECURRING_HINT_KEY = 'budget:recurringHintDismissed';

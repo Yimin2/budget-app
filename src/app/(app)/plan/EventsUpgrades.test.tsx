@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventsView } from './EventsView';
-import { makeHarness } from './testHarness';
+import { chooseScheduleAdd, makeHarness } from './testHarness';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -49,26 +49,35 @@ describe('범위 띠 (아끼면 ~ 많이 쓰면)', () => {
   });
 });
 
-describe('매년 돌아오는 일 (일정 카드의 [기록에서 찾기])', () => {
-  /** '일정' 카드의 [기록에서 찾기]를 눌러 같은 자리에서 펼쳐요 */
+describe('매년 돌아오는 일 (일정 카드의 [+ 추가] → 기록에서 찾기)', () => {
+  /** '일정' 카드의 [+ 추가] 메뉴에서 '기록에서 찾기'를 눌러 같은 자리에서 펼쳐요 */
   function openRecurring() {
+    chooseScheduleAdd(/^기록에서 찾기/);
     const schedule = screen.getByRole('region', { name: /^일정 · / });
-    const btn = within(schedule).getByRole('button', { name: /^기록에서 찾기/ });
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-expanded')).toBe('true');
-    return { btn, card: within(schedule).getByRole('region', { name: '매년 돌아오는 일' }) };
+    return { card: within(schedule).getByRole('region', { name: '매년 돌아오는 일' }) };
   }
+  const addMenu = () => {
+    const schedule = screen.getByRole('region', { name: /^일정 · / });
+    fireEvent.click(within(schedule).getByRole('button', { name: '추가' }));
+    return within(schedule).getByRole('menu');
+  };
 
   it('작년 기록을 찾아 제안하고 [넣기]는 같은 날 매년 일정으로, 그 뒤엔 제안이 사라져요', async () => {
     const h = await renderEvents();
-    const schedule = screen.getByRole('region', { name: /^일정 · / });
-    expect(within(schedule).getByRole('button', { name: /^기록에서 찾기/ }).textContent).toBe('기록에서 찾기');
+    // 찾은 게 없으면 메뉴에 '기록에서 찾기'가 없고 안내도 없어요
+    let menu = addMenu();
+    expect(within(menu).queryByRole('menuitem', { name: /^기록에서 찾기/ })).toBeNull();
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(screen.queryByText(/매년 반복되는 일 \d+건을 찾았어요/)).toBeNull();
     expect(screen.queryByRole('region', { name: '매년 돌아오는 일' })).toBeNull();
     await act(async () => {
       await h.probe.ledger!.addExpense({ date: '2025-12-08', amount: 120_000, accountId: 'demo-acc-event', categoryId: null, memo: '하늘 생신' });
     });
-    // 찾은 제안 수가 버튼에 보여요
-    await waitFor(() => expect(within(screen.getByRole('region', { name: /^일정 · / })).getByRole('button', { name: /^기록에서 찾기/ }).textContent).toBe('기록에서 찾기1건'));
+    // 찾은 제안 수가 메뉴 항목에 보여요
+    await screen.findByText('지난 기록에서 매년 반복되는 일 1건을 찾았어요');
+    menu = addMenu();
+    expect(within(menu).getByRole('menuitem', { name: /^기록에서 찾기,\s?1건$/ })).toBeTruthy();
+    fireEvent.keyDown(menu, { key: 'Escape' });
     const { card } = openRecurring();
     expect(card.textContent).toContain("작년 12월에 '하늘 생신' 120,000원이 있었어요. 올해도 일정으로 넣을까요?");
     await act(async () => {

@@ -32,3 +32,4 @@ export {
   MOTION_MS, motionAllowed, useMotionAllowed, useAnimatedNumber, usePresence, presenceClass, useChanged,
   type PresenceItem, type PresenceState,
 } from './motion';
+export { MenuButton, type MenuButtonProps, type MenuItem } from './Menu';

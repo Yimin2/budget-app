@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { formatMan, formatShortDate, formatWon, lunarRepeatLabel, monthOf, tripPeriodText } from '@/domain';
 import type { Category, Id, ISODate, LedgerData, PlannedEvent, TripStatus, Won, YearMonth } from '@/domain';
-import { Badge, Button, Card, Icon, cx } from '@/ui';
+import { RECURRING_HINT_KEY } from '@/state';
+import { Badge, Button, Card, Icon, MenuButton, cx, type MenuItem } from '@/ui';
 import { AnnualCard } from './AnnualCard';
 import { EmptyEvents } from './EmptyEvents';
 import type { EventPreset } from './EventDialog';
@@ -26,7 +27,7 @@ export interface ScheduleCardProps {
   busyId: Id | null;
   /** 여행 (이벤트통장이 없으면 빈 목록) */
   trips: TripStatus[];
-  /** 매년 일정 한 번에 등록 · 기록에서 찾기를 보일지 (이벤트통장이 있을 때) */
+  /** [+ 추가] 메뉴에 여행 추가 · 매년 일정 한 번에 등록 · 기록에서 찾기를 보일지 (이벤트통장이 있을 때) */
   planning: boolean;
   data: LedgerData;
   /** 일정이 하나도 없을 때 빈 상태의 예시 카테고리 */
@@ -42,7 +43,24 @@ type RowProps = Pick<ScheduleCardProps, 'today' | 'categories' | 'spent' | 'disp
 
 const PAST_PAGE = 10;
 
-type Panel = 'annual' | 'recurring' | 'add' | null;
+/** '매년 반복되는 일 N건을 찾았어요' 안내를 이 기기에서 닫았는지 (못 읽으면 안 닫은 것으로) */
+function readHintDismissed(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem(RECURRING_HINT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeHintDismissed(): void {
+  try {
+    window.localStorage.setItem(RECURRING_HINT_KEY, '1');
+  } catch {
+    // 사생활 보호 모드 등: 이번 화면에서만 닫혀요
+  }
+}
+
+type Panel = 'annual' | 'recurring' | null;
 
 /** 다가오는 줄: 일정 또는 여행 (날짜순으로 섞어요) */
 type Entry = { kind: 'event'; date: ISODate; event: PlannedEvent } | { kind: 'trip'; date: ISODate; trip: TripStatus };
@@ -83,7 +101,8 @@ export function scheduleGroups(sections: EventSections, trips: TripStatus[], tod
 
 /**
  * 이벤트 화면 카드 4 '일정 · 10건 170만' (PLAN 4-3 · 4-11).
- * 제목 줄 버튼: [매년 일정 한 번에 등록] · [기록에서 찾기 N건] · [+ 추가](같은 자리에서 [새 일정] · [여행 추가]) — 누르면 카드 안에서 펼쳐져요 (창 없음).
+ * 제목 줄 버튼은 [+ 추가] 하나: 버튼에 붙는 작은 메뉴(창 아님)로 새 일정 · 여행 추가 · 매년 일정 한 번에 등록 · 기록에서 찾기 N건(0건이면 없음).
+ * 매년 일정 · 기록에서 찾기는 카드 안에서 펼쳐요 ([닫기]로 접음). 기록에서 찾은 게 있으면 목록 위에 '… N건을 찾았어요 [보기]' 안내(이 기기에서 닫을 수 있음).
  * 날짜가 지난 예정 일정(썼어요 / 취소됐어요) → 다가오는 일정과 여행(달별, 날짜순. 여행은 '여행' 표시 · '45만 / 90만' · '남은 45만', 누르면 여행 화면)
  * → 지난 일정(접힘). 넓은 카드는 달 묶음을 두 칸으로 흘려요. 폰에서는 첫 달만 보이고 [펼치기]로 나머지
  */
@@ -92,6 +111,11 @@ export function ScheduleCard(props: ScheduleCardProps) {
   const titleId = useId();
   const ids = useId().replace(/:/g, '');
   const [panel, setPanel] = useState<Panel>(null);
+  const [hintHidden, setHintHidden] = useState(readHintDismissed);
+  const addBtn = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  /** 메뉴 · 안내로 칸을 펼칠 때마다 1씩 늘려 그 칸으로 포커스를 옮겨요 */
+  const [focusReq, setFocusReq] = useState(0);
   const fold = useMobileFold('일정 목록');
   const groups = useMemo(() => scheduleGroups(sections, trips, today), [sections, trips, today]);
   const recurring = useMemo(() => (planning ? recurringList(data, today).length : 0), [planning, data, today]);
@@ -100,10 +124,47 @@ export function ScheduleCard(props: ScheduleCardProps) {
   const pastTrips = trips.filter((t) => t.phase === 'past').length;
   const empty = sections.total === 0;
   const thisMonth = monthOf(today);
-  const panelId = (p: Exclude<Panel, null>) => `${ids}-${p}`;
-  const toggle = (p: Exclude<Panel, null>) => setPanel((cur) => (cur === p ? null : p));
-  const panelBtn = (p: Exclude<Panel, null>) => ({ 'aria-expanded': panel === p, 'aria-controls': panelId(p), onClick: () => toggle(p) });
   const foldable = groups.length > 1 || sections.past.length > 0 || pastTrips > 0;
+
+  useEffect(() => {
+    if (focusReq > 0) panelRef.current?.focus();
+  }, [focusReq]);
+
+  const openPanel = (p: Exclude<Panel, null>) => {
+    setPanel(p);
+    setFocusReq((n) => n + 1);
+  };
+  const closePanel = () => {
+    setPanel(null);
+    addBtn.current?.focus();
+  };
+  const dismissHint = () => {
+    setHintHidden(true);
+    writeHintDismissed();
+  };
+
+  const items: MenuItem[] = [
+    { id: 'event', label: '새 일정', hint: '결혼식 · 생신처럼 한 번 있는 일', icon: 'calendar', onSelect: () => onAdd() },
+  ];
+  if (planning) {
+    items.push(
+      { id: 'trip', label: '여행 추가', hint: '기간 · 예산을 정하고 지출을 묶어요', icon: 'plane', onSelect: onAddTrip },
+      { id: 'annual', label: '매년 일정 한 번에 등록', hint: '설 · 추석 · 생신 · 어버이날', icon: 'repeat', onSelect: () => openPanel('annual') },
+    );
+    // 기록에서 찾은 게 없으면 메뉴에 두지 않아요
+    if (recurring > 0) {
+      items.push({
+        id: 'recurring',
+        label: '기록에서 찾기',
+        badge: `${recurring}건`,
+        hint: '지난 지출에서 매년 반복되는 일 추천',
+        icon: 'search',
+        onSelect: () => openPanel('recurring'),
+      });
+    }
+  }
+  const panelName = panel === 'annual' ? '매년 일정 한 번에 등록' : '매년 돌아오는 일';
+  const showHint = recurring > 0 && !hintHidden && panel !== 'recurring';
 
   return (
     <Card as="section" className={cx(foldStyles.card, styles.card)} aria-labelledby={titleId}>
@@ -111,39 +172,40 @@ export function ScheduleCard(props: ScheduleCardProps) {
         titleId={titleId}
         title={count > 0 ? `일정 · ${count}건 ${formatMan(total)}` : '일정'}
         actions={
-          <>
-            {planning ? (
-              <>
-                <Button variant="outline" {...panelBtn('annual')}>
-                  매년 일정 한 번에 등록
-                </Button>
-                <Button variant="outline" {...panelBtn('recurring')}>
-                  기록에서 찾기
-                  {recurring > 0 ? <span className={styles.btnCount}>{recurring}건</span> : null}
-                </Button>
-              </>
-            ) : null}
-            <Button icon="plus" {...panelBtn('add')}>
-              추가
-            </Button>
-          </>
+          <MenuButton
+            label="추가"
+            icon="plus"
+            menuLabel="무엇을 추가할까요"
+            items={items}
+            buttonRef={addBtn}
+          />
         }
       />
 
-      {panel === 'add' ? (
-        <div id={panelId('add')} className={styles.addRow} role="group" aria-label="무엇을 추가할까요">
-          <Button variant="outline" icon="calendar" onClick={() => onAdd()}>
-            새 일정
-          </Button>
-          {planning ? (
-            <Button variant="outline" icon="plane" onClick={onAddTrip}>
-              여행 추가
+      {panel ? (
+        <div id={`${ids}-panel`} ref={panelRef} tabIndex={-1} className={styles.panelWrap}>
+          <div className={styles.panelBar}>
+            <Button variant="ghost" plain icon="x" onClick={closePanel} aria-label={`${panelName} 닫기`}>
+              닫기
             </Button>
-          ) : null}
+          </div>
+          {panel === 'annual' ? <AnnualCard data={data} today={today} onEdit={onEdit} /> : null}
+          {panel === 'recurring' ? <RecurringCard data={data} today={today} categories={data.categories} /> : null}
         </div>
       ) : null}
-      {panel === 'annual' ? <AnnualCard id={panelId('annual')} data={data} today={today} onEdit={onEdit} /> : null}
-      {panel === 'recurring' ? <RecurringCard id={panelId('recurring')} data={data} today={today} categories={data.categories} /> : null}
+
+      {showHint ? (
+        <div className={styles.hint} role="status">
+          <Icon name="sparkles" size={20} className={styles.hintIcon} />
+          <p className={styles.hintText}>지난 기록에서 매년 반복되는 일 {recurring}건을 찾았어요</p>
+          <div className={styles.hintActions}>
+            <Button variant="ghost" onClick={() => openPanel('recurring')}>
+              보기
+            </Button>
+            <Button variant="ghost" plain iconOnly icon="x" aria-label="매년 반복되는 일 안내 닫기" onClick={dismissHint} />
+          </div>
+        </div>
+      ) : null}
 
       {empty ? <EmptyEvents categories={props.emptyCategories} onAdd={onAdd} /> : null}
       {empty && count === 0 ? null : (
