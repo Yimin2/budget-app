@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   checkSettlementSelection,
@@ -27,21 +28,23 @@ import {
 } from '@/domain';
 import type { Expense, Id, LedgerData, Settlement, SettleMonth, SettleRow } from '@/domain';
 import { useLedger } from '@/state';
-import { Badge, Banner, Button, Card, Chip, ChipGroup, EmptyState, ProgressBar, cx, type Tone } from '@/ui';
+import { Badge, Banner, Button, Card, Chip, ChipGroup, EmptyState, Icon, ProgressBar, cx, type Tone } from '@/ui';
 import { PageSkeleton, RequireLedger, type ReadyLedger } from '../../_components';
 import { peopleManText, useSettleActions } from '../../_components/SettlementCard';
 import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
 import { HashTarget } from '../../_components/HashTarget';
 import { ExpandButton } from '../../_components/ExpandButton';
 import { readRepayMonths } from '../CompromisePanel';
+import { tripHref } from '../trips/selectors';
 import { LoanAmountForm, LoanRecords, loanRecordName, loanSummaryText, useLoanActions } from '../LoanLine';
 import styles from './settle.module.css';
 
 /**
  * '/plan/settle' 정산 (PLAN 4-9). 이벤트 화면 한 줄 요약의 [정산하기]로 열어요. 머리: [‹ 이벤트] · '정산 · 11/21'(정산일).
- * - 왼쪽: 이벤트통장 기록 · 줄 돈 · 지급한 청구를 달마다 한 목록으로 (최근 달 먼저). [줄 돈만 · 전체 기록] · [전체 · 사람] 필터.
+ * - 왼쪽: 이벤트통장 기록 · 줄 돈 · 지급한 청구를 달마다 한 목록으로 (오래된 달 · 오래된 것 먼저: 먼저 줘야 할 돈이 위에). [줄 돈만 · 전체 기록] · [전체 · 사람] 필터.
  *   달 머리 '10월 · 합계 128만 · 줄 돈 55만' + 모두 고르기(일부 = 중간 상태), 줄 돈이 없는 달은 '다 정리됨'(전체 기록에서 접힌 채).
- *   줄마다 날짜 · 이름 · 누가 냈는지 · 상태(줄 돈 / 지급함 / 저수지에서 빌려 줌 / 그냥 지출) · 금액. 이름을 누르면 지출 창.
+ *   전체 기록을 열면 위에 접힌 달이 있을 때 줄 돈이 있는 가장 오래된 달로 스크롤해요.
+ *   줄마다 날짜 · 이름(여행에 묶였으면 보라 '✈ 여행 이름' → 여행 화면) · 누가 냈는지 · 상태(줄 돈 / 지급함 / 저수지에서 빌려 줌 / 그냥 지출) · 금액. 이름을 누르면 지출 창.
  *   지급한 줄은 [지급 취소], 빌린 줄은 [금액 고치기]를 그 자리에서
  * - 오른쪽(데스크톱은 따라오는 열, 폰은 맨 위 한 줄로 접힘): 줄 수 있는 돈 · 사람별 · 저수지 갚을 돈(#loan, 갚은 기록 · 금액 고치기)
  * - 아래 고정 막대: '2건 · 15만 · 기쁜 15만' [저수지에서 빌려 지급] [15만 지급]. [○ 지급]은 줄 수 있는 돈 안에 드는 것만,
@@ -145,6 +148,23 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
   const filtered = filterSettleList(data, months, person);
   const shown = view === 'due' ? pendingOnly(filtered) : filtered;
   const visibleIds = shown.flatMap((m) => m.rows.filter((r) => r.item).map((r) => r.expense.id));
+  const monthsRef = useRef<HTMLUListElement>(null);
+  /** 전체 기록에서 처음 펼쳐진 달 (줄 돈이 있는 가장 오래된 달). 위에 접힌 달이 없으면 null */
+  const firstDue = view === 'all' ? shown.findIndex((m) => m.pendingCount > 0) : -1;
+  const scrollMonth = firstDue > 0 ? shown[firstDue]!.month : null;
+  const scrolled = useRef<string | null>(null);
+
+  // 전체 기록을 열면 (처음 들어올 때 포함) 오래된 다 정리된 달은 접힌 채 두고, 줄 돈이 있는 첫 달로 스크롤해요
+  useEffect(() => {
+    if (view !== 'all') {
+      scrolled.current = null;
+      return;
+    }
+    if (!scrollMonth || scrolled.current !== null) return;
+    scrolled.current = scrollMonth;
+    const el = monthsRef.current?.querySelector<HTMLElement>(`[data-month="${scrollMonth}"]`);
+    el?.scrollIntoView?.({ block: 'start' });
+  }, [view, scrollMonth]);
 
   /** [○ 지급]: 지급할 수 있는 돈 안에 드는 것만 (넘는 이벤트통장 청구는 남겨 둬요) */
   const payWithin = () => {
@@ -277,7 +297,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
               ) : null}
             </div>
           ) : (
-            <ul className={styles.months} aria-label="달별 기록">
+            <ul ref={monthsRef} className={styles.months} aria-label="달별 기록">
               {shown.map((m) => (
                 <MonthBlock
                   key={m.month}
@@ -334,8 +354,11 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
                     loading={busy === 'borrow'}
                     disabled={plan.fits || (busy !== null && busy !== 'borrow')}
                     onClick={() => void payBorrow()}
+                    // 좁은 화면은 '빌려 지급'으로 줄여 보여도 이름은 그대로
+                    aria-label="저수지에서 빌려 지급"
                   >
-                    저수지에서 빌려 지급
+                    <span className={styles.longLabel}>저수지에서 빌려 지급</span>
+                    <span className={styles.shortLabel}>빌려 지급</span>
                   </Button>
                 ) : null}
                 <Button
@@ -410,7 +433,7 @@ function MonthBlock({
   const on = pendingIds.filter(isOn).length;
   const all = pendingIds.length > 0 && on === pendingIds.length;
   return (
-    <li className={styles.month}>
+    <li className={styles.month} data-month={m.month}>
       <div className={styles.monthHead}>
         <h3 className={styles.monthTitle}>
           {label}
@@ -488,6 +511,8 @@ function Row({
   const badge = STATUS_BADGE[r.status];
   const payer = (e.paidBy ?? '').trim();
   const pending = r.item !== null;
+  // 지우지 않은 여행에 묶인 지출이면 보라 여행 배지
+  const trip = e.tripId ? (data.trips.find((t) => t.id === e.tripId && !t.deleted) ?? null) : null;
 
   const meta: string[] = [];
   const notes: { text: string; warn?: boolean }[] = [];
@@ -522,9 +547,17 @@ function Row({
       )}
       <span className={styles.date}>{formatShortDate(e.date)}</span>
       <div className={styles.main}>
-        <button type="button" className={styles.titleBtn} onClick={onOpen} aria-label={`${title} 자세히 보기`}>
-          {title}
-        </button>
+        <span className={styles.titleLine}>
+          <button type="button" className={styles.titleBtn} onClick={onOpen} aria-label={`${title} 자세히 보기`}>
+            {title}
+          </button>
+          {trip ? (
+            <Link href={tripHref(trip.id)} className={cx('badge', 'sm', 'soft', 'violet', styles.tripBadge)} aria-label={`여행 ${trip.name} 보기`}>
+              <Icon name="plane" size={16} />
+              {trip.name}
+            </Link>
+          ) : null}
+        </span>
         <span className={styles.meta}>
           <span className={styles.metaDate}>{formatShortDate(e.date)} · </span>
           {metaText}

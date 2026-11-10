@@ -48,34 +48,34 @@ function mixed(): LedgerData {
 }
 
 describe('정산 화면 한 목록 (settleList)', () => {
-  it('최근 달 먼저, 달 안에서는 최근 것 먼저. 정산 상태 · 고를 수 있는 항목 · 지급 · 빌린 기록을 붙여요', () => {
+  it('오래된 달 먼저, 달 안에서는 오래된 것 먼저(먼저 줘야 할 돈이 위에). 정산 상태 · 고를 수 있는 항목 · 지급 · 빌린 기록을 붙여요', () => {
     const data = mixed();
     const s = computeSettlement(data, TODAY);
     const months = settleList(data, s);
-    expect(months.map((m) => m.month)).toEqual(['2026-11', '2026-10', '2026-09']);
-    const [nov, oct, sep] = months;
+    expect(months.map((m) => m.month)).toEqual(['2026-09', '2026-10', '2026-11']);
+    const [sep, oct, nov] = months;
     // 생활비 통장 청구도 같은 목록에 (이벤트통장 기록에는 없어요)
     expect(nov!.rows.map((r) => [r.expense.id, r.status])).toEqual([
-      ['food', 'claimPending'],
-      ['pend', 'claimPending'],
       ['plain', 'plain'],
+      ['pend', 'claimPending'],
+      ['food', 'claimPending'],
     ]);
     expect(nov!.total).toBe(224_000);
     expect(nov!.pendingTotal).toBe(124_000);
     expect(nov!.pendingCount).toBe(2);
-    expect(nov!.rows[0]!.item?.kind).toBe('pay');
+    expect(nov!.rows[2]!.item?.kind).toBe('pay');
 
     expect(oct!.rows.map((r) => [r.expense.id, r.status])).toEqual([
-      ['old', 'claimPending'],
-      ['borrowed', 'borrowed'],
       ['paid', 'claimPaid'],
+      ['borrowed', 'borrowed'],
+      ['old', 'claimPending'],
     ]);
     const borrowed = oct!.rows[1]!;
     expect(borrowed.item).toBeNull();
     expect(borrowed.paid?.date).toBe('2026-11-10');
     expect(borrowed.loan?.kind).toBe('claim');
-    expect(oct!.rows[2]!.paid?.borrowed).toBe(false);
-    expect(oct!.rows[2]!.loan).toBeNull();
+    expect(oct!.rows[0]!.paid?.borrowed).toBe(false);
+    expect(oct!.rows[0]!.loan).toBeNull();
 
     // 저수지 돈으로 낸 이벤트 청구는 '저수지에서 빌려 지급'할 줄 돈
     expect(sep!.rows.map((r) => [r.expense.id, r.status, r.item?.kind])).toEqual([['res', 'claimPending', 'borrow']]);
@@ -86,9 +86,9 @@ describe('정산 화면 한 목록 (settleList)', () => {
     const s = computeSettlement(data, TODAY);
     const due = pendingOnly(settleList(data, s));
     expect(due.map((m) => [m.month, m.rows.map((r) => r.expense.id), m.total])).toEqual([
-      ['2026-11', ['food', 'pend'], 224_000],
-      ['2026-10', ['old'], 350_000],
       ['2026-09', ['res'], 70_000],
+      ['2026-10', ['old'], 350_000],
+      ['2026-11', ['pend', 'food'], 224_000],
     ]);
     const settled = ledger({
       expenses: [expense({ id: 'p', date: '2026-08-02', amount: 10_000, accountId: eventAcc.id })],
@@ -103,12 +103,24 @@ describe('정산 화면 한 목록 (settleList)', () => {
     expect(filterSettleList(data, all, null)).toBe(all);
     const junho = filterSettleList(data, all, 'junho@x');
     expect(junho.map((m) => [m.month, m.rows.map((r) => r.expense.id), m.total, m.pendingTotal])).toEqual([
-      ['2026-11', ['food', 'plain'], 124_000, 24_000],
-      ['2026-10', ['old'], 50_000, 50_000],
       ['2026-09', ['res'], 70_000, 70_000],
+      ['2026-10', ['old'], 50_000, 50_000],
+      ['2026-11', ['plain', 'food'], 124_000, 24_000],
     ]);
     // 이메일 대소문자는 가리지 않아요
-    expect(filterSettleList(data, all, 'minji@x').flatMap((m) => m.rows.map((r) => r.expense.id))).toEqual(['pend', 'borrowed', 'paid']);
+    expect(filterSettleList(data, all, 'minji@x').flatMap((m) => m.rows.map((r) => r.expense.id))).toEqual(['paid', 'borrowed', 'pend']);
+  });
+
+  it('같은 날이면 기록한 순서(createdAt)대로', () => {
+    const data = ledger({
+      expenses: [
+        expense({ id: 'a', date: '2026-11-05', amount: 10_000, accountId: eventAcc.id, createdAt: '2026-11-05T12:00:00.000Z' }),
+        expense({ id: 'b', date: '2026-11-05', amount: 10_000, accountId: eventAcc.id, createdAt: '2026-11-05T09:00:00.000Z' }),
+        expense({ id: 'c', date: '2026-11-04', amount: 10_000, accountId: eventAcc.id, createdAt: '2026-11-06T09:00:00.000Z' }),
+      ],
+    });
+    const [nov] = settleList(data, computeSettlement(data, TODAY));
+    expect(nov!.rows.map((r) => r.expense.id)).toEqual(['c', 'b', 'a']);
   });
 
   it('사람별 줄 돈: 지난달부터 못 준 돈과 그 달', () => {

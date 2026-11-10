@@ -297,3 +297,80 @@ describe('정산 화면', () => {
     expect(screen.getByRole('button', { name: '전체 기록', pressed: true })).toBeTruthy();
   });
 });
+
+describe('정산 화면 — 오래된 것 먼저 · 여행 배지 · 좁은 막대', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const monthHeads = (list: HTMLElement) => within(within(list).getByRole('list', { name: '달별 기록' })).getAllByRole('heading', { level: 3 }).map((h) => h.textContent!.split(' · ')[0]);
+
+  it('줄 돈만 · 전체 기록 모두 오래된 달이 위, 달 안에서도 오래된 날 → 기록한 순서', async () => {
+    const { h, list } = await renderScreen();
+    await act(async () => {
+      await L(h).addExpense({ date: '2026-10-02', amount: 70_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '지난 돌잔치', paidBy: '민지' });
+      await L(h).addExpense({ date: '2026-11-03', amount: 10_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '먼저 넣은 선물', paidBy: '민지' });
+      // 기록한 시각(createdAt)이 같은 밀리초가 되지 않게 조금 기다려요
+      await new Promise((r) => setTimeout(r, 5));
+      await L(h).addExpense({ date: '2026-11-03', amount: 20_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '나중 넣은 선물', paidBy: '준호' });
+    });
+    await waitFor(() => box(list, '지난 돌잔치 70,000원 고르기'));
+    expect(monthHeads(list)).toEqual(['10월', '11월']);
+    const names = (scope: HTMLElement) => within(scope).getAllByRole('button', { name: / 자세히 보기$/ }).map((b) => b.textContent);
+    const nov = within(list).getByRole('list', { name: '11월 기록' });
+    const dates = L(h).data!.expenses.filter((e) => !e.deleted);
+    const novNames = names(nov);
+    expect(novNames.indexOf('먼저 넣은 선물')).toBeLessThan(novNames.indexOf('나중 넣은 선물'));
+    // 날짜순
+    const novDates = novNames.map((n) => dates.find((e) => e.memo === n)!.date);
+    expect([...novDates].sort()).toEqual(novDates);
+
+    fireEvent.click(chip('전체 기록'));
+    const heads = monthHeads(list);
+    expect(heads.indexOf('10월')).toBeLessThan(heads.indexOf('11월'));
+    expect(heads[heads.length - 1]).toBe('11월');
+  });
+
+  it('전체 기록을 열면 위에 접힌 다 정리된 달이 있을 때 줄 돈이 있는 첫 달로 스크롤해요', async () => {
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this.getAttribute('data-month') ?? '');
+    });
+    const { h, list } = await renderScreen();
+    await act(async () => {
+      // 다 정리된 9월 (그냥 지출)
+      await L(h).addExpense({ date: '2026-09-02', amount: 30_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '9월 꽃' });
+    });
+    expect(scrolled).toEqual([]);
+    fireEvent.click(chip('전체 기록'));
+    const heads = monthHeads(list);
+    expect(heads[0]).toBe('9월');
+    expect(within(list).getByRole('button', { name: '9월 펼치기' })).toBeTruthy();
+    await waitFor(() => expect(scrolled).toHaveLength(1));
+    const first = scrolled[0]!;
+    expect(within(list).getByRole('list', { name: `${Number(first.slice(5))}월 기록` })).toBeTruthy();
+    expect(first > '2026-09').toBe(true);
+  });
+
+  it('여행에 묶인 지출 줄은 이름 뒤에 보라 여행 배지 (여행 화면 링크), 여행을 지우면 사라져요', async () => {
+    const { h, list } = await renderScreen();
+    const row = box(list, '제주 항공권 300,000원 고르기').closest('li')!;
+    const badge = within(row).getByRole('link', { name: '여행 제주 여행 보기' });
+    expect(badge.getAttribute('href')).toBe('/plan/trips?id=demo-trip-jeju');
+    expect(badge.className).toContain('violet');
+    expect(badge.textContent).toBe('제주 여행');
+    // 이름 뒤에
+    const title = within(row).getByRole('button', { name: '제주 항공권 자세히 보기' });
+    expect(title.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 여행에 안 묶인 줄은 배지 없음
+    expect(within(box(list, /마트 장보기/).closest('li')!).queryByRole('link')).toBeNull();
+    await act(async () => {
+      await L(h).deleteTrip('demo-trip-jeju');
+    });
+    await waitFor(() => expect(within(list).queryByRole('link', { name: '여행 제주 여행 보기' })).toBeNull());
+  });
+
+  it('좁은 화면용 짧은 글자 [빌려 지급]이 있어도 버튼 이름은 그대로', async () => {
+    const { bar } = await renderScreen();
+    const borrow = within(bar).getByRole('button', { name: '저수지에서 빌려 지급' });
+    expect(borrow.textContent).toContain('빌려 지급');
+  });
+});

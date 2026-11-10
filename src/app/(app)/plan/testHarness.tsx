@@ -11,6 +11,7 @@ import {
   type SessionApi,
   type StateDeps,
 } from '@/state';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { ToastProvider } from '@/ui';
 
 export const TEST_NOW = new Date(2026, 10, 20, 10, 0, 0); // 2026-11-20 (금)
@@ -67,4 +68,14 @@ export function makeHarness() {
     );
   }
   return { probe, Wrapper };
+}
+
+/** '일정' 카드의 [+ 추가] 메뉴를 열고 이름이 맞는 항목을 눌러요. 연 메뉴 항목을 돌려줘요 */
+export function chooseScheduleAdd(name: string | RegExp): HTMLElement {
+  const schedule = screen.getByRole('region', { name: /^일정/ });
+  fireEvent.click(within(schedule).getByRole('button', { name: '추가' }));
+  const menu = within(schedule).getByRole('menu', { name: '무엇을 추가할까요' });
+  const item = within(menu).getByRole('menuitem', { name });
+  fireEvent.click(item);
+  return item;
 }

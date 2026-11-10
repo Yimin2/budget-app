@@ -14,7 +14,7 @@ export interface CreateSheetProps {
 }
 
 /**
- * 가운데 + (데스크톱은 '+ 기록')을 누르면 뜨는 시트. 모바일은 아래에서 올라오고 768px 이상은 가운데 창이에요.
+ * 오른쪽 아래 + (태블릿 · 데스크톱은 사이드바 '+ 기록')을 누르면 뜨는 시트. 모바일은 아래에서 올라오고 768px 이상은 가운데 창이에요.
  * 지출 기록 · 사도 돼? · 이체 기록 중 하나를 고르면 그 창(또는 사도 돼? 화면)으로 이어져요.
  */
 export function CreateSheet({ state, onChange }: CreateSheetProps) {

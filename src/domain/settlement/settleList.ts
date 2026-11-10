@@ -2,7 +2,7 @@
  * 정산 화면 (/plan/settle) 한 목록 — 이벤트통장 기록(eventRecordList)과 아직 줄 돈 · 지급한 청구를 달마다 한 목록으로 (PLAN 4-9).
  * - 줄마다 정산 상태: 줄 돈(claimPending) · 지급함(claimPaid) · 저수지에서 빌려 줌(borrowed) · 그냥 지출(plain)
  * - 이벤트통장 기록에 없는 청구(생활비 통장 청구 · 저수지의 이벤트 아닌 청구)도 줄 돈 · 지급함이면 같은 목록에 넣는다
- * - 쓴 날(지출 날짜)의 달에 넣고, 최근 달 먼저 · 달 안에서는 최근 것 먼저
+ * - 쓴 날(지출 날짜)의 달에 넣고, 오래된 달 먼저 · 달 안에서는 오래된 것 먼저(날짜 → 기록한 순서). 먼저 줘야 할 돈이 위에 오도록
  * - 사람 필터는 지출을 실제로 쓴 사람(expenseSpender)으로 거른다
  */
 import { monthlyRepayment } from '../compromise';
@@ -36,26 +36,28 @@ export interface SettleMonth {
   /** 그달 줄 돈 합 · 건수 */
   pendingTotal: Won;
   pendingCount: number;
-  /** 최근 것 먼저 */
+  /** 오래된 것 먼저 (날짜 → 기록한 순서) */
   rows: SettleRow[];
 }
 
-const recent = (a: SettleRow, b: SettleRow) =>
+/** 오래된 것 먼저: 날짜 → 기록한 순서(createdAt) → 기록 목록 순서 */
+const byOldest = (order: Map<Id, number>) => (a: SettleRow, b: SettleRow) =>
   a.expense.date !== b.expense.date
     ? a.expense.date < b.expense.date
-      ? 1
-      : -1
-    : a.expense.id < b.expense.id
-      ? 1
-      : a.expense.id > b.expense.id
+      ? -1
+      : 1
+    : a.expense.createdAt !== b.expense.createdAt
+      ? a.expense.createdAt < b.expense.createdAt
         ? -1
-        : 0;
+        : 1
+      : (order.get(a.expense.id) ?? 0) - (order.get(b.expense.id) ?? 0); // 같으면 지출 탭에 기록된 순서 (id 는 무작위라 쓰지 않아요)
 
-function toMonths(rows: SettleRow[]): SettleMonth[] {
+function toMonths(rows: SettleRow[], order: Map<Id, number>): SettleMonth[] {
+  const oldest = byOldest(order);
   const byMonth = new Map<YearMonth, SettleRow[]>();
   for (const r of rows) byMonth.set(r.month, [...(byMonth.get(r.month) ?? []), r]);
   return [...byMonth.entries()]
-    .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([month, list]) => {
       const pending = list.filter((r) => r.item !== null);
       return {
@@ -63,13 +65,13 @@ function toMonths(rows: SettleRow[]): SettleMonth[] {
         total: list.reduce((t, r) => t + r.amount, 0),
         pendingTotal: pending.reduce((t, r) => t + r.amount, 0),
         pendingCount: pending.length,
-        rows: [...list].sort(recent),
+        rows: [...list].sort(oldest),
       };
     });
 }
 
 /**
- * 정산 화면 목록: 이벤트통장 기록(저수지 이벤트 청구 포함) + 그 밖의 줄 돈 · 지급한 청구를 달마다 (최근 달 먼저).
+ * 정산 화면 목록: 이벤트통장 기록(저수지 이벤트 청구 포함) + 그 밖의 줄 돈 · 지급한 청구를 달마다 (오래된 달 먼저).
  * 줄 돈은 정산 화면 항목(settleRoster)과 같은 것만 고를 수 있다 (금액 0 청구는 그냥 지출로 본다)
  */
 export function settleList(data: LedgerData, s: Settlement): SettleMonth[] {
@@ -104,7 +106,7 @@ export function settleList(data: LedgerData, s: Settlement): SettleMonth[] {
   for (const [id, p] of paid) {
     if (!seen.has(id) && p.expense.date) push(p.expense, p.expense.amount, eventRecordStatus(data, p.expense, live));
   }
-  return toMonths(rows);
+  return toMonths(rows, new Map(data.expenses.map((e, i) => [e.id, i])));
 }
 
 /** 사람 필터: 지출을 실제로 쓴 사람의 키(expenseSpender, 사람이면 멤버 이메일 소문자)가 같은 줄만. 합계도 다시 센다 */
@@ -112,7 +114,10 @@ export function filterSettleList(data: LedgerData, months: SettleMonth[], person
   if (!personKey) return months;
   const people = ledgerPeople(data);
   const key = personKey.trim().toLowerCase();
-  return toMonths(months.flatMap((m) => m.rows).filter((r) => expenseSpender(data, r.expense, people).key === key));
+  return toMonths(
+    months.flatMap((m) => m.rows).filter((r) => expenseSpender(data, r.expense, people).key === key),
+    new Map(data.expenses.map((e, i) => [e.id, i])),
+  );
 }
 
 /** 줄 돈만: 고를 수 있는 줄만 남기고, 줄 돈이 없는 달은 뺀다 (합계는 그달 모든 기록 그대로) */

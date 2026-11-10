@@ -108,7 +108,7 @@ describe('이번 달 카드', () => {
 });
 
 describe('이번 달 카드 — 저수지 갚을 돈 한 줄', () => {
-  it('빌린 돈이 생기면 "저수지 갚을 돈 · 매달 ○씩 · ○월에 끝", [자세히]로 같은 자리에서 요약 · 갚기 · 정산 화면 링크', async () => {
+  it('빌린 돈이 생기면 "저수지 갚을 돈 · 매달 ○씩 · ○월에 끝", 그 아래 늘 펼친 요약 · 갚기 · 정산 화면 링크', async () => {
     const { card, L } = await renderCard();
     expect(within(card).queryByRole('group', { name: '저수지 갚을 돈' })).toBeNull();
     await act(async () => {
@@ -119,12 +119,9 @@ describe('이번 달 카드 — 저수지 갚을 돈 한 줄', () => {
     expect(s.loan.balance).toBe(300_000);
     // 갚는 개월 수는 추천 타협안과 같은 값 (기본 24개월): 30만 ÷ 24 = 1.25만 → 천 원 올림 1.3만, 24번째 달에 끝
     expect(within(loan).getByTestId('loan-line').textContent).toBe('저수지 갚을 돈 30만 · 매달 1.3만씩 · 2028년 11월에 끝');
-    if (s.repay) expect(within(loan).getByTestId('loan-repay-due').textContent).toBe(`이번 달 ${formatMan(s.repay.amount)} 갚기`);
-    // 처음에는 접혀 있어요 (창 · <details> 없음)
+    // [자세히] 없이 늘 펼쳐져 있어요 (창 · <details> 없음)
     expect(loan.querySelector('details')).toBeNull();
-    expect(within(loan).queryByRole('link')).toBeNull();
-    expect(within(loan).queryByTestId('loan-summary')).toBeNull();
-    fireEvent.click(within(loan).getByRole('button', { name: '저수지 갚을 돈 자세히' }));
+    expect(within(loan).queryByRole('button', { name: '저수지 갚을 돈 자세히' })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(within(loan).getByTestId('loan-summary').textContent).toBe('빌린 돈 30만 · 갚은 돈 0원 · 남은 갚을 돈 30만');
     if (s.repay) {
@@ -133,14 +130,12 @@ describe('이번 달 카드 — 저수지 갚을 돈 한 줄', () => {
     }
     expect(within(loan).getByRole('link', { name: /빌리고 갚은 기록 1건/ }).getAttribute('href')).toBe('/plan/settle#loan');
     expect(loan.textContent).not.toContain('민지에게 지급 · 제주 항공권');
-    fireEvent.click(within(loan).getByRole('button', { name: '저수지 갚을 돈 접기' }));
-    expect(within(loan).queryByRole('link')).toBeNull();
     // 정산 줄에는 갚을 돈이 없어요
     const settle = within(card).queryByRole('group', { name: '이번 달 정산' });
     if (settle) expect(settle.textContent).not.toContain('갚을 돈');
   });
 
-  it('[갚았어요]로 남긴 이번 달 갚은 기록은 [자세히]에서 "이번 달 10만 갚았어요 · [되돌리기]"', async () => {
+  it('[갚았어요]로 남긴 이번 달 갚은 기록은 "이번 달 10만 갚았어요 · [되돌리기]"', async () => {
     const { card, L } = await renderCard();
     await act(async () => {
       await L().borrowAndSettleClaims(['demo-claim-jeju']);
@@ -148,7 +143,6 @@ describe('이번 달 카드 — 저수지 갚을 돈 한 줄', () => {
     });
     const loan = await within(card).findByRole('group', { name: '저수지 갚을 돈' });
     expect(within(loan).getByTestId('loan-line').textContent).toMatch(/^저수지 갚을 돈 20만/);
-    fireEvent.click(within(loan).getByRole('button', { name: '저수지 갚을 돈 자세히' }));
     expect(loan.textContent).toContain('이번 달 10만 갚았어요');
     expect(within(loan).queryByRole('button', { name: /갚았어요$/ })).toBeNull();
     await act(async () => {
@@ -168,7 +162,7 @@ describe('이번 달 카드 — 저수지 갚을 돈 한 줄', () => {
     expect(within(loan).getByTestId('loan-line').textContent).toBe('저수지 갚을 돈 30만 · 매달 2.5만씩 · 2027년 11월에 끝');
   });
 
-  it('저수지에서 이미 지급한 이벤트 청구는 [자세히]의 버튼 하나로 갚을 돈으로 바꿔요 (잔액 그대로)', async () => {
+  it('저수지에서 이미 지급한 이벤트 청구는 버튼 하나로 갚을 돈으로 바꿔요 (잔액 그대로)', async () => {
     const { card, L } = await renderCard();
     const cat = eventCat(L());
     await act(async () => {
@@ -182,7 +176,6 @@ describe('이번 달 카드 — 저수지 갚을 돈 한 줄', () => {
     const before = { ...L().balances };
     const loan = await within(card).findByRole('group', { name: '저수지 갚을 돈' });
     const name = '저수지에서 이미 지급한 이벤트 청구 2건 100,000원을 갚을 돈으로 바꾸기';
-    fireEvent.click(within(loan).getByRole('button', { name: '저수지 갚을 돈 자세히' }));
     await act(async () => {
       fireEvent.click(within(loan).getByRole('button', { name }));
     });

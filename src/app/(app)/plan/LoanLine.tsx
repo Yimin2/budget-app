@@ -1,12 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useState } from 'react';
-import { formatMan, formatMonthKo, formatShortDate, formatWon, hasBatchim, loanPayoff, loanRecords, monthOf, settledReservoirEventClaims } from '@/domain';
+import { useState } from 'react';
+import { formatMan, formatManShort, formatMonthKo, formatShortDate, formatWon, hasBatchim, loanPayoff, loanRecords, monthOf, settledReservoirEventClaims } from '@/domain';
 import type { Expense, LedgerData, LoanRecord } from '@/domain';
 import { useLedger, type LedgerApi, type RowSnapshot } from '@/state';
 import { Badge, Button, Icon, MoneyInput, useToast } from '@/ui';
-import { ExpandButton } from '../_components/ExpandButton';
 import styles from '../_components/claims.module.css';
 
 /** '빌린 돈 385만 · 갚은 돈 20만 · 남은 갚을 돈 365만' */
@@ -77,10 +76,10 @@ export function useLoanActions() {
 
 /**
  * '이번 달' 카드 안의 저수지 한 줄 (PLAN 4-9). 저수지에 '줄' 돈은 없고, 빌린 돈을 '갚을' 돈만 있어요:
- * '저수지 갚을 돈 365만 · 매달 16만씩 · 2028년 9월에 끝' (매달 금액 · 끝나는 달은 추천 타협안에서 고른 갚는 개월 수로) [자세히].
- * 이번 달 갚을 차례면 옆에 '이번 달 10만 갚기' 표시. [자세히]를 누르면 같은 자리에서 '빌린 돈 · 갚은 돈 · 남은 갚을 돈',
+ * '저수지 갚을 돈 365만 · 매달 16만씩 · 2028년 9월에 끝' (매달 금액 · 끝나는 달은 추천 타협안에서 고른 갚는 개월 수로).
+ * 그 아래에 늘 펼쳐서 '빌린 돈 · 갚은 돈 · 남은 갚을 돈',
  * '이번 달 10만 갚기 [갚았어요]'(갚았으면 '이번 달 10만 갚았어요 · [되돌리기]'), 저수지에서 이미 지급한 이벤트 청구를 한 번에 바꾸는 버튼,
- * 정산 화면(/plan/settle#loan) 링크가 펼쳐지고 [접기]로 접어요. 창은 띄우지 않고, 자동으로 옮기지 않아요
+ * 정산 화면(/plan/settle#loan) 링크. 창은 띄우지 않고, 자동으로 옮기지 않아요
  */
 /** 저수지 한 줄을 보일지: 저수지통장이 있고 빌리거나 갚은 기록 · 바꿀 지출 · 이미 지급한 이벤트 청구가 있을 때 */
 export function hasLoanLine(ledger: Pick<LedgerApi, 'settlement' | 'data' | 'loanCandidates'>): boolean {
@@ -93,8 +92,6 @@ export function hasLoanLine(ledger: Pick<LedgerApi, 'settlement' | 'data' | 'loa
 export function LoanLine({ repayMonths }: { repayMonths: number }) {
   const ledger = useLedger();
   const { act, lock } = useLoanActions();
-  const bodyId = useId();
-  const [open, setOpen] = useState(false);
   const s = ledger.settlement;
   const data = ledger.data;
   if (!s || !data || !s.reservoirAccountId) return null;
@@ -115,24 +112,19 @@ export function LoanLine({ repayMonths }: { repayMonths: number }) {
     <div role="group" aria-label="저수지 갚을 돈" className={styles.loanLine}>
       <div className={styles.summaryRow}>
         <p className={styles.oneLine} data-testid="loan-line">
-          저수지 갚을 돈 <strong>{formatMan(loan.balance)}</strong>
+          저수지 갚을 돈 <strong>{formatManShort(loan.balance)}</strong>
           {payoff ? (
             <span className={styles.oneLineSub}>
               {' '}
-              · 매달 {formatMan(payoff.monthly)}씩 · {formatMonthKo(payoff.endMonth, Number(ledger.today.slice(0, 4)))}에 끝
+              · 매달 {formatManShort(payoff.monthly)}씩 · {formatMonthKo(payoff.endMonth, Number(ledger.today.slice(0, 4)))}에 끝
             </span>
           ) : null}
         </p>
-        {repay && !open ? (
-          <Badge tone="warning" variant="soft" size="sm" dot={false} data-testid="loan-repay-due">
-            이번 달 {formatMan(repay.amount)} 갚기
-          </Badge>
-        ) : null}
-        <ExpandButton open={open} onToggle={() => setOpen((o) => !o)} controls={bodyId} openLabel="자세히" label="저수지 갚을 돈" />
       </div>
 
-      {open ? (
-        <div id={bodyId} className={styles.expandBody}>
+      {/* 카드 아래 여백이 남아 [자세히] 없이 늘 펼쳐 둬요 (사용자 결정) */}
+      {(
+        <div className={styles.expandBody}>
           <p className={styles.summaryText} data-testid="loan-summary">
             {loanSummaryText(loan)}
           </p>
@@ -196,7 +188,7 @@ export function LoanLine({ repayMonths }: { repayMonths: number }) {
             </Link>
           ) : null}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
