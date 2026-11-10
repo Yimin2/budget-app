@@ -13,7 +13,8 @@ import {
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 import { DAY_OPTIONS } from '@/app/start/new/wizard';
-import { accountNameWithOwner, accountOptions as accountOptionsOf, categorySelectOptions, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
+import { accountNameWithOwner, categorySelectOptions, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
+import { AccountPicker } from '../../_components/AccountPicker';
 import { useRunner } from '../useRunner';
 
 /**
@@ -102,7 +103,6 @@ export function FixedCard({ ledger, accountId }: { ledger: ReadyLedger; accountI
     .map(([, rows]) => currentBillRow(rows, today))
     .filter((f): f is FixedExpense => !!f)
     .sort((a, b) => (a.dayOfMonth ?? 0) - (b.dayOfMonth ?? 0));
-  const accountOptions = accountOptionsOf(accounts);
   const categoryOptions = categorySelectOptions(ledger.activeCategories, [draft?.categoryId]);
   const editing = draft?.id ? ledger.data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
   const editingRows = editing ? (series.get(billSeriesId(editing.id)) ?? [editing]) : [];
@@ -477,12 +477,7 @@ export function FixedCard({ ledger, accountId }: { ledger: ReadyLedger; accountI
               </Field>
             ) : null}
             <Field label="나가는 통장" error={errors.account}>
-              <Select
-                value={draft.accountId}
-                onChange={(v) => setDraft({ ...draft, accountId: v })}
-                options={accountOptions}
-                placeholder="통장 고르기"
-              />
+              <AccountPicker value={draft.accountId} onChange={(v) => setDraft({ ...draft, accountId: v })} accounts={accounts} />
             </Field>
             <Field label="카테고리" optional>
               <Select value={draft.categoryId} onChange={(v) => setDraft({ ...draft, categoryId: v })} options={categoryOptions} />

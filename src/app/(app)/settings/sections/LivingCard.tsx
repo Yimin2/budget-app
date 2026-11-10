@@ -13,7 +13,8 @@ import {
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { defaultLivingDrafts, livingDraftFor, livingTotal, type LivingDraft } from '@/app/start/new/wizard';
-import { periodLabel, visibleFixed, accountNameWithOwner, accountOptions as accountOptionsOf } from '../helpers';
+import { periodLabel, visibleFixed, accountNameWithOwner } from '../helpers';
+import { AccountPicker } from '../../_components/AccountPicker';
 import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 import { useRunner } from '../useRunner';
 
@@ -459,11 +460,7 @@ export function LivingCard({ ledger, accountId: onlyAccountId, extras = false }:
             </Field>
             {multiAccount ? (
               <Field label="누구 생활비인가요?" error={errors.account} required hint="그 사람의 생활비 통장에서 쓴 돈으로 계산해요.">
-                <Select
-                  value={draft.accountId}
-                  onChange={(v) => setDraft({ ...draft, accountId: v })}
-                  options={accountOptionsOf(livingAccounts)}
-                />
+                <AccountPicker value={draft.accountId} onChange={(v) => setDraft({ ...draft, accountId: v })} accounts={livingAccounts} />
               </Field>
             ) : null}
             <Field

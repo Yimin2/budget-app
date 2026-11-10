@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { current, renderApp, startDemo } from '../_components/__tests__/harness';
+import { listedAccounts } from '../_components/__tests__/pickAccount';
 
 const nav = vi.hoisted(() => ({
   router: { replace: vi.fn(), push: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() },
@@ -162,6 +163,9 @@ describe('예산 — 통장별 들어오는 돈 · 나가는 돈 (8-3)', () => {
     fireEvent.click(within(body).getByRole('button', { name: '고정 지출 추가' }));
     let dialog = screen.getByRole('dialog', { name: '고정 지출 추가' });
     expect((within(dialog).getByLabelText('나가는 통장') as HTMLSelectElement).value).toBe('demo-acc-living-junho');
+    // 나가는 통장은 모든 통장에서 골라요 (거르지 않음)
+    expect([...listedAccounts(within(dialog).getByLabelText('나가는 통장'))].sort()).toEqual(current(h).ledger.activeAccounts.map((a) => a.id).sort());
+    fireEvent.keyDown(within(dialog).getByRole('listbox'), { key: 'Escape' });
     fireEvent.change(within(dialog).getByLabelText(/이름/), { target: { value: '넷플릭스' } });
     fireEvent.change(within(dialog).getByLabelText(/^금액/), { target: { value: '17000' } });
     fireEvent.change(within(dialog).getByLabelText('결제일'), { target: { value: String(Number(before.from.slice(8, 10)) + 1) } });

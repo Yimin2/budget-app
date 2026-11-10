@@ -44,7 +44,7 @@ export function Field({ label, hint, error, required = false, optional, id, hide
   return (
     <FieldContext.Provider value={{ id: inputId, describedBy, invalid: Boolean(error), required }}>
       <div className={cx('field', className)}>
-        <label htmlFor={inputId} className={cx('label', hideLabel && 'sr-only')}>
+        <label id={`${inputId}-label`} htmlFor={inputId} className={cx('label', hideLabel && 'sr-only')}>
           {label}
           {required ? (
             <span className="req" aria-hidden>
@@ -68,6 +68,13 @@ export function Field({ label, hint, error, required = false, optional, id, hide
       </div>
     </FieldContext.Provider>
   );
+}
+
+/**
+ * Field 안의 입력이 받을 id · 설명 · 오류 연결 (직접 만든 입력용). 라벨 id 는 `${id}-label`
+ */
+export function useFieldControl(props: { id?: string; 'aria-describedby'?: string; 'aria-invalid'?: AriaAttributes['aria-invalid']; required?: boolean } = {}) {
+  return useFieldProps(props);
 }
 
 function useFieldProps(props: { id?: string; 'aria-describedby'?: string; 'aria-invalid'?: AriaAttributes['aria-invalid']; required?: boolean }) {
@@ -284,15 +291,17 @@ export function MoneyInput({
 }
 
 /**
- * 검사에 걸린 첫 칸(aria-invalid)으로 포커스를 옮겨요. 오류 문구가 그려진 뒤에 찾도록 다음 틱에 실행해요.
+ * 검사에 걸린 첫 칸(aria-invalid · 통장 고르기 단추는 data-invalid)으로 포커스를 옮겨요. 오류 문구가 그려진 뒤에 찾도록 다음 틱에 실행해요.
  * 열린 창이 있으면 그 안에서 먼저 찾아요
  */
+const INVALID = '[aria-invalid="true"], [data-invalid="true"]';
+
 export function focusFirstInvalid(): void {
   if (typeof window === 'undefined') return;
   setTimeout(() => {
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
     const el =
-      dialog?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? document.querySelector<HTMLElement>('[aria-invalid="true"]');
+      dialog?.querySelector<HTMLElement>(INVALID) ?? document.querySelector<HTMLElement>(INVALID);
     el?.focus();
   }, 0);
 }

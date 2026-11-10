@@ -3,6 +3,8 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { current, renderApp, startDemo } from '../_components/__tests__/harness';
+import { listedAccounts, pickAccount } from '../_components/__tests__/pickAccount';
+import { pushRecentAccount } from '../_components/accountGroups';
 
 const nav = vi.hoisted(() => ({
   router: { replace: vi.fn(), push: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() },
@@ -93,14 +95,20 @@ describe('예산 — 부부 예시', () => {
     // 같은 날(21일) 나머지 배분을 하나 더 만들면 막아요
     fireEvent.click(within(card('매달 배분')).getByRole('button', { name: '배분 추가' }));
     dialog = screen.getByRole('dialog', { name: '매달 배분 추가' });
+    // 보내는 통장: 모든 통장, 묶음 안에서 수입통장이 최근 고른 통장보다 앞
+    pushRecentAccount('demo-acc-event');
+    const fromList = listedAccounts(within(dialog).getByLabelText('보내는 통장'));
+    expect(fromList).toHaveLength(current(h).ledger.activeAccounts.length);
+    expect(fromList.slice(4, 6)).toEqual(['demo-acc-income', 'demo-acc-event']);
+    fireEvent.keyDown(within(dialog).getByRole('listbox'), { key: 'Escape' });
     // 생활비 통장으로 보내는 새 배분은 '알아서 맞추기'가 기본, 용돈 · 이벤트통장 등은 '매달 같은 금액'
-    fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-living-junho' } });
+    pickAccount(within(dialog).getByLabelText('받는 통장'), 'demo-acc-living-junho');
     expect(within(dialog).getByRole('radio', { name: '알아서 맞추기' }).getAttribute('aria-checked')).toBe('true');
     // 용돈 통장에는 알아서 맞추기를 보이지 않아요 (용돈은 매달 같은 금액)
-    fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-allowance-junho' } });
+    pickAccount(within(dialog).getByLabelText('받는 통장'), 'demo-acc-allowance-junho');
     expect(within(dialog).queryByRole('radio', { name: '알아서 맞추기' })).toBeNull();
     expect(within(dialog).getByRole('radio', { name: '매달 같은 금액' }).getAttribute('aria-checked')).toBe('true');
-    fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-event' } });
+    pickAccount(within(dialog).getByLabelText('받는 통장'), 'demo-acc-event');
     expect(within(dialog).getByRole('radio', { name: '매달 같은 금액' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.click(within(dialog).getByRole('radio', { name: '남는 돈 전부' }));
     expect(within(dialog).queryByLabelText('금액')).toBeNull();
@@ -158,7 +166,9 @@ describe('예산 — 부부 예시', () => {
     expect(who.value).toBe('demo-acc-living-minji');
     const etc = current(h).ledger.data!.categories.find((c) => c.name === '기타')!.id;
     fireEvent.change(within(dialog).getByLabelText(/항목/), { target: { value: etc } });
-    fireEvent.change(who, { target: { value: 'demo-acc-living-junho' } });
+    // 누구 생활비: 생활비 통장만
+    expect(listedAccounts(who)).toEqual(['demo-acc-living-minji', 'demo-acc-living-junho']);
+    pickAccount(who, 'demo-acc-living-junho');
     fireEvent.change(within(dialog).getByLabelText(/한 달 예산/), { target: { value: '15000' } });
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));

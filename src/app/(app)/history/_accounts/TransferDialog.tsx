@@ -4,11 +4,14 @@ import { useId, useState, type FormEvent } from 'react';
 import { formatWon } from '@/domain';
 import type { Account, Id } from '@/domain/types';
 import { useLedger } from '@/state';
-import { Button, DateInput, Dialog, Field, MoneyInput, SegmentedControl, Select, TextInput, useToast, focusFirstInvalid } from '@/ui';
+import { Button, DateInput, Dialog, Field, MoneyInput, SegmentedControl, TextInput, useToast, focusFirstInvalid } from '@/ui';
 import { isISODate } from '../_expenses/selectors';
 import { errorText, ro } from './selectors';
 import styles from './accounts.module.css';
-import { accountOptions } from '../../settings/helpers';
+import { AccountPicker } from '../../_components/AccountPicker';
+
+// 수입은 사람별 수입통장을 앞에 둬요 (누구 월급인지 고르기 쉽게)
+const isIncomeAccount = (a: Account) => a.role === 'income';
 
 export type RecordMode = 'transfer' | 'income';
 
@@ -104,12 +107,6 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
     }
   }
 
-  const options = accountOptions(accounts);
-  // 수입은 사람별 수입통장을 앞에 둬요 (누구 월급인지 고르기 쉽게)
-  const incomeOptions = [
-    ...accountOptions(incomeAccounts),
-    ...accountOptions(accounts.filter((a) => a.role !== 'income')),
-  ];
   const future = isISODate(date) && date > ledger.today;
 
   return (
@@ -148,7 +145,7 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
         {mode === 'transfer' ? (
           <div className={styles.fromTo}>
             <Field label="보내는 통장" error={errors.from} required>
-              <Select value={from} onChange={setFrom} options={options} placeholder={options.length === 0 ? '통장이 없어요' : '통장 고르기'} />
+              <AccountPicker value={from} onChange={setFrom} accounts={accounts} />
             </Field>
             <Button
               variant="ghost"
@@ -160,7 +157,7 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
               onClick={swap}
             />
             <Field label="받는 통장" error={errors.to} required>
-              <Select value={to} onChange={setTo} options={options} placeholder={options.length === 0 ? '통장이 없어요' : '통장 고르기'} />
+              <AccountPicker value={to} onChange={setTo} accounts={accounts} />
             </Field>
           </div>
         ) : (
@@ -170,7 +167,7 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
             required
             hint={incomeAccounts.length > 1 ? '월급을 받은 사람의 수입통장을 골라 주세요.' : undefined}
           >
-            <Select value={to} onChange={setTo} options={incomeOptions} placeholder={options.length === 0 ? '통장이 없어요' : '통장 고르기'} />
+            <AccountPicker value={to} onChange={setTo} accounts={accounts} prefer={isIncomeAccount} />
           </Field>
         )}
 

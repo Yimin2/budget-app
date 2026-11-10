@@ -373,3 +373,188 @@
 .cs-list .lrow {
   min-height: 64px;
 }
+
+/* ───────── 통장 고르기 (AccountPicker): 닫힌 단추 + 그 자리에 펼쳐지는 목록 ───────── */
+.acp {
+  min-width: 0;
+}
+.acp-trigger {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 24px;
+  text-align: left;
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .acp-trigger:hover:not(:disabled) {
+    box-shadow: 0 0 0 3px var(--border);
+  }
+}
+.acp-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  border-color: var(--primary);
+}
+.acp-trigger[data-invalid='true'] {
+  border-color: var(--danger-text);
+}
+.acp-trigger:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.acp-trigger.empty .acp-nm {
+  color: var(--text-muted);
+}
+.acp.open .acp-trigger {
+  border-color: var(--primary);
+}
+.acp-ico {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
+.acp-nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.acp-chev {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.acp.open .acp-chev {
+  transform: rotate(180deg);
+}
+.acp-list {
+  box-sizing: border-box;
+  margin-top: var(--space-2);
+  padding: var(--space-1);
+  max-height: min(400px, 55dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  animation: acp-open var(--duration-base) var(--ease-out) both;
+}
+.acp-list:focus {
+  outline: none;
+}
+.acp-list:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+@keyframes acp-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .acp-list,
+  .acp-chev {
+    animation: none;
+    transition: none;
+  }
+}
+.acp-group {
+  display: flex;
+  flex-direction: column;
+}
+.acp-group + .acp-group {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.acp-group-label {
+  padding: var(--space-1) var(--space-3);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.acp-opt {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 22px;
+  cursor: pointer;
+}
+.acp-opt.active {
+  background: var(--surface-subtle);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+.acp-opt[aria-selected='true'] {
+  background: var(--primary-subtle);
+  color: var(--primary-subtle-text);
+}
+.acp-opt[aria-selected='true'] .acp-ico {
+  background: var(--surface);
+  color: var(--primary-text);
+}
+.acp-opt .acp-ico {
+  width: 28px;
+  height: 28px;
+}
+.acp-bal {
+  flex: none;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.acp-opt[aria-selected='true'] .acp-bal {
+  color: inherit;
+}
+.acp-cap {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.acp-check {
+  flex: none;
+  display: inline-flex;
+  width: 20px;
+  color: var(--primary-text);
+}
