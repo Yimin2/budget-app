@@ -1,10 +1,11 @@
 'use client';
 
 import { useId, useState, type FormEvent } from 'react';
-import { formatWon } from '@/domain';
+import { canClaimOnAccount, formatWon, tripItemForCategory } from '@/domain';
 import type { Expense, Id } from '@/domain';
 import { useLedger } from '@/state';
 import { Badge, Button, DateInput, Dialog, Field, Select, TextInput, useToast, focusFirstInvalid } from '@/ui';
+import { ClaimFields } from '../_components/ClaimFields';
 import { accountIdForCategory, accountIdForSource, errorMessage, expenseTitle, type Source } from './selectors';
 import styles from './home.module.css';
 
@@ -12,6 +13,8 @@ export interface RecordSheetProps {
   amount: number;
   source: Source;
   categoryId: Id | null;
+  /** 사도 돼?에서 고른 여행 (여행에 묶어 기록해요) */
+  tripId?: Id | null;
   onClose: () => void;
   /** 기록이 끝나면 (label: 알림에 쓸 이름) */
   onRecorded: (expense: Expense, label: string) => void;
@@ -23,7 +26,7 @@ const SOURCE_LABEL: Record<Source, string> = { living: '생활비로', event: '�
  * [샀어요] 확인 시트. 날짜(기본 오늘) · 카테고리 · 내용 · 통장(어느 돈인지에 따라 자동, 바꿀 수 있음).
  * 열 때마다 새로 그려서 값이 초기화되도록 {open ? <RecordSheet/> : null} 로 쓰세요.
  */
-export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }: RecordSheetProps) {
+export function RecordSheet({ amount, source, categoryId, tripId = null, onClose, onRecorded }: RecordSheetProps) {
   const ledger = useLedger();
   const toast = useToast();
   const formId = `record-${useId().replace(/:/g, '')}`;
@@ -36,11 +39,14 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
     () => accountIdForSource(source, livingAccountId, ledger.accountByRole) ?? ledger.activeAccounts[0]?.id ?? '',
   );
   const [accountTouched, setAccountTouched] = useState(false);
+  const [paidBy, setPaidBy] = useState<string | null>(null);
+  const [payerError, setPayerError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
 
   const categories = ledger.activeCategories;
+  const tripName = tripId ? (ledger.data?.trips.find((t) => t.id === tripId)?.name ?? null) : null;
 
   function changeCategory(id: string) {
     setCategory(id);
@@ -55,8 +61,14 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
     if (saving) return;
     const badDate = !/^\d{4}-\d{2}-\d{2}$/.test(date);
     setDateError(badDate ? '날짜를 골라 주세요' : null);
-    setAccountError(accountId ? null : '기록할 통장을 골라 주세요');
-    if (badDate || !accountId) {
+    // 개인 돈으로 냈다고 골랐는데 청구할 수 없는 통장이면 막아요 (조용히 보통 지출로 기록하지 않게)
+    const payer = paidBy !== null ? paidBy.trim() : null;
+    const wrongAccount = payer !== null && !!accountId && !!ledger.data && !canClaimOnAccount(ledger.data, accountId);
+    setAccountError(
+      !accountId ? '기록할 통장을 골라 주세요' : wrongAccount ? '개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요' : null,
+    );
+    setPayerError(payer === '' ? '누가 냈는지 골라 주세요' : undefined);
+    if (badDate || !accountId || wrongAccount || payer === '') {
       focusFirstInvalid();
       return;
     }
@@ -69,6 +81,9 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
         accountId,
         categoryId: category || null,
         memo: memo.trim(),
+        paidBy: payer,
+        tripId,
+        tripItem: tripId ? tripItemForCategory(categories.find((c) => c.id === category)?.name) : null,
       });
       onRecorded(expense, expenseTitle(expense, categories));
     } catch (err) {
@@ -102,6 +117,11 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
             <Badge tone={source === 'event' ? 'info' : 'brand'} size="sm">
               {SOURCE_LABEL[source]}
             </Badge>
+            {tripName ? (
+              <Badge tone="neutral" size="sm" dot={false}>
+                {tripName}
+              </Badge>
+            ) : null}
           </span>
           <strong>{formatWon(amount)}</strong>
         </div>
@@ -124,11 +144,24 @@ export function RecordSheet({ amount, source, categoryId, onClose, onRecorded }:
             onChange={(v) => {
               setAccountId(v);
               setAccountTouched(true);
+              setAccountError(null);
             }}
             placeholder={ledger.activeAccounts.length === 0 ? '통장이 없어요' : undefined}
             options={ledger.activeAccounts.map((a) => ({ value: a.id, label: a.name }))}
           />
         </Field>
+        <ClaimFields
+          accountId={accountId}
+          amount={amount}
+          paidBy={paidBy}
+          onChange={(v) => {
+            setPaidBy(v);
+            setPayerError(undefined);
+            if (v === null) setAccountError(null);
+          }}
+          disabled={saving}
+          error={payerError}
+        />
       </form>
     </Dialog>
   );

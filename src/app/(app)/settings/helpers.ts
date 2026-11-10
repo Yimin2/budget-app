@@ -38,9 +38,17 @@ export function periodLabel(start: YearMonth, end: YearMonth | null, month: Year
   return null;
 }
 
-/** 이번 달에 적용되는 배분 규칙 중 수입 역할 통장에서 나가는 금액 합 */
-export function allocationTotal(data: LedgerData, month: YearMonth): Won {
-  const incomeIds = new Set(data.accounts.filter((a) => !a.deleted && a.role === 'income').map((a) => a.id));
+function incomeIdsOf(data: LedgerData, incomeAccountId?: string): Set<string> {
+  return new Set(
+    data.accounts
+      .filter((a) => !a.deleted && a.role === 'income' && (incomeAccountId === undefined || a.id === incomeAccountId))
+      .map((a) => a.id),
+  );
+}
+
+/** 이번 달에 적용되는 배분 규칙 중 수입 역할 통장(incomeAccountId 를 주면 그 통장 하나)에서 나가는 금액 합 */
+export function allocationTotal(data: LedgerData, month: YearMonth, incomeAccountId?: string): Won {
+  const incomeIds = incomeIdsOf(data, incomeAccountId);
   return data.rules
     .filter((r) => !r.deleted && incomeIds.has(r.fromAccountId) && isMonthActive(month, r.startMonth, r.endMonth))
     .reduce((s, r) => s + r.amount, 0);
@@ -48,10 +56,14 @@ export function allocationTotal(data: LedgerData, month: YearMonth): Won {
 
 /**
  * 비교할 한 달 수입: 이번 달 수입 기록 합, 없으면 지난달. 둘 다 없으면 null.
- * (수입 = 밖에서 수입 역할 통장으로 들어온 완료 기록)
+ * (수입 = 밖에서 수입 역할 통장(incomeAccountId 를 주면 그 통장 하나)으로 들어온 완료 기록)
  */
-export function referenceIncome(data: LedgerData, month: YearMonth): { month: YearMonth; amount: Won } | null {
-  const incomeIds = new Set(data.accounts.filter((a) => !a.deleted && a.role === 'income').map((a) => a.id));
+export function referenceIncome(
+  data: LedgerData,
+  month: YearMonth,
+  incomeAccountId?: string,
+): { month: YearMonth; amount: Won } | null {
+  const incomeIds = incomeIdsOf(data, incomeAccountId);
   const sumFor = (m: YearMonth) =>
     data.transfers
       .filter(
@@ -72,9 +84,38 @@ export function referenceIncome(data: LedgerData, month: YearMonth): { month: Ye
   return null;
 }
 
-/** 지금 보여 줄 고정 지출 (지우지 않았고 이번 달 이후에도 살아 있는 것). 생활비 → 일반 → 용돈 순 */
+export interface IncomeSummary {
+  account: Account;
+  /** 이번 달 이 통장에서 나가는 배분 합 */
+  total: Won;
+  /** 이 통장의 이번 달(없으면 지난달) 수입 */
+  income: { month: YearMonth; amount: Won } | null;
+  /** 배분이 수입보다 많은 금액 (아니면 0) */
+  over: Won;
+}
+
+/** 사람별 수입통장마다 배분 합 · 수입 · 넘침 (통장 순서) */
+export function incomeSummaries(data: LedgerData, month: YearMonth): IncomeSummary[] {
+  return data.accounts
+    .filter((a) => !a.deleted && a.role === 'income')
+    .sort((a, b) => a.order - b.order)
+    .map((account) => {
+      const total = allocationTotal(data, month, account.id);
+      const income = referenceIncome(data, month, account.id);
+      return { account, total, income, over: income && total > income.amount ? total - income.amount : 0 };
+    });
+}
+
+/** 통장 이름 옆에 붙일 주인 표시 ('민지'). 주인이 없거나 이름에 이미 들어 있으면 null */
+export function ownerLabel(account: Pick<Account, 'name' | 'ownerName' | 'ownerEmail'>): string | null {
+  const owner = account.ownerName?.trim() || account.ownerEmail?.split('@')[0] || '';
+  if (!owner) return null;
+  return account.name.includes(owner) ? null : owner;
+}
+
+/** 지금 보여 줄 고정 지출 (지우지 않았고 이번 달 이후에도 살아 있는 것). 생활비 → 일반 → 용돈 → 할부 순 */
 export function visibleFixed(list: FixedExpense[], month: YearMonth): FixedExpense[] {
-  const order = { living: 0, bill: 1, allowance: 2 } as const;
+  const order = { living: 0, bill: 1, allowance: 2, installment: 3 } as const;
   return list
     .filter((f) => !f.deleted && (f.endMonth === null || f.endMonth === '' || compareMonth(f.endMonth, month) >= 0))
     .sort((a, b) => order[a.kind] - order[b.kind] || (a.dayOfMonth ?? 0) - (b.dayOfMonth ?? 0));

@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cx } from './cx';
 import { Icon, type IconName } from './Icon';
+import { MOTION_MS, motionAllowed } from './motion';
 
 export type ToastTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
 
@@ -17,6 +18,8 @@ export interface ToastOptions {
 interface ToastItem extends ToastOptions {
   id: number;
   message: ReactNode;
+  /** 사라지는 중 (200ms 동안 내려가며 옅어진 뒤 빠져요) */
+  leaving?: boolean;
 }
 
 export interface ToastApi {
@@ -63,7 +66,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     if (t?.handle) clearTimeout(t.handle);
     timers.current.delete(id);
     held.current.delete(id);
-    setItems((list) => list.filter((x) => x.id !== id));
+    if (!motionAllowed()) {
+      setItems((list) => list.filter((x) => x.id !== id));
+      return;
+    }
+    setItems((list) => list.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
+    setTimeout(() => setItems((list) => list.filter((x) => x.id !== id)), MOTION_MS.base + 40);
   }, []);
 
   const run = useCallback(
@@ -107,7 +115,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (message: ReactNode, options: ToastOptions = {}) => {
       const id = nextId.current++;
       const duration = options.duration ?? (options.action ? 10000 : 4000);
-      setItems((list) => [...list.slice(-2), { id, message, ...options }]);
+      setItems((list) => [...list.filter((x) => !x.leaving).slice(-2), { id, message, ...options }]);
       if (duration > 0) run(id, duration);
       return id;
     },
@@ -120,7 +128,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [items]);
 
   const dismissActions = useCallback(() => {
-    for (const t of itemsRef.current) if (t.action) dismiss(t.id);
+    for (const t of itemsRef.current) if (t.action && !t.leaving) dismiss(t.id);
   }, [dismiss]);
 
   useEffect(() => {
@@ -148,7 +156,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={t.id}
-              className={cx('toast', tone !== 'neutral' && tone)}
+              className={cx('toast', tone !== 'neutral' && tone, t.leaving && 'is-leaving')}
+              aria-hidden={t.leaving || undefined}
               onPointerEnter={() => hold(t.id, 'hover', true)}
               onPointerLeave={() => hold(t.id, 'hover', false)}
               onFocus={() => hold(t.id, 'focus', true)}

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { isGoogleError } from '@/google';
-import { useSession } from '@/state';
+import { shouldPromptShared, useSession } from '@/state';
 import type { LedgerRef } from '@/storage/types';
 import { Badge, Button, Card, EmptyState, Icon, useToast } from '@/ui';
 import { LEDGER_KIND_TEXT, LedgerKindBadge } from '@/app/(app)/_components/LedgerKindBadge';
@@ -16,6 +16,8 @@ export function LedgerPicker() {
   const [opening, setOpening] = useState(false);
   const user = session.user;
   const canOpenShared = session.mode === 'google';
+  // 구글로 처음 로그인해 최근 가계부가 없으면: 공유받은 가계부부터 물어봐요 (배우자가 이미 만들어 둔 경우가 많아요)
+  const prompt = shouldPromptShared(session);
 
   function open(ref: LedgerRef) {
     session.selectLedger(ref);
@@ -47,93 +49,121 @@ export function LedgerPicker() {
         </span>
       </div>
 
-      <Card title="최근 가계부" padding="sm">
-        {session.recentLedgers.length === 0 ? (
-          <EmptyState
-            icon="wallet"
-            headingLevel={3}
-            title="아직 연 가계부가 없어요"
-            description="새로 만들거나, 함께 쓰는 사람이 공유해 준 가계부를 열어 주세요."
-          />
-        ) : (
-          <ul className="sp-ledgers">
-            {session.recentLedgers.map((ref) => {
-              const isActive = ref.id === session.activeLedger?.id;
-              return (
-                <li key={ref.id} className="sp-ledger">
-                  <button
-                    type="button"
-                    className="open"
-                    onClick={() => open(ref)}
-                    aria-label={`${ref.name || '이름 없는 가계부'}, ${LEDGER_KIND_TEXT[ref.kind]} 가계부, ${
-                      ref.source === 'sheets' ? '구글 시트' : '이 브라우저'
-                    }${isActive ? ', 지금 가계부' : ''}`}
-                  >
-                    <span className="lead" aria-hidden>
-                      <Icon name={ref.kind === 'shared' ? 'users' : 'user'} size={20} />
-                    </span>
-                    <span className="main">
-                      <span className="t">
-                        <span className="nm">{ref.name || '이름 없는 가계부'}</span>
-                        <LedgerKindBadge kind={ref.kind} />
-                      </span>
-                      <span className="s">
-                        {ref.source === 'sheets' ? '구글 시트' : '이 브라우저'}
-                        {/* 좁은 화면에서 이름이 잘리지 않도록 '지금 가계부'는 아랫줄에 둬요 */}
-                        {isActive ? (
-                          <Badge tone="success" size="sm">
-                            지금 가계부
-                          </Badge>
-                        ) : null}
-                      </span>
-                    </span>
-                    <Icon name="chevron-right" size={20} className="muted" />
-                  </button>
-                  <Button
-                    variant="ghost"
-                    plain
-                    iconOnly
-                    icon="x"
-                    aria-label={`${ref.name || '가계부'} 목록에서 빼기`}
-                    title="목록에서 빼기"
-                    onClick={() => session.forgetLedger(ref.id)}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      <div className="stack gap-3">
-        <div className="sp-actions">
-          <Button size="lg" icon="plus" href="/start/new">
-            새 가계부 만들기
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            icon="link"
-            onClick={openShared}
-            loading={opening}
-            disabled={!canOpenShared}
-            aria-describedby={canOpenShared ? undefined : 'sp-shared-off'}
-          >
-            공유받은 가계부 열기
-          </Button>
-        </div>
-        {canOpenShared ? (
+      {prompt ? (
+        <Card as="section" className="sp-prompt" aria-labelledby="sp-prompt-title">
+          <div className="t">
+            <span className="sp-invite-ic" aria-hidden>
+              <Icon name="users" size={24} />
+            </span>
+            <div className="stack gap-1">
+              <h2 id="sp-prompt-title">공유받은 가계부가 있나요?</h2>
+              <p>함께 쓰는 사람이 이미 만들었다면, 구글 파일 선택 창에서 그 시트를 골라 열어 주세요.</p>
+            </div>
+          </div>
+          <div className="acts">
+            <Button size="lg" block icon="link" onClick={openShared} loading={opening}>
+              공유받은 가계부 열기
+            </Button>
+            <Button size="lg" block variant="outline" icon="plus" href="/start/new">
+              새 가계부 만들기
+            </Button>
+          </div>
           <p className="sp-note">
             <Icon name="info" size={16} />
-            <span>공유받은 가계부는 구글 파일 선택 창에서 그 시트를 고르면 열려요.</span>
+            <span>초대 링크를 받았다면 그 링크를 열어도 돼요.</span>
           </p>
-        ) : (
-          <p id="sp-shared-off" className="sp-note">
-            <Icon name="info" size={16} />
-            <span>공유받은 가계부는 구글로 시작하면 열 수 있어요.</span>
-          </p>
-        )}
-      </div>
+        </Card>
+      ) : (
+        <>
+          <Card title="최근 가계부" padding="sm">
+            {session.recentLedgers.length === 0 ? (
+              <EmptyState
+                icon="wallet"
+                headingLevel={3}
+                title="아직 연 가계부가 없어요"
+                description="새로 만들거나, 함께 쓰는 사람이 공유해 준 가계부를 열어 주세요."
+              />
+            ) : (
+              <ul className="sp-ledgers">
+                {session.recentLedgers.map((ref) => {
+                  const isActive = ref.id === session.activeLedger?.id;
+                  return (
+                    <li key={ref.id} className="sp-ledger">
+                      <button
+                        type="button"
+                        className="open"
+                        onClick={() => open(ref)}
+                        aria-label={`${ref.name || '이름 없는 가계부'}, ${LEDGER_KIND_TEXT[ref.kind]} 가계부, ${
+                          ref.source === 'sheets' ? '구글 시트' : '이 브라우저'
+                        }${isActive ? ', 지금 가계부' : ''}`}
+                      >
+                        <span className="lead" aria-hidden>
+                          <Icon name={ref.kind === 'shared' ? 'users' : 'user'} size={20} />
+                        </span>
+                        <span className="main">
+                          <span className="t">
+                            <span className="nm">{ref.name || '이름 없는 가계부'}</span>
+                            <LedgerKindBadge kind={ref.kind} />
+                          </span>
+                          <span className="s">
+                            {ref.source === 'sheets' ? '구글 시트' : '이 브라우저'}
+                            {/* 좁은 화면에서 이름이 잘리지 않도록 '지금 가계부'는 아랫줄에 둬요 */}
+                            {isActive ? (
+                              <Badge tone="success" size="sm">
+                                지금 가계부
+                              </Badge>
+                            ) : null}
+                          </span>
+                        </span>
+                        <Icon name="chevron-right" size={20} className="muted" />
+                      </button>
+                      <Button
+                        variant="ghost"
+                        plain
+                        iconOnly
+                        icon="x"
+                        aria-label={`${ref.name || '가계부'} 목록에서 빼기`}
+                        title="목록에서 빼기"
+                        onClick={() => session.forgetLedger(ref.id)}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
+
+          <div className="stack gap-3">
+            <div className="sp-actions">
+              <Button size="lg" icon="plus" href="/start/new">
+                새 가계부 만들기
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                icon="link"
+                onClick={openShared}
+                loading={opening}
+                disabled={!canOpenShared}
+                aria-describedby={canOpenShared ? undefined : 'sp-shared-off'}
+              >
+                공유받은 가계부 열기
+              </Button>
+            </div>
+            {canOpenShared ? (
+              <p className="sp-note">
+                <Icon name="info" size={16} />
+                <span>공유받은 가계부는 구글 파일 선택 창에서 그 시트를 고르면 열려요.</span>
+              </p>
+            ) : (
+              <p id="sp-shared-off" className="sp-note">
+                <Icon name="info" size={16} />
+                <span>공유받은 가계부는 구글로 시작하면 열 수 있어요.</span>
+              </p>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="row between wrap">
         {session.activeLedger ? (

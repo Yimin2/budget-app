@@ -112,8 +112,8 @@ describe('recentExpenses · expenseTitle', () => {
 
 describe('통장 고르기', () => {
   const accounts: Partial<Record<AccountRole, Account>> = {
-    fixed: { id: 'fixed', name: '고정지출통장', role: 'fixed', openingBalance: 0, openingDate: TODAY, order: 0, deleted: false },
-    event: { id: 'event', name: '이벤트통장', role: 'event', openingBalance: 0, openingDate: TODAY, order: 1, deleted: false },
+    fixed: { id: 'fixed', name: '고정지출통장', role: 'fixed', openingBalance: 0, openingDate: TODAY, order: 0, ownerName: null, ownerEmail: null, deleted: false },
+    event: { id: 'event', name: '이벤트통장', role: 'event', openingBalance: 0, openingDate: TODAY, order: 1, ownerName: null, ownerEmail: null, deleted: false },
   };
   const byRole = (role: AccountRole) => accounts[role] ?? null;
   const cat = (role: AccountRole): Category => ({ id: role, name: role, icon: 'dots', defaultAccountRole: role, order: 0, deleted: false });

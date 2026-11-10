@@ -5,7 +5,7 @@
  */
 import { isGoogleConfigured as configured } from './config';
 import { createGisTokenRequester, fetchUserInfo, revokeToken } from './gis';
-import { pickSpreadsheetWith } from './picker';
+import { pickSpreadsheetWith, type PickOptions } from './picker';
 import { createGoogleSession, type GoogleSession, type KeyValueStore } from './session';
 
 export interface GoogleUser {
@@ -95,7 +95,7 @@ export function signOut(opts?: { revoke?: boolean }): void {
   if (typeof window === 'undefined') return;
   getSession().signOut(opts);
 }
-/** 구글 파일 선택 창으로 스프레드시트 고르기. 취소면 null */
-export function pickSpreadsheet(): Promise<{ id: string; name: string } | null> {
-  return pickSpreadsheetWith(getAccessToken);
+/** 구글 파일 선택 창으로 스프레드시트 고르기. 취소면 null. fileId: 그 파일을 미리 골라 둔다 (초대 링크) */
+export function pickSpreadsheet(opts?: PickOptions): Promise<{ id: string; name: string } | null> {
+  return pickSpreadsheetWith(getAccessToken, opts);
 }

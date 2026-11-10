@@ -96,20 +96,21 @@ function writeLedger(storage: KeyValueStorage, id: string, data: LedgerData): vo
   }
 }
 
-/** 빠진 표는 빈 배열로 채운다 (옛 저장본 호환) */
+/** 빠진 표(여행 등)는 빈 배열로, 나중에 더한 열(주인 · 나눠쓰기 · 항목별)은 시트 빈 칸과 같은 기본값으로 채운다 (옛 저장본 호환) */
 function normalize(d: Partial<LedgerData>): LedgerData {
   return {
     settings: d.settings as LedgerSettings,
-    accounts: d.accounts ?? [],
+    accounts: (d.accounts ?? []).map((a) => ({ ...a, ownerName: a.ownerName ?? null, ownerEmail: a.ownerEmail ?? null })),
     rules: d.rules ?? [],
     transfers: d.transfers ?? [],
-    fixedExpenses: d.fixedExpenses ?? [],
+    fixedExpenses: (d.fixedExpenses ?? []).map((f) => ({ ...f, spread: f.spread === 'monthly' ? 'monthly' : 'daily' })),
     events: d.events ?? [],
     expenses: d.expenses ?? [],
-    monthEnds: d.monthEnds ?? [],
+    monthEnds: (d.monthEnds ?? []).map((m) => ({ ...m, items: m.items ?? null })),
     categories: d.categories ?? [],
     favorites: d.favorites ?? [],
     members: d.members ?? [],
+    trips: (d.trips ?? []).map((t) => ({ ...t, items: t.items ?? {} })),
   };
 }
 

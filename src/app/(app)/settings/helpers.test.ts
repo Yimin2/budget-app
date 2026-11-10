@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createDemoLedger } from '@/domain';
 import type { AllocationRule } from '@/domain/types';
 import {
-  allocationTotal, categoryRoleOptions, periodLabel, referenceIncome, spreadsheetUrl, visibleFixed, visibleRules,
+  allocationTotal, categoryRoleOptions, incomeSummaries, ownerLabel, periodLabel, referenceIncome, spreadsheetUrl, visibleFixed,
+  visibleRules,
 } from './helpers';
 
 const demo = createDemoLedger('2026-11-20', '2026-11-20T01:00:00.000Z');
@@ -53,9 +54,29 @@ describe('settings helpers', () => {
     expect(referenceIncome(demo, '2027-02')).toBeNull();
   });
 
-  it('고정 지출: 생활비 → 고정비(결제일 순) → 용돈', () => {
+  it('사람별 수입통장: 통장마다 배분 합 · 수입 · 넘침', () => {
+    expect(allocationTotal(demo, '2026-11', 'demo-acc-income')).toBe(3_000_000);
+    expect(allocationTotal(demo, '2026-11', 'demo-acc-income-junho')).toBe(2_000_000);
+    expect(referenceIncome(demo, '2026-11', 'demo-acc-income-junho')).toEqual({ month: '2026-11', amount: 2_000_000 });
+    const over = { ...demo, rules: [...demo.rules, { ...demo.rules[4]!, id: 'more', amount: 300_000 }] };
+    expect(incomeSummaries(over, '2026-11').map((x) => [x.account.name, x.total, x.over])).toEqual([
+      ['민지 수입통장', 3_000_000, 0],
+      ['준호 수입통장', 2_300_000, 300_000],
+    ]);
+  });
+
+  it('주인 표시: 이름에 이미 있으면 빼요', () => {
+    expect(ownerLabel({ name: '민지 수입통장', ownerName: '민지', ownerEmail: null })).toBeNull();
+    expect(ownerLabel({ name: '월급통장', ownerName: '준호', ownerEmail: null })).toBe('준호');
+    expect(ownerLabel({ name: '월급통장', ownerName: null, ownerEmail: 'jun@x.com' })).toBe('jun');
+    expect(ownerLabel({ name: '고정지출통장', ownerName: null, ownerEmail: null })).toBeNull();
+  });
+
+  it('고정 지출: 생활비 항목 → 고정비(결제일 순) → 용돈', () => {
     const kinds = visibleFixed(demo.fixedExpenses, '2026-11').map((f) => f.name);
-    expect(kinds).toEqual(['생활비', '월세', '통신비', '보험', '용돈(민지)', '용돈(준호)']);
+    expect(kinds).toEqual([
+      '식비', '카페', '교통', '생활', '쇼핑', '의료', '문화', '월세', '통신비', '보험', '용돈(민지)', '용돈(준호)',
+    ]);
   });
 
   it('카테고리 기본 통장 고르기: 있는 통장 역할만 (+ 지금 값)', () => {

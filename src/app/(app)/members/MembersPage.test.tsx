@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { current, renderApp, startDemo } from '../_components/__tests__/harness';
+import { createMemoryStorage, LocalBackend } from '@/storage';
+import type { LedgerBackend, LedgerRef } from '@/storage/types';
+import { current, fakeGoogle, renderApp, startDemo } from '../_components/__tests__/harness';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
@@ -50,5 +52,61 @@ describe('멤버 화면', () => {
     });
     expect(await screen.findByRole('heading', { level: 2, name: '개인 가계부예요' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '초대하기' })).toBeNull();
+  });
+
+  it('체험 모드: 링크 복사는 구글 가계부에서만 된다고 알려요', async () => {
+    const h = renderApp(<MembersPage />);
+    await startDemo(h);
+    expect(screen.getByText(/링크로 공유할 수 없어요/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '링크 복사' }));
+    expect(await screen.findByText(/초대 링크는 구글 시트 가계부에서만 쓸 수 있어요/)).toBeTruthy();
+  });
+
+  it('구글 가계부: 초대 뒤 링크를 보내 달라고 알리고 /start?open=<id> 를 복사해요', async () => {
+    // 브라우저 저장소로 시트 백엔드를 흉내 내요 (source 만 sheets)
+    const inner = new LocalBackend(createMemoryStorage());
+    const asSheets = (r: LedgerRef): LedgerRef => ({ ...r, source: 'sheets' });
+    const sheets: LedgerBackend = {
+      source: 'sheets',
+      create: async (data) => asSheets(await inner.create(data)),
+      open: (ref) => {
+        const r = inner.open({ ...ref, source: 'local' });
+        return {
+          ref,
+          load: () => r.load(),
+          insert: (t, rows) => r.insert(t, rows),
+          upsert: (t, row) => r.upsert(t, row),
+          updateSettings: (patch) => r.updateSettings(patch),
+        };
+      },
+      share: (ref, email) => inner.share({ ...ref, source: 'local' }, email),
+      describe: async (id) => asSheets(await inner.describe(id)),
+    };
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    const h = renderApp(<MembersPage />, { google: fakeGoogle({ isGoogleConfigured: () => true }), sheets });
+    await waitFor(() => expect(current(h).session.status).toBe('signedOut'));
+    await act(async () => {
+      await current(h).session.signInWithGoogle();
+    });
+    let ref: LedgerRef | null = null;
+    await act(async () => {
+      ref = await current(h).session.createLedger({ kind: 'shared', name: '우리집' });
+    });
+    await waitFor(() => expect(current(h).ledger.status).toBe('ready'));
+    const id = (ref as LedgerRef | null)!.id;
+    const link = `${window.location.origin}/start?open=${encodeURIComponent(id)}`;
+    expect((screen.getByRole('textbox', { name: '초대 링크' }) as HTMLInputElement).value).toBe(link);
+
+    fireEvent.change(screen.getByLabelText(/이메일/), { target: { value: 'junho@example.com' } });
+    fireEvent.change(screen.getByLabelText(/표시 이름/), { target: { value: '준호' } });
+    fireEvent.click(screen.getByRole('button', { name: '초대하기' }));
+    expect(await screen.findByText('준호님에게 이 링크를 보내 주세요')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '링크 복사' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(link));
+    expect(await screen.findByText('초대 링크를 복사했어요')).toBeTruthy();
+    Reflect.deleteProperty(navigator, 'clipboard');
   });
 });

@@ -1,5 +1,6 @@
 /* 새 가계부 만들기 마법사의 순수 도우미 (화면과 분리해서 테스트해요) */
-import type { AccountRole, AllocationRule, FixedExpense, Won, YearMonth } from '@/domain/types';
+import { DEFAULT_CATEGORIES, defaultSpreadFor } from '@/domain';
+import type { Account, AccountRole, AllocationRule, Category, FixedExpense, LivingSpread, Won, YearMonth } from '@/domain/types';
 
 export type AllocRole = Extract<AccountRole, 'fixed' | 'event' | 'savings' | 'reservoir'>;
 
@@ -30,6 +31,27 @@ export interface AllowanceDraft {
   day: number;
 }
 
+/** 공용 가계부의 버는 사람 한 명: 그 사람 수입통장과 거기서 보내는 매달 배분 */
+export interface EarnerDraft {
+  key: string;
+  name: string;
+  email: string;
+  salary: Won | null;
+  /** 월급날 = 배분하는 날 */
+  day: number;
+  alloc: Record<AllocRole, Won | null>;
+}
+
+/** 생활비 항목 예산 한 줄 */
+export interface LivingDraft {
+  key: string;
+  categoryId: string;
+  name: string;
+  icon: string;
+  amount: Won | null;
+  spread: LivingSpread;
+}
+
 export type DraftErrors = Record<string, { name?: string; email?: string; amount?: string }>;
 
 let seq = 0;
@@ -42,6 +64,67 @@ export function draftKey(prefix: string): string {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+$/;
 export function isEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim());
+}
+
+/* ---------- 버는 사람 ---------- */
+
+export function emptyAlloc(): Record<AllocRole, Won | null> {
+  return { fixed: null, event: null, savings: null, reservoir: null };
+}
+
+export function newEarner(name = '', email = ''): EarnerDraft {
+  return { key: draftKey('earner'), name, email, salary: null, day: 1, alloc: emptyAlloc() };
+}
+
+/** 사람별 수입통장 이름: '민지 수입통장' (이름이 없으면 '수입통장') */
+export function incomeAccountName(name: string): string {
+  const n = name.trim();
+  return n ? `${n} 수입통장` : '수입통장';
+}
+
+function hasAnyAmount(e: EarnerDraft): boolean {
+  return (e.salary !== null && e.salary > 0) || ALLOC_TARGETS.some((t) => (e.alloc[t.role] ?? 0) > 0);
+}
+
+/** 저장할 사람: 첫 사람(만든 사람)은 늘, 나머지는 이름이나 금액이 있을 때만 */
+export function activeEarners(earners: EarnerDraft[]): EarnerDraft[] {
+  return earners.filter((e, i) => i === 0 || e.name.trim() !== '' || hasAnyAmount(e));
+}
+
+/** 둘째 사람부터는 이름이 꼭 있어야 해요. 이메일은 쓰면 형식을 확인해요 */
+export function validateEarners(earners: EarnerDraft[]): DraftErrors {
+  const errors: DraftErrors = {};
+  earners.forEach((e, i) => {
+    const err: DraftErrors[string] = {};
+    if (i > 0 && !e.name.trim() && hasAnyAmount(e)) err.name = '이름을 입력해 주세요';
+    if (e.email.trim() && !isEmail(e.email)) err.email = '이메일 주소를 확인해 주세요';
+    if (err.name || err.email) errors[e.key] = err;
+  });
+  return errors;
+}
+
+/** 사람의 수입통장 행 값 (이름 · 주인) */
+export function earnerAccountFields(e: EarnerDraft): Pick<Account, 'name' | 'ownerName' | 'ownerEmail'> {
+  return { name: incomeAccountName(e.name), ownerName: e.name.trim() || null, ownerEmail: e.email.trim() || null };
+}
+
+/* ---------- 생활비 항목 ---------- */
+
+/** 마법사 생활비 단계에 미리 넣어 둘 항목: 생활비 기본 카테고리(식비·카페·교통·생활·쇼핑·의료·문화), 금액은 비워요 */
+export function defaultLivingDrafts(categories: Category[]): LivingDraft[] {
+  const names = DEFAULT_CATEGORIES.filter((c) => c.role === 'fixed' && c.key !== 'etc').map((c) => c.name);
+  return names
+    .map((n) => categories.find((c) => !c.deleted && c.name === n))
+    .filter((c): c is Category => !!c)
+    .map((c) => livingDraftFor(c));
+}
+
+export function livingDraftFor(c: Category): LivingDraft {
+  return { key: draftKey('living'), categoryId: c.id, name: c.name, icon: c.icon, amount: null, spread: defaultSpreadFor(c.name) };
+}
+
+export function livingTotal(rows: LivingDraft[]): Won {
+  return rows.reduce((s, r) => s + (r.amount && r.amount > 0 ? r.amount : 0), 0);
 }
 
 /* ---------- 매달 배분 합계 ---------- */
@@ -101,18 +184,11 @@ export interface FixedContext {
 /** 마법사 입력 → 고정 지출 행 (키는 저장 상태를 맞출 때 써요) */
 export function wantedFixed(
   ctx: FixedContext,
-  living: Won | null,
   bills: BillDraft[],
   allowances: AllowanceDraft[],
 ): { key: string; input: FixedInput }[] {
-  const base = { accountId: ctx.accountId, startMonth: ctx.month, endMonth: null };
+  const base = { accountId: ctx.accountId, startMonth: ctx.month, endMonth: null, spread: 'daily' as const };
   const out: { key: string; input: FixedInput }[] = [];
-  if (living !== null && living > 0) {
-    out.push({
-      key: 'living',
-      input: { ...base, name: '생활비', amount: living, categoryId: null, dayOfMonth: null, kind: 'living', targetEmail: null },
-    });
-  }
   for (const b of bills) {
     if (!b.name.trim() || b.amount === null || b.amount <= 0) continue;
     out.push({
@@ -132,11 +208,37 @@ export function wantedFixed(
   return out;
 }
 
+/** 마법사 생활비 항목 → 생활비 예산 행 (키 = living:카테고리id). 금액이 없는 항목은 빼요 */
+export function wantedLiving(ctx: FixedContext, rows: LivingDraft[]): { key: string; input: FixedInput }[] {
+  const out: { key: string; input: FixedInput }[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (r.amount === null || r.amount <= 0 || seen.has(r.categoryId)) continue;
+    seen.add(r.categoryId);
+    out.push({
+      key: `living:${r.categoryId}`,
+      input: {
+        accountId: ctx.accountId,
+        startMonth: ctx.month,
+        endMonth: null,
+        name: r.name,
+        amount: r.amount,
+        categoryId: r.categoryId,
+        dayOfMonth: null,
+        kind: 'living',
+        targetEmail: null,
+        spread: r.spread,
+      },
+    });
+  }
+  return out;
+}
+
 export type RuleInput = Omit<AllocationRule, 'id' | 'deleted'>;
 
-/** 매달 배분 입력 → 규칙 행 (키 = 받는 통장 역할) */
+/** 매달 배분 입력 → 규칙 행 (키 = [keyPrefix:]받는 통장 역할. 사람마다 keyPrefix 를 달리 줘요) */
 export function wantedRules(
-  ctx: { incomeAccountId: string | null; month: YearMonth; day: number },
+  ctx: { incomeAccountId: string | null; month: YearMonth; day: number; keyPrefix?: string },
   targets: { role: AllocRole; accountId: string | null; amount: Won | null }[],
 ): { key: string; input: RuleInput }[] {
   if (!ctx.incomeAccountId) return [];
@@ -144,7 +246,7 @@ export function wantedRules(
   for (const t of targets) {
     if (!t.accountId || t.amount === null || t.amount <= 0) continue;
     out.push({
-      key: t.role,
+      key: ctx.keyPrefix ? `${ctx.keyPrefix}:${t.role}` : t.role,
       input: {
         fromAccountId: ctx.incomeAccountId,
         toAccountId: t.accountId,

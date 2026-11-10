@@ -41,7 +41,7 @@ function ProbeView({ target }: { target: { current: Probe | null } }) {
 
 export function renderApp(
   ui: ReactElement,
-  opts: { now?: Date; ledgerStorage?: KeyValueStorage; google?: GoogleDeps } = {},
+  opts: { now?: Date; ledgerStorage?: KeyValueStorage; google?: GoogleDeps; sheets?: LedgerBackend } = {},
 ): AppHarness {
   const clock = { now: opts.now ?? new Date(2026, 10, 20, 10, 0, 0) };
   const ledgerStorage = opts.ledgerStorage ?? createMemoryStorage();
@@ -49,7 +49,7 @@ export function renderApp(
   const deps: Partial<StateDeps> = {
     google: opts.google ?? fakeGoogle(),
     local,
-    sheets: {} as LedgerBackend,
+    sheets: opts.sheets ?? ({} as LedgerBackend),
     now: () => clock.now,
     storage: createMemoryStorage(),
     restoreTimeoutMs: 50,

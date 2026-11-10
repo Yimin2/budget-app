@@ -25,7 +25,13 @@
 .oFav {
   order: 3;
 }
+.oItems {
+  order: 3;
+}
 .oBanner {
+  order: 4;
+}
+.oClaims {
   order: 4;
 }
 .oEvent {
@@ -108,6 +114,84 @@
   font-weight: 700;
 }
 .heroMeta .bad {
+  color: var(--danger-text);
+}
+.heroNote {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+
+/* ───────── 생활비 항목 ───────── */
+.items {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.itemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.itemName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.itemName > :global(.icon) {
+  flex: none;
+  color: var(--primary-text);
+}
+.itemText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.itemLeft {
+  flex: none;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.itemCap {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.itemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: var(--space-3);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.itemMeta strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.itemLeft .bad,
+.itemMeta .bad {
   color: var(--danger-text);
 }
 .setup {
@@ -340,7 +424,7 @@
 }
 
 /* ───────── 사도 돼? ─────────
-   모바일·태블릿: 한 줄 (금액 → 빠른 금액 → 어느 돈 → 결과 → 버튼 → 카테고리). 데스크톱(≥1280): 왼쪽 입력 / 오른쪽 결과 */
+   모바일·태블릿: 한 줄 (금액 → 빠른 금액 → 어느 돈 → 어디에 쓸까요 → 결과 → 버튼). 데스크톱(≥1280): 왼쪽 입력 / 오른쪽 결과 */
 .check {
   display: flex;
   flex-direction: column;
@@ -377,7 +461,7 @@
   order: 6;
 }
 .cCategory {
-  order: 7;
+  order: 4;
 }
 @media (min-width: 768px) {
   .check,
@@ -486,4 +570,33 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* 사도 돼? 할부 안내 (큰 금액일 때) */
+.instHint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text);
+}
+.instIcon {
+  flex: none;
+  margin-top: 1px;
+}
+.instFits .instIcon {
+  color: var(--success-text);
+}
+.instOver {
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+.instOver .instIcon {
+  color: var(--warning-text);
 }

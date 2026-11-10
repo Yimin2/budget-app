@@ -10,6 +10,7 @@ import { Badge, Button, Card, EmptyState, Icon, Money, PageHeader, Skeleton, Sta
 import { RequireLedger, isLedgerReady, type ReadyLedger } from '../_components/RequireLedger';
 import { AccountDetail } from './AccountDetail';
 import { FlowCard } from './FlowCard';
+import { ownerLabel } from '../settings/helpers';
 import { flowSummary, monthFlows, monthTotals, ROLE_ICON, ROLE_LABEL, type MonthFlow } from './selectors';
 import { TransferDialog, type RecordMode } from './TransferDialog';
 import styles from './accounts.module.css';
@@ -61,6 +62,14 @@ function OverviewBody({ ledger }: { ledger: ReadyLedger }) {
   const flow = useMemo(() => flowSummary(data, monthOf(today)), [data, today]);
   const total = accounts.reduce((s, a) => s + (balances[a.id] ?? 0), 0);
   const livingId = ledger.living?.livingAccountId ?? null;
+  // 개인 돈으로 내고 아직 돌려받지 않은 돈 (돌려받을 통장마다)
+  const owed = useMemo(() => {
+    const out: Record<Id, Won> = {};
+    for (const c of ledger.claims?.pending ?? []) {
+      if (c.claimAccountId) out[c.claimAccountId] = (out[c.claimAccountId] ?? 0) + c.amount;
+    }
+    return out;
+  }, [ledger.claims]);
   const thisYear = Number(today.slice(0, 4));
 
   return (
@@ -105,6 +114,7 @@ function OverviewBody({ ledger }: { ledger: ReadyLedger }) {
                     balance={balances[a.id] ?? 0}
                     flow={flows[a.id] ?? { in: 0, out: 0 }}
                     living={a.id === livingId}
+                    owed={owed[a.id] ?? 0}
                   />
                 </li>
               ))}
@@ -119,7 +129,20 @@ function OverviewBody({ ledger }: { ledger: ReadyLedger }) {
   );
 }
 
-function AccountCard({ account, balance, flow, living }: { account: Account; balance: Won; flow: MonthFlow; living: boolean }) {
+function AccountCard({
+  account,
+  balance,
+  flow,
+  living,
+  owed = 0,
+}: {
+  account: Account;
+  balance: Won;
+  flow: MonthFlow;
+  living: boolean;
+  /** 개인 돈으로 내고 아직 돌려받지 않은 돈 */
+  owed?: Won;
+}) {
   return (
     <Link href={accountHref(account.id)} className={cx('card', styles.accCard)}>
       <span className={styles.accHead}>
@@ -137,6 +160,11 @@ function AccountCard({ account, balance, flow, living }: { account: Account; bal
                 생활비
               </Badge>
             ) : null}
+            {ownerLabel(account) ? (
+              <Badge size="sm" tone="info" dot={false}>
+                {ownerLabel(account)}
+              </Badge>
+            ) : null}
           </span>
         </span>
         <Icon name="chevron-right" size={20} className={styles.chev} />
@@ -145,7 +173,13 @@ function AccountCard({ account, balance, flow, living }: { account: Account; bal
         <span className="sr-only">잔액 </span>
         <Money amount={balance} />
       </span>
-      {balance < 0 ? (
+      {owed > 0 ? (
+        <span className={styles.owedLine}>
+          <Icon name="info" size={16} />
+          돌려받을 돈 {formatWon(owed)}이 있어요
+        </span>
+      ) : null}
+      {balance + owed < 0 ? (
         <span className={styles.warnLine}>
           <Icon name="alert-triangle" size={16} />
           잔액이 마이너스예요. 실제 잔액을 맞춰 주세요

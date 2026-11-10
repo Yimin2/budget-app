@@ -5,13 +5,31 @@ import {
   addMonths,
   adjustmentDelta,
   allBalances,
+  buildInstallmentRows,
+  deleteInstallmentRows,
+  earliestChangeMonth,
+  installmentPlan,
+  installmentPlans,
+  installmentPrepayId,
+  judgeInstallment,
+  prepaidAmounts,
+  remainingAmountsFrom,
+  replanInstallment,
+  revisedAmounts,
   autoTransferId,
+  canClaimOnAccount,
+  claimAccountFor,
+  claimPayers as claimPayersDomain,
+  claimTransferId,
   compareMonth,
+  computeClaimDue,
   computeLiving,
   dateInMonth,
   decideMonthEnd as decideMonthEndDomain,
   judgeEvent,
   judgeLiving,
+  isClaimExpense,
+  isClaimSettled,
   isMonthActive,
   monthOf,
   newId,
@@ -19,11 +37,20 @@ import {
   nextOccurrenceId,
   pendingAllowanceIncome,
   pendingAutoRecords,
+  pendingClaims,
   pendingMonthEnd as pendingMonthEndDomain,
   projectEventAccount,
   seriesAnchorDay,
   suggestShortageFixes,
+  summarizeClaims,
   toISODate,
+  tripStatuses,
+  validateTrip,
+  cleanTripItems,
+  isTripItem,
+  planImport,
+  applyImportPlan,
+  IMPORT_TABLES,
 } from '@/domain';
 import type {
   Account,
@@ -38,6 +65,7 @@ import type {
   Member,
   PlannedEvent,
   Transfer,
+  Trip,
   Won,
   YearMonth,
 } from '@/domain/types';
@@ -45,7 +73,8 @@ import { isGoogleError } from '@/google/errors';
 import { StorageError } from '@/storage/sheets';
 import type { LedgerRef, LedgerRepository, TableName, TableRows } from '@/storage/types';
 import { useSession, useSessionInternals } from './session';
-import type { LedgerApi, NewEvent, NewExpense } from './types';
+import type { ImportFile } from '@/domain/importFile';
+import type { LedgerApi, NewEvent, NewExpense, NewInstallment, NewTrip } from './types';
 
 /* ---------- 순수 도우미 ---------- */
 
@@ -419,6 +448,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     (role: Account['role']) => activeAccounts.find((a) => a.role === role) ?? null,
     [activeAccounts],
   );
+  const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income'), [activeAccounts]);
   const living = useMemo(() => (data ? computeLiving(data, today) : null), [data, today]);
   const balances = useMemo(() => (data ? allBalances(data, today) : {}), [data, today]);
   const eventProjection = useMemo(() => (data ? projectEventAccount(data, today) : null), [data, today]);
@@ -430,12 +460,46 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [data, today, eventProjection],
   );
   const pendingMonthEnd = useMemo(() => (data ? pendingMonthEndDomain(data, today) : null), [data, today]);
+  const claims = useMemo(() => (data ? summarizeClaims(data, today) : null), [data, today]);
+  const claimPayers = useMemo(() => (data ? claimPayersDomain(data) : []), [data]);
+  const installments = useMemo(() => (data ? installmentPlans(data, today) : []), [data, today]);
+  const trips = useMemo(() => (data ? tripStatuses(data, today) : []), [data, today]);
+  const installmentHint = useCallback<LedgerApi['installmentHint']>(
+    (amount, source, categoryId, opts) => {
+      if (!data) return null;
+      if (source === 'event') return judgeInstallment({ source: 'event', data, today, tripId: opts?.tripId ?? null }, amount);
+      if (!living) return null;
+      let cat: Id | null;
+      if (categoryId === undefined) {
+        const budgeted = living.items.filter((i) => !i.unbudgeted);
+        if (budgeted.length !== 1) return null;
+        cat = budgeted[0]!.categoryId;
+      } else cat = categoryId;
+      return judgeInstallment({ source: 'living', living, categoryId: cat }, amount);
+    },
+    [data, living, today],
+  );
+  const previewClaimDue = useCallback<LedgerApi['previewClaimDue']>(
+    (accountId, amount, expenseId) => {
+      if (!data || !canClaimOnAccount(data, accountId)) return null;
+      return computeClaimDue(data, { accountId, amount: Math.max(0, amount), expenseId }, today);
+    },
+    [data, today],
+  );
 
   const judge = useCallback<LedgerApi['judge']>(
-    (amount, source) => {
+    (amount, source, categoryId, opts) => {
       if (!data) return null;
-      if (source === 'living') return living ? judgeLiving(living, amount) : null;
-      return judgeEvent(data, today, amount);
+      if (source === 'living') {
+        if (!living) return null;
+        if (categoryId === undefined) {
+          const budgeted = living.items.filter((i) => !i.unbudgeted);
+          if (budgeted.length !== 1) return null;
+          return judgeLiving(living, budgeted[0]!.categoryId, amount);
+        }
+        return judgeLiving(living, categoryId, amount);
+      }
+      return judgeEvent(data, today, amount, { tripId: opts?.tripId ?? null });
     },
     [data, living, today],
   );
@@ -451,38 +515,278 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
 
   /* ---------- 지출 ---------- */
 
+  /** 지출의 여행 칸. 여행 id 가 있으면 지우지 않은 여행인지 확인해요 (지금 묶인 여행은 지웠어도 그대로) */
+  const tripFields = useCallback(
+    (tripId: Id | null | undefined, tripItem: unknown, keep?: Id | null): Pick<Expense, 'tripId' | 'tripItem'> => {
+      const id = tripId?.trim() || null;
+      if (!id) return {};
+      const t = requireData().data.trips.find((x) => x.id === id);
+      if (!t || (t.deleted && id !== keep)) throw new Error('여행을 찾을 수 없어요. 여행을 다시 골라 주세요');
+      return { tripId: id, tripItem: isTripItem(tripItem) ? tripItem : null };
+    },
+    [requireData],
+  );
+
   const addExpense = useCallback(
     async (input: NewExpense): Promise<Expense> => {
       if (!(input.amount > 0)) throw new Error('금액을 입력해 주세요');
+      const amount = Math.round(input.amount);
+      const payer = input.paidBy?.trim() || null;
+      let claim: Pick<Expense, 'paidBy' | 'claimAccountId' | 'claimDue'> = {};
+      if (payer) {
+        const { data: d } = requireData();
+        if (!canClaimOnAccount(d, input.accountId)) {
+          throw new Error('개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중 하나에 기록해 주세요');
+        }
+        claim = {
+          paidBy: payer,
+          claimAccountId: claimAccountFor(d, payer),
+          claimDue: computeClaimDue(d, { accountId: input.accountId, amount }, todayRef.current),
+        };
+      }
+      const trip = tripFields(input.tripId, input.tripItem);
+      // 일정과 여행은 하나만 (둘 다 묶으면 일정 남은 금액과 여행 남은 예산에서 두 번 빠진다)
+      if (trip.tripId && input.eventId) throw new Error('일정과 여행 중 하나만 연결해 주세요');
       const row: Expense = {
         id: newId(),
         date: input.date,
-        amount: Math.round(input.amount),
+        amount,
         accountId: input.accountId,
         categoryId: input.categoryId,
         memo: input.memo ?? '',
         eventId: input.eventId ?? null,
         fixedExpenseId: null,
         ...stamp(),
+        ...claim,
+        ...trip,
       };
       await insertRows('expenses', [row], '지출을 기록하지 못했어요');
       return row;
     },
-    [insertRows, stamp],
+    [insertRows, stamp, requireData, tripFields],
   );
 
+  /** 지출과 그 청구의 돌려준 이체(claim:<지출id>)를 함께 쓴다. 이체 먼저: 끊기면 다시 읽어 맞춘다 */
+  const writeExpenseAndSettle = useCallback(
+    (expense: Expense, settle: Transfer, failMessage: string) =>
+      mutate(
+        (x) => ({ ...x, expenses: upsertIn(x.expenses, expense), transfers: upsertIn(x.transfers, settle) }),
+        async (repo) => {
+          await repo.upsert('transfers', settle);
+          await repo.upsert('expenses', expense);
+        },
+        failMessage,
+        { multiStep: true },
+      ),
+    [mutate],
+  );
+
+  /**
+   * 고치기. 아직 돌려주지 않은 청구는 낸 사람 · 통장 · 금액이 바뀌면 돌려받을 통장과 정산일을 다시 정해요.
+   * 낸 사람을 비우면 보통 지출이 돼요. 이미 돌려준 청구는 청구 칸을 그대로 둬요
+   */
   const updateExpense = useCallback(
-    (expense: Expense) => upsertRow('expenses', { ...expense, updatedAt: nowIso() }, '지출을 고치지 못했어요'),
-    [upsertRow, nowIso],
+    async (expense: Expense) => {
+      const { data: d } = requireData();
+      const prev = d.expenses.find((e) => e.id === expense.id);
+      let next: Expense = { ...expense, updatedAt: nowIso() };
+      if (expense.tripId !== undefined || prev?.tripId) {
+        const trip = tripFields(expense.tripId, expense.tripItem, prev?.tripId ?? null);
+        next = { ...next, tripId: trip.tripId ?? null, tripItem: trip.tripItem ?? null };
+      }
+      // 일정과 여행은 하나만: 여행에 묶이면 일정 연결은 푼다 (예전 기록이 둘 다 가졌어도)
+      if (next.tripId && next.eventId) next = { ...next, eventId: null };
+      // 지웠던 지출을 되살리면, 함께 지웠던 돌려준 이체도 되살린다 (deleteExpense 가 같은 시각으로 지운 것만)
+      const settle = prev ? d.transfers.find((t) => t.id === claimTransferId(prev.id)) : undefined;
+      if (prev && settle && prev.deleted && !next.deleted && settle.deleted && settle.updatedAt === prev.updatedAt && isClaimExpense(prev)) {
+        const revived: Transfer = { ...settle, deleted: false, updatedAt: next.updatedAt };
+        next = { ...next, paidBy: prev.paidBy, claimAccountId: prev.claimAccountId ?? null, claimDue: prev.claimDue ?? null };
+        await writeExpenseAndSettle(next, revived, '지출을 고치지 못했어요');
+        return;
+      }
+      if (prev && isClaimExpense(prev) && isClaimSettled(d, prev.id)) {
+        next = { ...next, paidBy: prev.paidBy, claimAccountId: prev.claimAccountId ?? null, claimDue: prev.claimDue ?? null };
+        // 이미 돌려준 청구의 금액 · 통장을 바꾸면 돌려준 이체도 같이 고친다 (낸 사람 통장 · 함께 쓰는 통장 잔액이 어긋나지 않게)
+        if (settle && (next.amount !== settle.amount || next.accountId !== settle.fromAccountId || next.deleted)) {
+          if (!next.deleted && !canClaimOnAccount(d, next.accountId)) {
+            throw new Error('돌려준 청구는 이벤트통장 · 고정지출통장 · 저수지통장으로만 옮길 수 있어요');
+          }
+          const fixed: Transfer = next.deleted
+            ? { ...settle, deleted: true, updatedAt: next.updatedAt }
+            : { ...settle, amount: next.amount, fromAccountId: next.accountId, updatedAt: next.updatedAt };
+          await writeExpenseAndSettle(next, fixed, '지출을 고치지 못했어요');
+          return;
+        }
+      } else if (isClaimExpense(next)) {
+        const payer = next.paidBy!.trim();
+        const changed =
+          !prev || !isClaimExpense(prev) || prev.paidBy?.trim() !== payer || prev.accountId !== next.accountId || prev.amount !== next.amount;
+        if (changed) {
+          if (!canClaimOnAccount(d, next.accountId)) {
+            throw new Error('개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중 하나에 기록해 주세요');
+          }
+          next = {
+            ...next,
+            paidBy: payer,
+            claimAccountId: claimAccountFor(d, payer),
+            claimDue: computeClaimDue(d, { accountId: next.accountId, amount: next.amount, expenseId: next.id }, todayRef.current),
+          };
+        }
+      } else if (prev && isClaimExpense(prev)) {
+        next = { ...next, paidBy: null, claimAccountId: null, claimDue: null };
+      }
+      await upsertRow('expenses', next, '지출을 고치지 못했어요');
+    },
+    [requireData, upsertRow, nowIso, tripFields, writeExpenseAndSettle],
+  );
+
+  /* ---------- 청구 ---------- */
+
+  const settleClaims = useCallback<LedgerApi['settleClaims']>(
+    async (expenseIds, date) => {
+      const { data: d } = requireData();
+      const ids = new Set(expenseIds);
+      const due = pendingClaims(d, todayRef.current).filter((c) => ids.has(c.expense.id));
+      if (due.length === 0) return;
+      const s = stamp();
+      const day = date ?? todayRef.current;
+      const rows: Transfer[] = due.map((c) => {
+        const cat = c.expense.categoryId ? d.categories.find((x) => x.id === c.expense.categoryId)?.name : undefined;
+        const what = c.expense.memo.trim() || cat || '지출';
+        return {
+          id: claimTransferId(c.expense.id),
+          date: day,
+          kind: 'transfer',
+          fromAccountId: c.accountId,
+          toAccountId: c.claimAccountId,
+          amount: c.amount,
+          status: 'done',
+          ruleId: null,
+          memo: `${c.payer}에게 돌려줌 · ${what}`,
+          ...s,
+        };
+      });
+      // 늘 키로 덮어쓴다(없으면 추가). 다른 기기에서 돌려줬다 되돌린(지운) 행이 시트에 있을 수 있는데,
+      // insert 는 같은 키를 건너뛰어 아무것도 쓰지 않은 채 돌려준 것처럼 보이기 때문이다
+      await mutate(
+        (x) => ({ ...x, transfers: rows.reduce((list, r) => upsertIn(list, r), x.transfers) }),
+        async (repo) => {
+          for (const r of rows) await repo.upsert('transfers', r);
+        },
+        '돌려준 기록을 저장하지 못했어요',
+        { multiStep: rows.length > 1 },
+      );
+    },
+    [requireData, stamp, mutate],
+  );
+
+  const unsettleClaims = useCallback<LedgerApi['unsettleClaims']>(
+    async (expenseIds) => {
+      const { data: d } = requireData();
+      const ids = new Set(expenseIds.map(claimTransferId));
+      const rows = d.transfers
+        .filter((t) => ids.has(t.id) && !t.deleted)
+        .map((t) => ({ ...t, deleted: true, updatedAt: nowIso() }));
+      if (rows.length === 0) return;
+      await mutate(
+        (x) => ({ ...x, transfers: rows.reduce((list, r) => upsertIn(list, r), x.transfers) }),
+        async (repo) => {
+          for (const r of rows) await repo.upsert('transfers', r);
+        },
+        '되돌리지 못했어요',
+        { multiStep: rows.length > 1 },
+      );
+    },
+    [requireData, mutate, nowIso],
+  );
+
+  const saveSettleDay = useCallback<LedgerApi['saveSettleDay']>(
+    async (day) => {
+      const value = day !== null && Number.isInteger(day) && day >= 1 && day <= 31 ? day : null;
+      await mutate(
+        (d) => ({ ...d, settings: { ...d.settings, settleDay: value } }),
+        (r) => r.updateSettings({ settleDay: value }),
+        '정산일을 저장하지 못했어요',
+      );
+    },
+    [mutate],
   );
 
   const deleteExpense = useCallback(
     async (id: Id) => {
-      const row = requireData().data.expenses.find((e) => e.id === id);
+      const d = requireData().data;
+      const row = d.expenses.find((e) => e.id === id);
       if (!row) throw new Error('지출 기록을 찾을 수 없어요');
-      await upsertRow('expenses', { ...row, deleted: true, updatedAt: nowIso() }, '지출을 지우지 못했어요');
+      const updatedAt = nowIso();
+      const deleted: Expense = { ...row, deleted: true, updatedAt };
+      // 돌려준 청구를 지우면 돌려준 이체도 같은 시각으로 지운다 (되살리면 함께 되살아난다)
+      const settle = isClaimExpense(row) ? d.transfers.find((t) => t.id === claimTransferId(row.id) && !t.deleted) : undefined;
+      if (settle) {
+        await writeExpenseAndSettle(deleted, { ...settle, deleted: true, updatedAt }, '지출을 지우지 못했어요');
+        return;
+      }
+      await upsertRow('expenses', deleted, '지출을 지우지 못했어요');
     },
-    [requireData, upsertRow, nowIso],
+    [requireData, upsertRow, nowIso, writeExpenseAndSettle],
+  );
+
+  /* ---------- 여행 ---------- */
+
+  const tripRow = useCallback((input: NewTrip): Pick<Trip, 'name' | 'startDate' | 'endDate' | 'budget' | 'items' | 'memo'> => {
+    const err = validateTrip(input);
+    if (err) throw new Error(err);
+    return {
+      name: input.name.trim(),
+      startDate: input.startDate,
+      endDate: input.endDate,
+      budget: Math.max(0, Math.round(input.budget || 0)),
+      items: cleanTripItems(input.items),
+      memo: input.memo?.trim() ?? '',
+    };
+  }, []);
+
+  const addTrip = useCallback<LedgerApi['addTrip']>(
+    async (input) => {
+      const row: Trip = { id: newId(), ...tripRow(input), ...stamp() };
+      await insertRows('trips', [row], '여행을 추가하지 못했어요');
+      return row;
+    },
+    [tripRow, stamp, insertRows],
+  );
+
+  const findTrip = useCallback(
+    (id: Id): Trip => {
+      const t = requireData().data.trips.find((x) => x.id === id);
+      if (!t) throw new Error('여행을 찾을 수 없어요');
+      return t;
+    },
+    [requireData],
+  );
+
+  const updateTrip = useCallback<LedgerApi['updateTrip']>(
+    async (id, input) => {
+      const t = findTrip(id);
+      await upsertRow('trips', { ...t, ...tripRow(input), updatedAt: nowIso() }, '여행을 고치지 못했어요');
+    },
+    [findTrip, tripRow, upsertRow, nowIso],
+  );
+
+  const deleteTrip = useCallback<LedgerApi['deleteTrip']>(
+    async (id) => {
+      const t = findTrip(id);
+      if (t.deleted) return;
+      await upsertRow('trips', { ...t, deleted: true, updatedAt: nowIso() }, '여행을 지우지 못했어요');
+    },
+    [findTrip, upsertRow, nowIso],
+  );
+
+  const restoreTrip = useCallback<LedgerApi['restoreTrip']>(
+    async (id) => {
+      const t = findTrip(id);
+      if (!t.deleted) return;
+      await upsertRow('trips', { ...t, deleted: false, updatedAt: nowIso() }, '여행을 되살리지 못했어요');
+    },
+    [findTrip, upsertRow, nowIso],
   );
 
   /* ---------- 일정 ---------- */
@@ -745,7 +1049,13 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         await syncAutoNow();
         return;
       }
-      const income = accountByRole('income');
+      // 수입통장이 여럿이면(사람별) 이번 달 배분을 가장 많이 보내는 통장에서 적립해요
+      const incomes = sortedActive(d.accounts).filter((a) => a.role === 'income');
+      const sent = (id: Id) =>
+        d.rules
+          .filter((r) => !r.deleted && r.fromAccountId === id && isMonthActive(fix.fromMonth, r.startMonth, r.endMonth))
+          .reduce((s, r) => s + r.amount, 0);
+      const income = incomes.reduce<Account | null>((best, a) => (!best || sent(a.id) > sent(best.id) ? a : best), null);
       if (!income) throw new Error('수입통장이 없어서 적립을 늘릴 수 없어요');
       await addRule({
         fromAccountId: income.id,
@@ -780,6 +1090,125 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [accountByRole, insertRows, stamp],
   );
 
+  /* ---------- 할부 ---------- */
+
+  /**
+   * 할부 행 쓰기. replanInstallment 가 준 순서(뒤 행 지우기 → 새 행 → 앞 행 끝내기)대로 쓰고, 미리 갚기 지출은 맨 마지막에 쓴다.
+   * 그래서 중간에 끊겨도 미리 갚은 돈이 기록된 채 옛 회차가 계속 기록되는 일(두 번 내기)이 없다.
+   * 같은 id 의 지운 미리 갚기 지출이 있으면(지웠다가 다시 미리 갚기) 되살린다
+   */
+  const writeInstallmentRows = useCallback(
+    async (rows: FixedExpense[], failMessage: string, expense?: Expense) => {
+      if (rows.length === 0 && !expense) return;
+      const revive = !!expense && requireData().data.expenses.some((e) => e.id === expense.id);
+      await mutate(
+        (x) => ({
+          ...x,
+          fixedExpenses: rows.reduce((list, r) => upsertIn(list, r), x.fixedExpenses),
+          expenses: expense ? (revive ? upsertIn(x.expenses, expense) : insertIn(x.expenses, [expense])) : x.expenses,
+        }),
+        async (repo) => {
+          for (const r of rows) await repo.upsert('fixedExpenses', r);
+          if (expense) {
+            if (revive) await repo.upsert('expenses', expense);
+            else await repo.insert('expenses', [expense]);
+          }
+        },
+        failMessage,
+        { multiStep: rows.length + (expense ? 1 : 0) > 1 },
+      );
+      await syncAutoNow();
+    },
+    [mutate, syncAutoNow, requireData],
+  );
+
+  const findPlan = useCallback(
+    (planId: Id) => {
+      const plan = installmentPlan(requireData().data, planId, todayRef.current);
+      if (!plan) throw new Error('할부를 찾을 수 없어요');
+      return plan;
+    },
+    [requireData],
+  );
+
+  const addInstallment = useCallback<LedgerApi['addInstallment']>(
+    async (input: NewInstallment) => {
+      const planId = newId();
+      const rows = buildInstallmentRows(input, planId, todayRef.current);
+      await mutate(
+        (x) => ({ ...x, fixedExpenses: insertIn(x.fixedExpenses, rows) }),
+        (repo) => repo.insert('fixedExpenses', rows),
+        '할부를 추가하지 못했어요',
+      );
+      await syncAutoNow();
+      return planId;
+    },
+    [mutate, syncAutoNow],
+  );
+
+  const reviseInstallment = useCallback<LedgerApi['reviseInstallment']>(
+    async (planId, change) => {
+      const plan = findPlan(planId);
+      const from = change.fromMonth ?? earliestChangeMonth(plan);
+      if (!from) throw new Error('이미 다 낸 할부예요');
+      const amounts = revisedAmounts(plan, from, { monthly: change.monthly, remaining: change.remaining });
+      if (amounts.length === 0) throw new Error('남은 회차를 1회 이상으로 정해 주세요. 그만 낼 거라면 그만 내기를 골라 주세요');
+      const { name, accountId, categoryId, dayOfMonth } = change;
+      const rows = replanInstallment(plan, from, amounts, { name, accountId, categoryId, dayOfMonth });
+      await writeInstallmentRows(rows, '할부를 고치지 못했어요');
+    },
+    [findPlan, writeInstallmentRows],
+  );
+
+  const prepayInstallment = useCallback<LedgerApi['prepayInstallment']>(
+    async (planId, input) => {
+      const plan = findPlan(planId);
+      const from = earliestChangeMonth(plan);
+      if (!from || !plan.next) throw new Error('이미 다 낸 할부예요');
+      const remaining = remainingAmountsFrom(plan, from).reduce((s, a) => s + a, 0);
+      const amounts = prepaidAmounts(plan, from, input.amount, input.keep);
+      const rows = replanInstallment(plan, from, amounts);
+      const s = stamp();
+      const expense: Expense = {
+        id: installmentPrepayId(plan.id, from, remaining, input.amount),
+        date: input.date ?? todayRef.current,
+        amount: Math.round(input.amount),
+        accountId: plan.next.accountId,
+        categoryId: plan.categoryId,
+        memo: `${plan.name} 미리 갚기`,
+        eventId: null,
+        // 할부 id 행(첫 행)은 지우지 않으므로 늘 남아 있다
+        fixedExpenseId: plan.id,
+        ...s,
+      };
+      try {
+        await writeInstallmentRows(rows, '미리 갚기를 끝까지 저장하지 못했어요', expense);
+      } catch (e) {
+        // 지출은 맨 마지막에 쓰므로, 실패했으면 미리 갚은 돈은 아직 기록되지 않았다
+        const why = e instanceof Error ? e.message.replace(/[.\s]+$/, '') : '미리 갚기를 끝까지 저장하지 못했어요';
+        throw new Error(`${why}. 미리 갚은 돈은 아직 기록되지 않았어요. 할부 회차를 확인하고 다시 해 주세요`);
+      }
+    },
+    [findPlan, stamp, writeInstallmentRows],
+  );
+
+  const endInstallment = useCallback<LedgerApi['endInstallment']>(
+    async (planId) => {
+      const plan = findPlan(planId);
+      const from = earliestChangeMonth(plan);
+      if (!from) return;
+      await writeInstallmentRows(replanInstallment(plan, from, []), '할부를 멈추지 못했어요');
+    },
+    [findPlan, writeInstallmentRows],
+  );
+
+  const deleteInstallment = useCallback<LedgerApi['deleteInstallment']>(
+    async (planId) => {
+      await writeInstallmentRows(deleteInstallmentRows(findPlan(planId)), '할부를 지우지 못했어요');
+    },
+    [findPlan, writeInstallmentRows],
+  );
+
   /* ---------- 통장·이체 ---------- */
 
   const saveAccount = useCallback(
@@ -801,6 +1230,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         openingBalance: Math.round(input.openingBalance),
         openingDate: todayRef.current,
         order: nextOrder(d.accounts),
+        ownerName: input.ownerName?.trim() || null,
+        ownerEmail: input.ownerEmail?.trim() || null,
         deleted: false,
       };
       await insertRows('accounts', [row], '통장을 추가하지 못했어요');
@@ -962,6 +1393,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         choice,
         authorRef.current,
         nowIso(),
+        pending.items.map((i) => ({ categoryId: i.categoryId, leftover: i.leftover })),
       );
       await mutate(
         (x) => ({
@@ -1015,6 +1447,40 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, mutate, updateRecent],
   );
 
+  /* ---------- 파일에서 가져오기 ---------- */
+
+  const previewImport = useCallback<LedgerApi['previewImport']>(
+    (file: ImportFile) => (data ? planImport(data, file, { today, author, now: deps.now().toISOString() }) : null),
+    [data, today, author, deps],
+  );
+
+  const importFile = useCallback<LedgerApi['importFile']>(
+    async (file: ImportFile) => {
+      const { data: d } = requireData();
+      // 미리보기 뒤에 바뀐 데이터가 있을 수 있어 지금 데이터로 다시 만든다 (이미 가져온 행은 건너뛴다)
+      const plan = planImport(d, file, { today: todayRef.current, author: authorRef.current, now: nowIso() });
+      if (plan.errors.length > 0) throw new Error(plan.errors[0]);
+      if (plan.total === 0) return plan;
+      await mutate(
+        (x) => applyImportPlan(x, plan),
+        async (repo) => {
+          // 통장 · 카테고리 · 여행 · 일정 · 규칙 · 고정 지출 → 지출 → 이체 순서. 같은 키는 건너뛰어 끊긴 뒤 다시 해도 안전하다.
+          // 돌려준 청구의 이체(claim:<지출id>)는 지출 뒤에 써서, 끊겨도 지출 없는 이체가 잔액을 옮기지 않게 한다
+          for (const t of IMPORT_TABLES) {
+            const rows = plan.rows[t];
+            if (rows.length > 0) await repo.insert(t, rows as never);
+          }
+          for (const a of plan.accountUpdates) await repo.upsert('accounts', a);
+        },
+        '가져오지 못했어요. 다시 가져오면 빠진 것만 더해요',
+        { multiStep: true },
+      );
+      await syncAutoNow();
+      return plan;
+    },
+    [requireData, nowIso, mutate, syncAutoNow],
+  );
+
   const reload = useCallback(() => loadAll(), [loadAll]);
 
   const api = useMemo<LedgerApi>(
@@ -1035,7 +1501,26 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       activeAccounts,
       activeCategories,
       accountByRole,
+      incomeAccounts,
       judge,
+      claims,
+      claimPayers,
+      previewClaimDue,
+      settleClaims,
+      unsettleClaims,
+      saveSettleDay,
+      installments,
+      installmentHint,
+      addInstallment,
+      reviseInstallment,
+      prepayInstallment,
+      endInstallment,
+      deleteInstallment,
+      trips,
+      addTrip,
+      updateTrip,
+      deleteTrip,
+      restoreTrip,
       addExpense,
       updateExpense,
       deleteExpense,
@@ -1064,15 +1549,20 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       decideMonthEnd,
       inviteMember,
       renameLedger,
+      previewImport,
+      importFile,
       displayName,
     }),
     [
       status, error, needsReconnect, ref, data, today, savingCount, reload, living, balances, eventProjection, shortageFix,
-      pendingMonthEnd, activeAccounts, activeCategories, accountByRole, judge, addExpense, updateExpense,
+      pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
+      previewClaimDue, settleClaims, unsettleClaims, saveSettleDay, installments, installmentHint, addInstallment,
+      reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,
+      restoreTrip, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
       changeRuleAmount, saveFixed, addFixed, saveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,
-      decideMonthEnd, inviteMember, renameLedger, displayName,
+      decideMonthEnd, inviteMember, renameLedger, displayName, previewImport, importFile,
     ],
   );
 

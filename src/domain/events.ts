@@ -1,8 +1,11 @@
-import { accountBalance, isCountedTransfer } from './balances';
+import { accountBalance, expenseBalanceAccountId, isCountedTransfer } from './balances';
+import { pendingClaims } from './claims';
 import { addMonths, compareMonth, dateInMonth, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
 import { autoTransferId } from './ids';
+import { projectionMonthOf, unrecordedInstallmentPayments } from './installments';
 import { firstAccountByRole } from './internal';
 import { ceilTo1000 } from './money';
+import { tripOutflows } from './trips';
 import { ruleOccurrenceDate } from './recurring';
 import type {
   EventProjection, Id, ISODate, LedgerData, PlannedEvent, ProjectionMonth, Repeat, ShortageFix, YearMonth, Won,
@@ -86,6 +89,9 @@ export function spentOnEvent(data: LedgerData, eventId: Id): Won {
  * 통장 하나의 월별 예측 (월배분·예정 이체·그 통장의 예정 일정 반영). 이벤트통장 예측과 저수지 예상 잔액에 함께 쓴다.
  * - 오늘보다 뒤 날짜로 이미 기록한 이체·지출(done)은 오늘 잔액에 없으므로 그 날짜의 달에 넣는다
  * - 예정 일정에 이미 연결해 쓴 지출이 있으면 그 행 회차에서는 남은 금액만 뺀다 (반복으로 펼친 다음 회차는 전액)
+ * - 아직 돌려주지 않은 청구(PLAN 4-9)는 정산일 달에 나갈 돈 (잔액에는 아직 없어서 두 번 빠지지 않는다)
+ * - 이 통장에서 나가는 할부(PLAN 4-10) 중 아직 자동 기록되지 않은 회차는 그 달에 나갈 돈 (기록된 회차는 잔액에 이미 있다)
+ * - trips: 여행의 남은 예산(PLAN 4-11, 이벤트통장만). 묶은 지출은 이미 위에서 잡혀 남은 예산에서 빠져 있다
  * - 이번 달 월배분: 자동 이체가 이미 기록됐거나, 날짜가 지났는데 통장 시작일 전이라 기록되지 않을 회차는 넣지 않는다
  */
 function projectAccount(
@@ -93,7 +99,8 @@ function projectAccount(
   accountId: Id,
   today: ISODate,
   horizon: number,
-  extra?: { month: YearMonth; amount: Won },
+  extras: { month: YearMonth; amount: Won }[] = [],
+  trips: { month: YearMonth; tripId: Id; name: string; amount: Won }[] = [],
 ): { currentBalance: Won; monthlyContribution: Won; months: ProjectionMonth[] } {
   const thisMonth = monthOf(today);
   const lastMonth = addMonths(thisMonth, Math.max(1, horizon) - 1);
@@ -121,13 +128,21 @@ function projectAccount(
   const laterTransfers = data.transfers.filter(
     (t) => t.date > today && t.date >= opening && isCountedTransfer(data, t) && (t.toAccountId === accountId || t.fromAccountId === accountId),
   );
+  // 청구 지출은 낸 사람 통장에서 빠진다 (함께 쓰는 통장은 아래 pending 청구로 정산일에)
   const laterExpenses = data.expenses.filter(
-    (e) => !e.deleted && e.accountId === accountId && e.date > today && e.date >= opening,
+    (e) => !e.deleted && expenseBalanceAccountId(e) === accountId && e.date > today && e.date >= opening,
   );
+  // 아직 돌려주지 않은 청구: 돌려주는 통장은 정산일 달에 나가고(지난 정산일은 이번 달), 돌려받을 통장은 그달에 들어온다
+  const claims = pendingClaims(data, today).filter((c) => c.accountId === accountId || c.claimAccountId === accountId);
+  const claimMonth = (due: ISODate) => (monthOf(due) < thisMonth ? thisMonth : monthOf(due));
   const plannedEvents = data.events.filter((e) => !e.deleted && e.status === 'planned' && e.accountId === accountId);
+  const installmentsDue = unrecordedInstallmentPayments(data, accountId);
+  // 여행에 묶인 지출은 여행 남은 예산에서만 뺀다 (일정에도 묶여 있어도 일정 남은 금액에서 또 빼면 두 번 빠진다)
+  const liveTrips = new Set(data.trips.filter((t) => !t.deleted).map((t) => t.id));
   const spent = new Map<Id, Won>();
   for (const x of data.expenses) {
-    if (!x.deleted && x.eventId) spent.set(x.eventId, (spent.get(x.eventId) ?? 0) + x.amount);
+    if (x.deleted || !x.eventId || (x.tripId && liveTrips.has(x.tripId))) continue;
+    spent.set(x.eventId, (spent.get(x.eventId) ?? 0) + x.amount);
   }
 
   const months: ProjectionMonth[] = [];
@@ -148,6 +163,12 @@ function projectAccount(
       if (t.fromAccountId === accountId) transfersOut += t.amount;
     }
     const scheduledSpending = laterExpenses.reduce((s, e) => (monthOf(e.date) === month ? s + e.amount : s), 0);
+    let claimsOut = 0;
+    for (const c of claims) {
+      if (claimMonth(c.due) !== month || c.accountId === c.claimAccountId) continue;
+      if (c.accountId === accountId) claimsOut += c.amount;
+      if (c.claimAccountId === accountId) transfersIn += c.amount;
+    }
     const events: ProjectionMonth['events'] = [];
     for (const e of plannedEvents) {
       const paid = spent.get(e.id) ?? 0;
@@ -166,10 +187,20 @@ function projectAccount(
     }
     events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     const planned = events.reduce((s, e) => s + e.amount, 0);
-    const extraAmount = extra && extra.month === month ? extra.amount : 0;
+    const extraAmount = extras.reduce((s, x) => (x.month === month ? s + x.amount : s), 0);
+    const installments = installmentsDue.reduce((s, p) => (projectionMonthOf(p, today) === month ? s + p.amount : s), 0);
+    const tripList: { id: Id; name: string; amount: Won }[] = [];
+    for (const t of trips) {
+      if (t.month !== month) continue;
+      const same = tripList.find((x) => x.id === t.tripId);
+      if (same) same.amount += t.amount;
+      else tripList.push({ id: t.tripId, name: t.name, amount: t.amount });
+    }
+    const tripsOut = tripList.reduce((s, t) => s + t.amount, 0);
     const startBalance = balance;
     const endBalance =
-      startBalance + contributions + transfersIn - transfersOut - planned - scheduledSpending - extraAmount;
+      startBalance + contributions + transfersIn - transfersOut - planned - scheduledSpending - claimsOut - installments - tripsOut -
+      extraAmount;
     months.push({
       month,
       startBalance,
@@ -179,6 +210,9 @@ function projectAccount(
       planned,
       extra: extraAmount,
       ...(scheduledSpending > 0 ? { scheduledSpending } : {}),
+      ...(claimsOut > 0 ? { claims: claimsOut } : {}),
+      ...(installments > 0 ? { installments } : {}),
+      ...(tripsOut > 0 ? { trips: tripsOut, tripList } : {}),
       endBalance,
       events,
     });
@@ -192,17 +226,20 @@ function projectAccount(
  * - 이벤트통장 = role='event' 첫 통장 (없으면 accountId=null, 빈 예측)
  * - 이번 달 시작값 = 오늘 기준 잔액. 이번 달: 아직 기록 안 된(자동 이체 id 없음) 월배분 적립 + 이번 달 planned 이체 − 오늘 이후(포함)·지난 날짜라도 아직 planned 인 이번 달 일정
  * - 다음 달부터: 전월 말 + 월배분 적립 + planned 이체 − 그달 planned 일정(반복 펼침)
- * - extra: 가정 지출 {month, amount} (사도 돼? 판단용)
+ * - 여행의 남은 예산(총예산 − 묶은 지출)은 여행 날짜의 달에 나갈 돈 (trips)
+ * - extra: 가정 지출 {month, amount} (사도 돼? 판단용). extras: 여러 달에 걸친 가정 지출 (할부 안내용)
  * - endBalance < 0 인 달 = shortages
  */
 export function projectEventAccount(
   data: LedgerData,
   today: ISODate,
-  opts?: { horizonMonths?: number; extra?: { month: YearMonth; amount: Won } },
+  opts?: { horizonMonths?: number; extra?: { month: YearMonth; amount: Won }; extras?: { month: YearMonth; amount: Won }[] },
 ): EventProjection {
   const account = firstAccountByRole(data, 'event');
   if (!account) return { accountId: null, currentBalance: 0, monthlyContribution: 0, months: [], shortages: [] };
-  const p = projectAccount(data, account.id, today, opts?.horizonMonths ?? DEFAULT_HORIZON, opts?.extra);
+  const extras = [...(opts?.extra ? [opts.extra] : []), ...(opts?.extras ?? [])];
+  // 여행 예산은 늘 이벤트통장에서 나간다 (PLAN 4-11)
+  const p = projectAccount(data, account.id, today, opts?.horizonMonths ?? DEFAULT_HORIZON, extras, tripOutflows(data, today));
   return {
     accountId: account.id,
     currentBalance: p.currentBalance,

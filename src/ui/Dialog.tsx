@@ -4,6 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type R
 import { createPortal } from 'react-dom';
 import { Button } from './Button';
 import { cx } from './cx';
+import { MOTION_MS, motionAllowed } from './motion';
 
 export interface DialogProps {
   open: boolean;
@@ -39,6 +40,33 @@ function focusables(root: HTMLElement): HTMLElement[] {
 
 let openCount = 0;
 
+/**
+ * 닫힌 창의 사본을 잠깐 남겨 물러나는 움직임을 보여 줘요 (motion.md: 모달 퇴장 200ms ease-in).
+ * React 가 창을 지운 뒤에도 움직임이 보이도록, 화면에 있던 DOM 을 복제해 body 에 붙였다가 지워요.
+ * 사본은 누를 수 없고(inert) 화면 읽기에서도 숨겨요. 움직임 줄이기 설정에서는 하지 않아요.
+ */
+function leaveGhost(root: HTMLElement, scrollTop: number) {
+  if (!motionAllowed() || typeof document === 'undefined') return;
+  const ghost = root.cloneNode(true) as HTMLElement;
+  ghost.classList.add('is-leaving');
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.setAttribute('inert', '');
+  ghost.removeAttribute('id');
+  ghost.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+  ghost.querySelectorAll('[role="dialog"]').forEach((n) => n.removeAttribute('role'));
+  document.body.appendChild(ghost);
+  const panel = ghost.querySelector<HTMLElement>('.dialog');
+  if (panel) panel.scrollTop = scrollTop;
+  let done = false;
+  const remove = () => {
+    if (done) return;
+    done = true;
+    ghost.remove();
+  };
+  panel?.addEventListener('animationend', remove, { once: true });
+  setTimeout(remove, MOTION_MS.base + 80);
+}
+
 const noopSubscribe = () => () => {};
 /** 서버에서는 false, 브라우저에서는 true (포털은 브라우저에서만) */
 function useIsClient(): boolean {
@@ -51,6 +79,8 @@ export function Dialog({
 }: DialogProps) {
   const mounted = useIsClient();
   const panelRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef(0);
   const onCloseRef = useRef(onClose);
   const returnFocusRef = useRef(returnFocus);
   useLayoutEffect(() => {
@@ -118,10 +148,19 @@ export function Dialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // 닫히거나(open=false) 화면에서 빠질 때(부모가 지움) 모두 물러나는 움직임을 남겨요
+  useLayoutEffect(() => {
+    if (!open || !mounted) return;
+    const root = rootRef.current;
+    if (!root) return;
+    scrollRef.current = 0;
+    return () => leaveGhost(root, scrollRef.current);
+  }, [open, mounted]);
+
   if (!mounted || !open) return null;
 
   return createPortal(
-    <div className="dialog-root">
+    <div className="dialog-root" ref={rootRef}>
       <div className="scrim" aria-hidden onClick={dismissible ? () => onCloseRef.current() : undefined} />
       <div
         ref={panelRef}
@@ -131,6 +170,9 @@ export function Dialog({
         aria-describedby={descId}
         tabIndex={-1}
         className={cx('dialog', wide && 'wide', className)}
+        onScroll={(e) => {
+          scrollRef.current = e.currentTarget.scrollTop;
+        }}
       >
         <div className="hd">
           <div className="txt">

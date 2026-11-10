@@ -263,4 +263,8 @@ describe('monthDetailRows', () => {
       { label: '예정 일정 0건', amount: 0, sign: '' },
     ]);
   });
+  it('이벤트통장 할부는 할부 줄로 빼요', () => {
+    const rows = monthDetailRows({ ...month, installments: 100_000, endBalance: 200_000 }, false);
+    expect(rows[rows.length - 1]).toEqual({ label: '할부', amount: 100_000, sign: '-' });
+  });
 });

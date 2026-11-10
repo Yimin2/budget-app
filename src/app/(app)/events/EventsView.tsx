@@ -18,7 +18,7 @@ import {
   isIconName,
   useToast,
 } from '@/ui';
-import { RequireLedger, type ReadyLedger } from '../_components';
+import { ClaimsCard, RequireLedger, type ReadyLedger } from '../_components';
 import { CompleteDialog } from './CompleteDialog';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
@@ -32,6 +32,8 @@ import {
   spentByEvent,
 } from './selectors';
 import { ShortagePanel } from './ShortagePanel';
+import { TripDialog } from './trips/TripDialog';
+import { TripsCard } from './trips/TripsCard';
 import styles from './events.module.css';
 
 type Overlay =
@@ -39,6 +41,7 @@ type Overlay =
   | { kind: 'edit'; event: PlannedEvent }
   | { kind: 'complete'; event: PlannedEvent }
   | { kind: 'delete'; event: PlannedEvent }
+  | { kind: 'addTrip' }
   | null;
 
 /**
@@ -134,9 +137,12 @@ export function EventsView() {
             onEdit={(event) => setOverlay({ kind: 'edit', event })}
             onComplete={(event) => setOverlay({ kind: 'complete', event })}
             onCancel={cancelEvent}
+            onAddTrip={() => setOverlay({ kind: 'addTrip' })}
           />
         )}
       </RequireLedger>
+
+      {ready && overlay?.kind === 'addTrip' ? <TripDialog onClose={close} /> : null}
 
       {ready && overlay?.kind === 'add' ? <EventDialog preset={overlay.preset} onClose={close} /> : null}
       {ready && overlay?.kind === 'edit' ? (
@@ -176,9 +182,10 @@ interface BodyProps {
   onEdit: (event: PlannedEvent) => void;
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
+  onAddTrip: () => void;
 }
 
-function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel }: BodyProps) {
+function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip }: BodyProps) {
   const { data, today } = ledger;
   const projection = ledger.eventProjection;
   const sections = useMemo(() => sectionEvents(data.events, today), [data.events, today]);
@@ -190,6 +197,7 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel }: Bod
       {projection && hasEventAccount ? (
         <>
           <SummaryCard projection={projection} />
+          <ClaimsCard />
           <ProjectionCard projection={projection} today={today} />
           {projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
@@ -198,6 +206,7 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel }: Bod
       ) : (
         <NoEventAccount ledger={ledger} />
       )}
+      {hasEventAccount ? <TripsCard trips={ledger.trips} onAdd={onAddTrip} /> : null}
       {sections.total === 0 ? (
         <EmptyEvents categories={eventCategories(ledger.activeCategories)} onAdd={onAdd} />
       ) : (

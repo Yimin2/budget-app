@@ -2,20 +2,20 @@
 
 import Link from 'next/link';
 import { useId, useState } from 'react';
-import { formatDateKo, formatNumber, formatShortDate, formatWon } from '@/domain';
-import type { Account, Favorite, LivingStatus } from '@/domain';
+import { formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord } from '@/domain';
+import type { Account, Favorite, LivingItem, LivingStatus } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import {
-  AvatarGroup, Avatar, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
-  useToast, cx, ACCOUNT_ROLE_ICON, useMediaQuery, WIDE_QUERY,
+  AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
+  useToast, cx, ACCOUNT_ROLE_ICON, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
 } from '@/ui';
-import { LedgerSwitcher } from '../_components';
+import { ClaimsCard, LedgerSwitcher } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
 import { ProjectionChart } from './ProjectionChart';
 import { errorMessage, expenseTitle, recentExpenses, shortageBannerText, upcomingEvents } from './selectors';
 import styles from './home.module.css';
 
-/** 홈 '/' — 오늘 써도 되는 생활비 · 사도 돼? · 자주 쓰는 지출 · 이벤트통장 · 최근 지출 */
+/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 이벤트통장 · 최근 지출 */
 export function HomeView() {
   const ledger = useLedger();
   const session = useSession();
@@ -65,11 +65,12 @@ function HomeBody() {
   return (
     <>
       <div className={styles.col}>
-        {living && living.monthBudget > 0 ? <TodayCard living={living} /> : <LivingSetupCard />}
+        {living && hasLivingBudget(living) ? <TodayCard living={living} /> : <LivingSetupCard />}
         <Button href="/check" size="lg" block icon="cart" className={styles.oCta}>
           사도 돼? 확인하기
         </Button>
         <FavoriteChips favorites={data.favorites} />
+        {living && living.items.length > 0 ? <LivingItemsCard living={living} /> : null}
         {wide ? <RecentExpenses /> : null}
       </div>
       <div className={styles.col}>
@@ -78,6 +79,7 @@ function HomeBody() {
             {banner.description}
           </Banner>
         ) : null}
+        <ClaimsCard className={styles.oClaims} />
         <EventAccountCard />
         {wide ? null : <RecentExpenses />}
         <BalancesCard />
@@ -92,20 +94,24 @@ function useCardTitle(text: string) {
   return { title: <span id={id}>{text}</span>, 'aria-labelledby': id } as const;
 }
 
-/* ───────── 오늘 써도 되는 생활비 ───────── */
+/* ───────── 오늘 써도 되는 돈 ───────── */
 
 function TodayCard({ living }: { living: LivingStatus }) {
   const titleId = useId();
-  const over = living.todayAvailable < 0;
+  const daily = living.items.filter((i) => i.spread === 'daily');
+  const hasDaily = daily.length > 0;
+  const over = hasDaily && living.todayAvailable < 0;
   const ratio = living.monthBudget > 0 ? living.spent / living.monthBudget : 0;
   const tone = living.remaining < 0 ? 'danger' : ratio >= 0.8 ? 'warning' : 'primary';
+  const dailyNames = daily.map((i) => i.name).join(' · ');
 
   return (
     <Card as="section" variant="brand" className={cx(styles.hero, styles.oHero)} aria-labelledby={titleId}>
       <h2 id={titleId} className={styles.heroLabel}>
-        오늘 써도 되는 생활비
+        {hasDaily ? '오늘 써도 되는 돈' : '이번 달 남은 생활비'}
       </h2>
-      <Money amount={Math.max(0, living.todayAvailable)} hero as="p" style={{ margin: 0 }} />
+      <Money amount={Math.max(0, hasDaily ? living.todayAvailable : living.remaining)} hero animate as="p" style={{ margin: 0 }} />
+      {hasDaily && living.items.length > 1 ? <p className={styles.heroNote}>{dailyNames} 합계</p> : null}
       {over ? (
         <p className={styles.over}>
           <Icon name="alert-triangle" size={20} />
@@ -136,10 +142,82 @@ function TodayCard({ living }: { living: LivingStatus }) {
         <div className={styles.heroMeta}>
           <span>
             {formatNumber(living.spent)} / {formatWon(living.monthBudget)} 썼어요
-            {living.carryIn > 0 ? ` · 지난달 이월 ${formatWon(living.carryIn)} 포함` : ''}
+            {living.carryIn !== 0 ? ` · 지난달 이월 ${formatWon(living.carryIn)} 포함` : ''}
           </span>
         </div>
       </div>
+    </Card>
+  );
+}
+
+/* ───────── 생활비 항목 ───────── */
+
+function itemTone(i: LivingItem): 'primary' | 'warning' | 'danger' {
+  if (i.remaining < 0) return 'danger';
+  if (i.monthBudget > 0 && i.spent / i.monthBudget >= 0.8) return 'warning';
+  return 'primary';
+}
+
+function LivingItemsCard({ living }: { living: LivingStatus }) {
+  const heading = useCardTitle('항목별 생활비');
+  return (
+    <Card
+      as="section"
+      {...heading}
+      aside={
+        <Button href="/settings#st-living" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
+          예산 바꾸기
+        </Button>
+      }
+      className={cx(styles.cardGap, styles.oItems)}
+    >
+      <ul className={styles.items}>
+        {living.items.map((i) => (
+          <li key={i.categoryId ?? ''} className={styles.item}>
+            <div className={styles.itemHead}>
+              <span className={styles.itemName}>
+                <Icon name={isIconName(i.icon) ? i.icon : 'dots'} size={20} />
+                <span className={styles.itemText}>{i.name}</span>
+                {i.spread === 'daily' ? (
+                  <Badge size="sm" tone="brand" dot={false}>
+                    하루씩
+                  </Badge>
+                ) : null}
+              </span>
+              <span className={styles.itemLeft}>
+                {i.remaining < 0 ? (
+                  <span className={styles.bad}>{formatWon(-i.remaining)} 넘음</span>
+                ) : (
+                  <>
+                    <span className={styles.itemCap}>남은 돈</span> <Money amount={i.remaining} animate className={styles.amountCell} />
+                  </>
+                )}
+              </span>
+            </div>
+            <ProgressBar
+              value={i.spent}
+              max={i.monthBudget}
+              label={`${i.name} 사용`}
+              valueText={`${formatWon(i.monthBudget)} 중 ${formatWon(i.spent)} 썼어요`}
+              tone={itemTone(i)}
+              track="subtle"
+            />
+            <div className={styles.itemMeta}>
+              <span>
+                {formatNumber(i.spent)} / {formatWon(i.monthBudget)}
+                {i.carryIn !== 0 ? ` · 이월 ${formatWon(i.carryIn)}` : ''}
+              </span>
+              {i.todayAvailable !== null ? (
+                <span>
+                  오늘 써도 되는 돈 <strong className={i.todayAvailable < 0 ? styles.bad : undefined}>{formatWon(i.todayAvailable)}</strong>
+                </span>
+              ) : (
+                <span>{i.unbudgeted ? '예산 없음' : '한 달 한도'}</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }
@@ -152,10 +230,10 @@ function LivingSetupCard() {
         <Icon name="wallet" size={24} />
       </span>
       <h2 id={titleId} className={styles.setupTitle}>
-        한 달 생활비를 정해 주세요
+        생활비 예산을 정해 주세요
       </h2>
-      <p className={styles.setupText}>생활비 금액을 정하면 오늘 써도 되는 돈을 매일 계산해 드려요.</p>
-      <Button href="/settings#st-fixed" icon="settings">
+      <p className={styles.setupText}>식비·카페처럼 항목마다 예산을 정하면 오늘 써도 되는 돈을 매일 계산해 드려요.</p>
+      <Button href="/settings#st-living" icon="settings">
         생활비 정하기
       </Button>
     </Card>
@@ -234,7 +312,7 @@ function FavoriteChips({ favorites }: { favorites: Favorite[] }) {
 function EventAccountCard() {
   const ledger = useLedger();
   const projection = ledger.eventProjection;
-  const events = upcomingEvents(projection, ledger.today, 3);
+  const events = upcomingEvents(projection, ledger.today, 3, ledger.trips);
   const heading = useCardTitle('이벤트통장');
 
   if (!projection || projection.accountId === null) {
@@ -270,8 +348,11 @@ function EventAccountCard() {
               <ListRow
                 leadText={formatShortDate(e.date)}
                 title={e.name}
+                href={e.tripId ? `/events/trips?id=${encodeURIComponent(e.tripId)}` : undefined}
                 subtitle={
-                  e.overdue ? (
+                  e.tripId ? (
+                    '여행 · 남은 예산'
+                  ) : e.overdue ? (
                     <span className={styles.overdue}>
                       <Icon name="alert-triangle" size={16} />
                       날짜가 지났어요
@@ -305,6 +386,8 @@ function RecentExpenses() {
   const categoryById = new Map(data.categories.map((c) => [c.id, c]));
   const heading = useCardTitle('최근 지출');
   const memberIndex = (email: string) => data.members.findIndex((m) => m.email.toLowerCase() === email.toLowerCase());
+  // 새 기록은 옆에서 들어오고, 밀려나거나 지운 기록은 접히며 빠져요
+  const presence = usePresence(rows, (e) => e.id);
 
   return (
     <Card
@@ -321,7 +404,7 @@ function RecentExpenses() {
         <p className={styles.emptyLine}>아직 기록한 지출이 없어요. 사도 돼? 화면이나 자주 쓰는 지출로 기록해 보세요.</p>
       ) : (
         <ul className={cx('list', styles.listTop)}>
-          {rows.map((e) => {
+          {presence.map(({ item: e, key, state }) => {
             const who = ledger.displayName(e.author);
             const account = accountById.get(e.accountId);
             const category = e.categoryId ? categoryById.get(e.categoryId) : undefined;
@@ -329,10 +412,10 @@ function RecentExpenses() {
               formatShortDate(e.date),
               category?.name,
               account && account.role !== 'fixed' && account.role !== 'allowance' ? account.name : undefined,
-              e.fixedExpenseId ? '자동 기록' : undefined,
+              isAutoFixedRecord(e) ? '자동 기록' : undefined,
             ].filter(Boolean);
             return (
-              <li key={e.id}>
+              <li key={key} className={presenceClass(state)} inert={state === 'leave' || undefined}>
                 <ListRow
                   leading={<Avatar name={who} size="sm" alt={memberIndex(e.author) !== 0} />}
                   title={expenseTitle(e, data.categories)}

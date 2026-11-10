@@ -1,13 +1,17 @@
 'use client';
 
 import type { Dispatch, SetStateAction } from 'react';
-import { formatWon } from '@/domain';
-import type { Account, LedgerKind } from '@/domain/types';
+import { formatWon, LIVING_ETC_NAME } from '@/domain';
+import type { Account, Category, LedgerKind, LivingSpread } from '@/domain/types';
 import type { LedgerRef } from '@/storage/types';
-import { Banner, Button, Chip, ChipGroup, DateInput, Field, Icon, MoneyInput, Select, TextInput } from '@/ui';
 import {
-  ALLOC_TARGETS, BILL_SUGGESTIONS, DAY_OPTIONS, draftKey,
-  type AllocRole, type AllocationSummary, type AllowanceDraft, type BillDraft, type DraftErrors,
+  Banner, Button, Chip, ChipGroup, DateInput, Field, Icon, MoneyInput, SegmentedControl, Select, TextInput, isIconName,
+} from '@/ui';
+import {
+  ALLOC_TARGETS, BILL_SUGGESTIONS, DAY_OPTIONS, allocationSummary, draftKey, incomeAccountName, livingDraftFor, livingTotal,
+  newEarner,
+  type AllocRole, type AllocationSummary, type AllowanceDraft, type BillDraft, type DraftErrors, type EarnerDraft,
+  type LivingDraft,
 } from './wizard';
 
 /* ───────── ① 종류 · 이름 ───────── */
@@ -82,7 +86,7 @@ export function StepBasics(props: {
 /* ───────── ② 통장 시작 잔액 ───────── */
 
 const ROLE_HINT: Partial<Record<Account['role'], string>> = {
-  income: '월급이 처음 들어오는 통장',
+  income: '월급이 처음 들어오는 통장. 버는 사람이 여럿이면 다음 단계에서 사람마다 만들어요',
   fixed: '월세·통신비 같은 고정비와 생활비가 나가는 통장',
   event: '경조사·여행·명절·큰 구매에 쓰는 통장',
   reservoir: '목돈·비상금',
@@ -115,50 +119,113 @@ export function StepBalances(props: {
   );
 }
 
-/* ───────── ③ 매달 배분 ───────── */
+/* ───────── ③ 매달 배분 (버는 사람마다 수입통장) ───────── */
 
 export function StepAllocation(props: {
-  salary: number | null;
-  onSalary: (v: number | null) => void;
-  day: number;
-  onDay: (d: number) => void;
-  values: Record<AllocRole, number | null>;
-  onValue: (role: AllocRole, v: number | null) => void;
+  earners: EarnerDraft[];
+  setEarners: Dispatch<SetStateAction<EarnerDraft[]>>;
+  errors: DraftErrors;
   accountName: (role: AllocRole) => string | null;
-  hasIncome: boolean;
-  summary: AllocationSummary;
 }) {
-  const { salary, onSalary, day, onDay, values, onValue, accountName, hasIncome, summary } = props;
+  const { earners, setEarners, errors, accountName } = props;
+  const patch = (key: string, p: Partial<EarnerDraft>) =>
+    setEarners((list) => list.map((e) => (e.key === key ? { ...e, ...p } : e)));
+  const grand = allocationSummary(
+    earners.reduce<number | null>((s, e) => (e.salary && e.salary > 0 ? (s ?? 0) + e.salary : s), null),
+    earners.flatMap((e) => ALLOC_TARGETS.map((t) => e.alloc[t.role])),
+  );
+
   return (
     <>
-      {!hasIncome ? (
-        <Banner tone="warning" title="수입통장이 없어요">
-          매달 배분은 수입통장에서 보내요. 설정에서 수입 역할의 통장을 만든 뒤 정해 주세요.
-        </Banner>
-      ) : null}
-      <div className="wz-rows">
-        <Field label="한 달 월급" hint="합계를 확인하는 데만 써요. 월급이 들어오면 통장 화면에서 수입으로 기록해 주세요.">
-          <MoneyInput value={salary} onChange={onSalary} />
-        </Field>
-        <Field label="배분하는 날" hint="월급날로 정하면 그날 각 통장으로 보낸 기록이 자동으로 생겨요.">
-          <Select value={String(day)} onChange={(v) => onDay(Number(v))} options={DAY_OPTIONS} />
-        </Field>
+      <ul className="wz-items">
+        {earners.map((e, i) => {
+          const err = errors[e.key];
+          const summary = allocationSummary(e.salary, ALLOC_TARGETS.map((t) => e.alloc[t.role]));
+          const accName = incomeAccountName(e.name);
+          const groupName = e.name.trim() ? accName : `${i + 1}번째 사람`;
+          return (
+            <li key={e.key}>
+              <div className="wz-item" role="group" aria-label={groupName}>
+                <div className="top">
+                  <Field label="이름" error={err?.name} hint={i === 0 ? '통장 이름이 \'이름 수입통장\'이 돼요' : undefined}>
+                    <TextInput value={e.name} onChange={(ev) => patch(e.key, { name: ev.target.value })} maxLength={20} autoComplete="off" />
+                  </Field>
+                  {i > 0 ? (
+                    <Button
+                      variant="ghost"
+                      plain
+                      iconOnly
+                      icon="trash"
+                      aria-label={`${e.name.trim() || `${i + 1}번째 사람`} 빼기`}
+                      onClick={() => setEarners((list) => list.filter((x) => x.key !== e.key))}
+                    />
+                  ) : null}
+                </div>
+                <Field label="이메일" optional error={err?.email} hint="가계부를 함께 쓰는 사람이면 적어 두세요. 나중에 넣어도 돼요.">
+                  <TextInput
+                    type="email"
+                    inputMode="email"
+                    autoComplete="off"
+                    value={e.email}
+                    onChange={(ev) => patch(e.key, { email: ev.target.value })}
+                  />
+                </Field>
+                <div className="pair">
+                  <Field label="한 달 월급" hint="합계를 확인하는 데만 써요">
+                    <MoneyInput value={e.salary} onChange={(v) => patch(e.key, { salary: v })} />
+                  </Field>
+                  <Field label="월급날" hint="이날 배분 기록이 자동으로 생겨요">
+                    <Select value={String(e.day)} onChange={(v) => patch(e.key, { day: Number(v) })} options={DAY_OPTIONS} />
+                  </Field>
+                </div>
+                <h3 className="wz-sub">{accName}에서 보낼 금액</h3>
+                <div className="wz-rows">
+                  {ALLOC_TARGETS.map((t) => {
+                    const name = accountName(t.role);
+                    return (
+                      <Field key={t.role} label={name ?? t.label} hint={name ? t.hint : `${t.label}이 없어서 건너뛰어요`}>
+                        <MoneyInput
+                          value={e.alloc[t.role]}
+                          onChange={(v) => patch(e.key, { alloc: { ...e.alloc, [t.role]: v } })}
+                          disabled={!name}
+                        />
+                      </Field>
+                    );
+                  })}
+                </div>
+                <AllocationTotal summary={summary} accountName={accName} />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div>
+        <Button variant="outline" icon="plus" onClick={() => setEarners((list) => [...list, newEarner()])}>
+          사람 추가
+        </Button>
       </div>
-
-      <section className="wz-section" aria-labelledby="wz-alloc-title">
-        <h2 id="wz-alloc-title">수입통장에서 보낼 금액</h2>
-        <div className="wz-rows">
-          {ALLOC_TARGETS.map((t) => {
-            const name = accountName(t.role);
-            return (
-              <Field key={t.role} label={name ?? t.label} hint={name ? t.hint : `${t.label}이 없어서 건너뛰어요`}>
-                <MoneyInput value={values[t.role]} onChange={(v) => onValue(t.role, v)} disabled={!name || !hasIncome} />
-              </Field>
-            );
-          })}
+      {earners.length > 1 ? (
+        <div className="wz-total" aria-live="polite">
+          <div className="line">
+            <span>모두 합친 배분</span>
+            <strong>{formatWon(grand.total)}</strong>
+          </div>
+          {grand.salary !== null ? (
+            <div className="line">
+              <span>모두 합친 월급</span>
+              <strong>{formatWon(grand.salary)}</strong>
+            </div>
+          ) : null}
         </div>
-      </section>
+      ) : null}
+    </>
+  );
+}
 
+/** 한 사람의 배분 합계 · 월급 비교 */
+function AllocationTotal({ summary, accountName }: { summary: AllocationSummary; accountName: string }) {
+  return (
+    <>
       <div className="wz-total" aria-live="polite">
         <div className="line">
           <span>배분 합계</span>
@@ -172,29 +239,119 @@ export function StepAllocation(props: {
         ) : null}
         {summary.state === 'under' && summary.left !== null ? (
           <div className="line">
-            <span>수입통장에 남는 돈</span>
+            <span>{accountName}에 남는 돈</span>
             <strong>{formatWon(summary.left)}</strong>
           </div>
         ) : null}
       </div>
       {summary.state === 'over' && summary.left !== null ? (
         <Banner tone="warning" title={`배분 합계가 월급보다 ${formatWon(-summary.left)} 많아요`}>
-          이대로면 수입통장 잔액이 모자라요. 금액을 줄이거나 월급을 다시 확인해 주세요.
+          이대로면 {accountName} 잔액이 모자라요. 금액을 줄이거나 월급을 다시 확인해 주세요.
         </Banner>
       ) : null}
-      {summary.state === 'even' ? (
-        <Banner tone="success" title="월급을 남김없이 나눴어요" />
-      ) : null}
+      {summary.state === 'even' ? <Banner tone="success" title="월급을 남김없이 나눴어요" /> : null}
     </>
   );
 }
 
-/* ───────── ④ 고정 지출 · 생활비 · 용돈 ───────── */
+/* ───────── ⑤ 생활비 항목 ───────── */
+
+const SPREAD_OPTIONS: { value: LivingSpread; label: string }[] = [
+  { value: 'daily', label: '하루에 나눠 쓰기' },
+  { value: 'monthly', label: '한 달 한도만' },
+];
+
+export function StepLiving(props: {
+  rows: LivingDraft[];
+  setRows: (update: (rows: LivingDraft[]) => LivingDraft[]) => void;
+  categories: Category[];
+  accountName: string | null;
+}) {
+  const { rows, setRows, categories, accountName } = props;
+  const used = new Set(rows.map((r) => r.categoryId));
+  const addable = categories.filter((c) => !used.has(c.id) && c.defaultAccountRole !== 'event');
+  const patch = (key: string, p: Partial<LivingDraft>) => setRows((list) => list.map((r) => (r.key === key ? { ...r, ...p } : r)));
+  const total = livingTotal(rows);
+  const daily = livingTotal(rows.filter((r) => r.spread === 'daily'));
+
+  return (
+    <>
+      <p className="sp-note">
+        <Icon name="info" size={16} />
+        <span>
+          {accountName ?? '고정지출통장'}에서 써요. 하루에 나눠 쓰는 항목은 홈에 &lsquo;오늘 써도 되는 돈&rsquo;으로, 한 달 한도만 보는 항목은
+          이번 달 남은 돈으로 보여요.
+        </span>
+      </p>
+      {rows.length > 0 ? (
+        <ul className="wz-items">
+          {rows.map((r) => (
+            <li key={r.key}>
+              <div className="wz-item" role="group" aria-label={r.name}>
+                <div className="wz-living-head">
+                  <span className="wz-living-name">
+                    <Icon name={isIconName(r.icon) ? r.icon : 'dots'} size={20} />
+                    {r.name}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    plain
+                    iconOnly
+                    icon="trash"
+                    aria-label={`${r.name} 빼기`}
+                    onClick={() => setRows((list) => list.filter((x) => x.key !== r.key))}
+                  />
+                </div>
+                <Field label="한 달 예산">
+                  <MoneyInput value={r.amount} onChange={(v) => patch(r.key, { amount: v })} />
+                </Field>
+                <SegmentedControl<LivingSpread>
+                  ariaLabel={`${r.name} 쓰는 방식`}
+                  block
+                  value={r.spread}
+                  onChange={(spread) => patch(r.key, { spread })}
+                  options={SPREAD_OPTIONS}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {addable.length > 0 ? (
+        <ChipGroup label="생활비 항목 추가">
+          {addable.map((c) => (
+            <Chip key={c.id} icon="plus" onClick={() => setRows((list) => [...list, livingDraftFor(c)])}>
+              {c.name}
+            </Chip>
+          ))}
+        </ChipGroup>
+      ) : null}
+      <div className="wz-total" aria-live="polite">
+        <div className="line">
+          <span>한 달 생활비 합계</span>
+          <strong>{formatWon(total)}</strong>
+        </div>
+        <div className="line">
+          <span>하루에 나눠 쓰는 항목</span>
+          <strong>{formatWon(daily)}</strong>
+        </div>
+        <div className="line">
+          <span>한 달 한도만 보는 항목</span>
+          <strong>{formatWon(total - daily)}</strong>
+        </div>
+      </div>
+      <p className="sp-note">
+        <Icon name="info" size={16} />
+        <span>예산을 정하지 않은 카테고리 지출은 &lsquo;{LIVING_ETC_NAME}&rsquo;으로 모아 보여 드려요.</span>
+      </p>
+    </>
+  );
+}
+
+/* ───────── ④ 고정 지출 · 용돈 ───────── */
 
 export function StepFixed(props: {
   isShared: boolean;
-  living: number | null;
-  onLiving: (v: number | null) => void;
   bills: BillDraft[];
   setBills: Dispatch<SetStateAction<BillDraft[]>>;
   allowances: AllowanceDraft[];
@@ -202,7 +359,7 @@ export function StepFixed(props: {
   billErrors: DraftErrors;
   allowanceErrors: DraftErrors;
 }) {
-  const { isShared, living, onLiving, bills, setBills, allowances, setAllowances, billErrors, allowanceErrors } = props;
+  const { isShared, bills, setBills, allowances, setAllowances, billErrors, allowanceErrors } = props;
   const used = new Set(bills.map((b) => b.name.trim()));
   const suggestions = BILL_SUGGESTIONS.filter((s) => !used.has(s));
 
@@ -213,13 +370,6 @@ export function StepFixed(props: {
 
   return (
     <>
-      <section className="wz-section" aria-labelledby="wz-living-title">
-        <h2 id="wz-living-title">생활비</h2>
-        <Field label="한 달 생활비" hint="하루 생활비와 '사도 돼?' 판단의 기준이에요. 고정지출통장에서 써요.">
-          <MoneyInput value={living} onChange={onLiving} />
-        </Field>
-      </section>
-
       <section className="wz-section" aria-labelledby="wz-bills-title">
         <h2 id="wz-bills-title">고정 지출</h2>
         <p>월세·통신비처럼 매달 나가는 돈이에요. 결제일에 고정지출통장에서 나간 걸로 자동 기록돼요.</p>

@@ -1,8 +1,13 @@
 import type {
-  Account, AllocationRule, Category, EventProjection, Expense, Favorite, FixedExpense, Id,
-  ISODate, LedgerData, LivingStatus, PlannedEvent, ShortageFix, Transfer, Verdict, Won, YearMonth,
+  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id,
+  InstallmentHint, InstallmentPlan, ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer,
+  Trip, TripItem, TripStatus, Verdict, Won, YearMonth,
 } from '@/domain/types';
+import type { TripInput } from '@/domain/trips';
+import type { InstallmentInput, InstallmentPatch } from '@/domain/installments';
+import type { ImportFile, ImportPlan } from '@/domain/importFile';
 import type { LedgerRef } from '@/storage/types';
+import type { InviteOpenResult } from './invite';
 
 export type SessionMode = 'google' | 'demo';
 
@@ -29,6 +34,11 @@ export interface SessionApi {
   createLedger(input: { kind: 'shared' | 'personal'; name: string; sharedLedgerId?: string | null }): Promise<LedgerRef>;
   /** 공유받은 가계부 열기 (sheets: 구글 파일 선택 창) */
   openSharedLedger(): Promise<LedgerRef | null>;
+  /**
+   * 초대 링크(/start?open=<id>)로 열기 (구글 모드만). 바로 읽히면 그대로 열고, 아니면 그 파일을 미리 골라 둔 선택 창을 띄워요.
+   * 열리면 최근 목록에 넣고 지금 가계부로 골라요. 선택 창을 닫으면 { kind: 'cancelled' }
+   */
+  openInvitedLedger(spreadsheetId: string): Promise<InviteOpenResult>;
   forgetLedger(id: string): void;
   /** 구글 연결 다시 맺기 (버튼 클릭 안에서). 조용한 복구가 막혀 가계부를 못 불러올 때 */
   reconnectGoogle(): Promise<void>;
@@ -41,7 +51,31 @@ export interface NewExpense {
   categoryId: Id | null;
   memo?: string;
   eventId?: Id | null;
+  /**
+   * 개인 돈으로 낸 사람 이름 (청구, PLAN 4-9). 주면 돌려받을 통장(그 사람 수입통장)과 정산일을 정해 함께 적어요.
+   * 이벤트통장 · 고정지출통장 · 저수지통장 지출만 돼요
+   */
+  paidBy?: string | null;
+  /** 여행에 쓴 돈이면 여행 id (PLAN 4-11). 통장은 실제로 나간 통장 그대로 */
+  tripId?: Id | null;
+  /** 여행 항목 (항공 · 숙박 …). 비우면 기타 */
+  tripItem?: TripItem | null;
 }
+/** 새 여행 · 여행 고치기 (PLAN 4-11): 이름 · 떠나는 날 · 돌아오는 날 · 총예산 · 항목 예산(선택) */
+export type NewTrip = TripInput;
+/** 새 할부 (PLAN 4-10): 이름 · 총액 또는 매달 금액 · 개월 · 첫 달 · 결제일 · 통장 · 카테고리 */
+export type NewInstallment = InstallmentInput;
+
+/**
+ * 할부 고치기. fromMonth(기본: 아직 내지 않은 다음 회차의 달)부터 적용하고 지난 회차는 그대로 둬요.
+ * monthly · remaining 을 안 주면 지금 그대로. name 은 모든 회차 이름에
+ */
+export interface InstallmentChange extends InstallmentPatch {
+  monthly?: Won;
+  remaining?: number;
+  fromMonth?: YearMonth;
+}
+
 export interface NewEvent {
   date: ISODate;
   name: string;
@@ -69,11 +103,81 @@ export interface LedgerApi {
   balances: Record<Id, Won>;
   eventProjection: EventProjection | null;
   shortageFix: ShortageFix | null;
-  pendingMonthEnd: { month: YearMonth; leftover: Won } | null;
+  pendingMonthEnd: PendingMonthEnd | null;
   activeAccounts: Account[];
   activeCategories: Category[];
+  /** 그 역할의 첫 통장 (순서대로). 수입통장은 사람마다 있을 수 있어 incomeAccounts 도 봐요 */
   accountByRole(role: Account['role']): Account | null;
-  judge(amount: Won, source: 'living' | 'event'): Verdict | null;
+  /** 수입 역할 통장 모두 (사람별 수입통장, 순서대로) */
+  incomeAccounts: Account[];
+  /**
+   * "사도 돼?" 판단. living 은 생활비 항목(categoryId, null = 카테고리 없는 묶음)으로 판단해요.
+   * categoryId 를 안 주면(undefined) 항목이 하나뿐일 때만 그 항목으로, 여럿이면 null
+   */
+  judge(amount: Won, source: 'living' | 'event', categoryId?: Id | null, opts?: { tripId?: Id | null }): Verdict | null;
+
+  // 청구 (개인 돈으로 내고 돌려받기)
+  /** 돌려받을 돈 요약 (data 가 있을 때) */
+  claims: ClaimSummary | null;
+  /** 낸 사람으로 고를 수 있는 이름 (통장 주인 · 멤버) */
+  claimPayers: string[];
+  /** 이 통장에서 이 금액을 개인 돈으로 내면 돌려줄 날 (청구할 수 없는 통장이면 null). expenseId: 고치는 지출 */
+  previewClaimDue(accountId: Id, amount: Won, expenseId?: Id): ISODate | null;
+  /**
+   * 돌려줬어요: 청구마다 이체 claim:<지출id> (함께 쓰는 통장 → 낸 사람 통장, 없으면 받는 통장 없이)를 남겨요.
+   * 이미 돌려준 청구는 건너뛰어 다시 눌러도 한 번만 기록돼요
+   */
+  settleClaims(expenseIds: Id[], date?: ISODate): Promise<void>;
+  /** 돌려준 기록 되돌리기 (이체를 지워요) */
+  unsettleClaims(expenseIds: Id[]): Promise<void>;
+  /** 정산일(매달 며칠). null = 자동 (수입통장 → 이벤트통장 배분 이체일, 없으면 21일) */
+  saveSettleDay(day: number | null): Promise<void>;
+
+  // 할부
+  /** 할부 상태 (진행 중 먼저) */
+  installments: InstallmentPlan[];
+  /** 큰 금액이면 "12개월 할부면 매달 ○원"과 그 금액이 맞는지 (생활비 항목 예산 · 이벤트통장 예측 기준). 아니면 null */
+  /** opts.tripId: 사도 돼?에서 고른 여행 (judge 와 같게 회차를 그 여행에 묶어 본다) */
+  installmentHint(
+    amount: Won,
+    source: 'living' | 'event',
+    categoryId?: Id | null,
+    opts?: { tripId?: Id | null },
+  ): InstallmentHint | null;
+  /** 할부 추가. 결제일이 지난 회차는 이미 낸 것으로 보고 기록하지 않아요. 할부 id 를 돌려줘요 */
+  addInstallment(input: NewInstallment): Promise<Id>;
+  /** 도중에 고치기: 다음 회차부터(또는 fromMonth 부터) 새 금액 · 남은 회차. 지난 회차와 자동 기록은 그대로 */
+  reviseInstallment(planId: Id, change: InstallmentChange): Promise<void>;
+  /**
+   * 미리 갚기: 지출(id prepay:…)을 남기고, 다음 회차부터 남은 금액을 줄여 다시 짜요.
+   * keep='monthly' 는 매달 금액 그대로 회차를 줄이고, 'months' 는 회차 그대로 매달 금액을 줄여요
+   */
+  prepayInstallment(planId: Id, input: { amount: Won; keep: 'monthly' | 'months'; date?: ISODate }): Promise<void>;
+  /** 그만 내기: 다음 회차부터 기록하지 않아요 */
+  endInstallment(planId: Id): Promise<void>;
+  /** 할부 지우기 (모든 행). 이미 자동 기록된 지출은 남아요 */
+  deleteInstallment(planId: Id): Promise<void>;
+
+  // 여행 (이벤트통장에서 나가는 여행 예산)
+  /** 여행 상태 (여행 중 → 다가오는 여행 → 지난 여행) */
+  trips: TripStatus[];
+  /** 여행 추가. 여행 id 를 돌려줘요 */
+  addTrip(input: NewTrip): Promise<Trip>;
+  /** 여행 고치기 (이름 · 날짜 · 예산 · 항목 예산). 묶은 지출은 그대로 */
+  updateTrip(id: Id, input: NewTrip): Promise<void>;
+  /** 여행 지우기 (삭제됨). 묶은 지출은 남고 예측에서만 빠져요 */
+  deleteTrip(id: Id): Promise<void>;
+  /** 지운 여행 되살리기 */
+  restoreTrip(id: Id): Promise<void>;
+
+  // 파일에서 가져오기 (PLAN 4-12)
+  /** 가져오기 미리보기: 무엇이 몇 개 더해지고 무엇을 합치는지 (쓰지 않아요). data 가 없으면 null */
+  previewImport(file: ImportFile): ImportPlan | null;
+  /**
+   * 가져오기: 지금 데이터로 계획을 다시 만들어 써요 (문제가 있으면 쓰지 않고 오류). 쓴 계획을 돌려줘요.
+   * 행 id 가 파일의 source · key 로 정해져 같은 파일을 다시 가져와도 행이 늘지 않아요
+   */
+  importFile(file: ImportFile): Promise<ImportPlan>;
 
   // 지출
   addExpense(input: NewExpense): Promise<Expense>;
@@ -91,7 +195,9 @@ export interface LedgerApi {
   applyFromReservoir(fix: NonNullable<ShortageFix['fromReservoir']>): Promise<void>;
   // 통장·이체
   saveAccount(account: Account): Promise<void>;
-  addAccount(input: Pick<Account, 'name' | 'role' | 'openingBalance'>): Promise<Account>;
+  addAccount(
+    input: Pick<Account, 'name' | 'role' | 'openingBalance'> & Partial<Pick<Account, 'ownerName' | 'ownerEmail'>>,
+  ): Promise<Account>;
   addTransfer(input: Pick<Transfer, 'date' | 'kind' | 'fromAccountId' | 'toAccountId' | 'amount' | 'memo'>): Promise<void>;
   deleteTransfer(id: Id): Promise<void>;
   adjustBalance(accountId: Id, actual: Won): Promise<void>;

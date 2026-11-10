@@ -165,6 +165,17 @@
   }
 }
 
+/* 할부 회차 막대 */
+.st-inst {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.st-inst-bar {
+  width: 100%;
+  max-width: 240px;
+}
+
 /* 대화 상자 안 위험한 동작 */
 .st-danger {
   display: flex;
@@ -309,4 +320,85 @@
     border-top: 0 !important;
     border-bottom: 1px solid var(--border);
   }
+}
+
+/* 생활비 예산 */
+.st-label {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text);
+}
+.st-living-split {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.st-living-split > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.st-living-split .name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.st-living-split .name .icon {
+  color: var(--primary-text);
+}
+
+/* 파일에서 가져오기 미리보기 */
+.st-import-list {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 14px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.st-import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.st-import-table th,
+.st-import-table td {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.st-import-table thead th {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.st-import-table td:last-child,
+.st-import-table th:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+.st-import-table tbody th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.st-import-table td:nth-child(2) {
+  color: var(--text-muted);
+}
+.st-import-unit {
+  font-size: 12px;
+  color: var(--text-muted);
 }

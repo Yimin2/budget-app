@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { cx } from './cx';
 
 export interface TabItem<T extends string> {
@@ -24,6 +24,37 @@ export function Tabs<T extends string>({ items, value, onChange, ariaLabel, clas
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const hasPanels = items.some((t) => t.content !== undefined);
   const current = items.find((t) => t.value === value);
+  const listRef = useRef<HTMLDivElement>(null);
+  const inkRef = useRef<HTMLElement>(null);
+  const activeIndex = items.findIndex((t) => t.value === value);
+
+  // 밑줄이 눌린 탭으로 미끄러져요. 처음 자리 잡을 때는 움직이지 않아요 (ink-ready 는 다음 프레임에)
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const ink = inkRef.current;
+    if (!list || !ink) return;
+    const place = () => {
+      const tab = refs.current[activeIndex];
+      if (!tab) {
+        list.classList.remove('has-ink');
+        return;
+      }
+      ink.style.setProperty('--x', `${tab.offsetLeft}px`);
+      ink.style.width = `${tab.offsetWidth}px`;
+      list.classList.add('has-ink');
+    };
+    place();
+    let raf = 0;
+    if (!list.classList.contains('ink-ready') && typeof requestAnimationFrame === 'function') {
+      raf = requestAnimationFrame(() => list.classList.add('ink-ready'));
+    }
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
+    ro?.observe(list);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, [activeIndex, items.length]);
 
   function onKeyDown(e: KeyboardEvent, index: number) {
     let next = -1;
@@ -39,7 +70,7 @@ export function Tabs<T extends string>({ items, value, onChange, ariaLabel, clas
 
   return (
     <div className={className}>
-      <div role="tablist" aria-label={ariaLabel} className="tabs">
+      <div role="tablist" aria-label={ariaLabel} className="tabs" ref={listRef}>
         {items.map((t, i) => {
           const on = t.value === value;
           return (
@@ -62,6 +93,7 @@ export function Tabs<T extends string>({ items, value, onChange, ariaLabel, clas
             </button>
           );
         })}
+        <i className="tab-ink" aria-hidden ref={inkRef} />
       </div>
       {hasPanels && current ? (
         <div

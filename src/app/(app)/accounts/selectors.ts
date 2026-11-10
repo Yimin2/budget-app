@@ -1,8 +1,8 @@
 /* 통장 화면의 순수 함수. 화면과 떼어 테스트해요. */
-import { isCountedTransfer, isMonthActive, monthOf } from '@/domain';
+import { expenseBalanceAccountId, isClaimExpense, isAutoFixedRecord, isCountedTransfer, isMonthActive, monthOf } from '@/domain';
 import type { Account, AccountRole, Expense, Id, ISODate, LedgerData, Transfer, Won, YearMonth } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON } from '@/ui';
-import { referenceIncome } from '../settings/helpers';
+import { incomeSummaries, referenceIncome, type IncomeSummary } from '../settings/helpers';
 
 /* ───────── 통장 역할 ───────── */
 
@@ -71,7 +71,9 @@ export function monthFlows(data: LedgerData, today: ISODate): Record<Id, MonthFl
   }
   for (const e of data.expenses) {
     if (e.deleted) continue;
-    if (counts(e.accountId, e.date)) out[e.accountId]!.out += e.amount;
+    // 청구 지출은 낸 사람 통장에서 나가요 (함께 쓰는 통장은 돌려준 이체로)
+    const from = expenseBalanceAccountId(e);
+    if (counts(from, e.date)) out[from]!.out += e.amount;
   }
   return out;
 }
@@ -102,6 +104,10 @@ export interface FlowSummary {
   month: YearMonth;
   /** 배분을 보내는 수입 역할 통장 (첫 통장) */
   incomeAccount: Account | null;
+  /** 수입 역할 통장 모두 (사람별 수입통장) */
+  incomeAccounts: Account[];
+  /** 수입통장마다 배분 합 · 수입 · 넘침 (배분이나 수입 기록이 있는 통장만) */
+  sources: IncomeSummary[];
   /** 받는 통장별 합 (통장 순서) */
   items: FlowItem[];
   total: Won;
@@ -118,7 +124,7 @@ export interface FlowSummary {
 }
 
 /**
- * 월급 → 수입통장 → 각 통장 흐름. 이번 달에 적용되는 규칙 중 수입 역할 통장에서 나가는 것만 받는 통장별로 더해요.
+ * 월급 → 수입통장(사람마다 하나일 수 있음) → 각 통장 흐름. 이번 달에 적용되는 규칙 중 수입 역할 통장에서 나가는 것만 받는 통장별로 더해요.
  * 막대 기준 = max(배분 합, 수입). 배분이 수입보다 많으면 over > 0 이고 incomeMark 에 수입 위치를 줘요.
  */
 export function flowSummary(data: LedgerData, month: YearMonth): FlowSummary {
@@ -152,6 +158,8 @@ export function flowSummary(data: LedgerData, month: YearMonth): FlowSummary {
   return {
     month,
     incomeAccount: incomeAccounts[0] ?? null,
+    incomeAccounts,
+    sources: incomeSummaries(data, month).filter((x) => x.total > 0 || x.income !== null),
     items,
     total,
     income,
@@ -249,17 +257,18 @@ export function accountHistory(data: LedgerData, accountId: Id, today: ISODate):
     raw.push(...transferEntries(data, account, t));
   }
   for (const e of data.expenses) {
-    if (e.deleted || e.accountId !== accountId) continue;
+    if (e.deleted || expenseBalanceAccountId(e) !== accountId) continue;
     const memo = e.memo.trim();
     const cat = categoryName(data, e.categoryId);
+    const claim = isClaimExpense(e);
     raw.push({
       key: `e:${e.id}`,
       kind: 'expense',
       date: e.date,
       title: memo || cat || '지출',
-      detail: memo && cat ? cat : '지출',
+      detail: claim ? `개인 돈으로 냄 · ${accountName(data, e.accountId) || '다른 통장'}에서 돌려받는 돈` : memo && cat ? cat : '지출',
       amount: -e.amount,
-      auto: e.fixedExpenseId !== null,
+      auto: isAutoFixedRecord(e),
       transfer: null,
       expense: e,
     });

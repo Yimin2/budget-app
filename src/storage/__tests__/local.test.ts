@@ -88,4 +88,20 @@ describe('LocalBackend (window.localStorage)', () => {
     backend.remove(ref.id);
     expect(backend.has(ref.id)).toBe(false);
   });
+
+  it('옛 저장본(주인 · 나눠쓰기 · 항목별 없음)은 기본값으로 채워 읽는다', async () => {
+    window.localStorage.clear();
+    const old = sampleLedger() as unknown as Record<string, Record<string, unknown>[]>;
+    for (const a of old.accounts!) {
+      delete a.ownerName;
+      delete a.ownerEmail;
+    }
+    for (const f of old.fixedExpenses!) delete f.spread;
+    for (const m of old.monthEnds!) delete m.items;
+    window.localStorage.setItem(localStorageKey('local:old'), JSON.stringify(old));
+    const data = await new LocalBackend().open({ id: 'local:old', name: '', kind: 'shared', source: 'local' }).load();
+    expect(data.accounts.every((a) => a.ownerName === null && a.ownerEmail === null)).toBe(true);
+    expect(data.fixedExpenses.every((f) => f.spread === 'daily')).toBe(true);
+    expect(data.monthEnds.every((m) => m.items === null)).toBe(true);
+  });
 });

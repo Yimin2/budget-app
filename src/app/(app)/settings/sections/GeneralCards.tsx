@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { createDemoLedger, formatDateKo, localDateOf, toISODate } from '@/domain';
+import { autoSettleDay, createDemoLedger, formatDateKo, localDateOf, monthOf, toISODate } from '@/domain';
 import { DEMO_LEDGER_ID, useSession } from '@/state';
 import { LocalBackend } from '@/storage/local';
 import { ThemeToggle } from '@/theme';
-import { Avatar, Button, Card, ConfirmDialog, Field, ListRow, TextInput, focusFirstInvalid } from '@/ui';
+import { Avatar, Button, Card, ConfirmDialog, Field, ListRow, Select, TextInput, focusFirstInvalid } from '@/ui';
 import { LedgerKindBadge } from '../../_components/LedgerKindBadge';
 import { LedgerSwitcher } from '../../_components/LedgerSwitcher';
 import type { ReadyLedger } from '../../_components/RequireLedger';
@@ -73,9 +73,33 @@ export function LedgerNameCard({ ledger }: { ledger: ReadyLedger }) {
             : '연결된 공용 가계부가 없어요. 용돈 수입은 통장 화면에서 직접 기록해 주세요.'}
         </p>
       ) : (
-        <p className="st-desc">함께 쓰는 사람은 멤버 화면에서 초대할 수 있어요.</p>
+        <>
+          <p className="st-desc">함께 쓰는 사람은 멤버 화면에서 초대할 수 있어요.</p>
+          <SettleDayField ledger={ledger} />
+        </>
       )}
     </Card>
+  );
+}
+
+/** 청구 정산일: 개인 돈으로 낸 지출을 돌려주는 날 (기본: 다음 월급날) */
+function SettleDayField({ ledger }: { ledger: ReadyLedger }) {
+  const { busy, run } = useRunner();
+  const current = ledger.data.settings.settleDay ?? null;
+  const auto = autoSettleDay(ledger.data, monthOf(ledger.today));
+  const options = [
+    { value: '', label: `월급날 (매달 ${auto}일)` },
+    ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: `매달 ${i + 1}일` })),
+  ];
+  return (
+    <Field label="정산일" hint="개인 돈으로 낸 지출을 함께 쓰는 통장에서 돌려주는 날이에요. 이벤트통장 잔액이 넉넉하면 바로 돌려줘요.">
+      <Select
+        value={current === null ? '' : String(current)}
+        disabled={busy === 'settle'}
+        onChange={(v) => void run('settle', () => ledger.saveSettleDay(v ? Number(v) : null), '정산일을 바꿨어요')}
+        options={options}
+      />
+    </Field>
   );
 }
 
@@ -128,7 +152,7 @@ export function InfoCard({ ledger }: { ledger: ReadyLedger }) {
         'reset',
         async () => {
           const now = new Date();
-          await new LocalBackend().create(createDemoLedger(toISODate(now), now.toISOString()), DEMO_LEDGER_ID);
+          await new LocalBackend().create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
           await ledger.reload();
         },
         '체험 데이터를 처음으로 되돌렸어요',

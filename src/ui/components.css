@@ -110,7 +110,13 @@
   transition:
     background-color var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-fast) var(--ease-standard);
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+/* 누르는 동안 97%로 작아졌다가 돌아와요 (motion.md 버튼 눌림) */
+.btn:active:not(:disabled):not([aria-disabled='true']) {
+  transform: scale(0.97);
 }
 .btn.lg {
   height: 52px;
@@ -132,43 +138,55 @@
   background: var(--primary);
   color: var(--on-primary);
 }
-.btn.primary:hover {
-  background: var(--primary-hover);
+@media (hover: hover) {
+  .btn.primary:hover {
+    background: var(--primary-hover);
+  }
 }
 .btn.secondary {
   background: var(--primary-subtle);
   color: var(--primary-subtle-text);
 }
-.btn.secondary:hover {
-  box-shadow: inset 0 0 0 1px var(--primary-text);
+@media (hover: hover) {
+  .btn.secondary:hover {
+    box-shadow: inset 0 0 0 1px var(--primary-text);
+  }
 }
 .btn.outline {
   background: var(--surface);
   color: var(--text);
   border-color: var(--border-button);
 }
-.btn.outline:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  .btn.outline:hover {
+    background: var(--surface-subtle);
+  }
 }
 .btn.ghost {
   background: transparent;
   color: var(--primary-text);
 }
-.btn.ghost:hover {
-  background: var(--primary-subtle);
+@media (hover: hover) {
+  .btn.ghost:hover {
+    background: var(--primary-subtle);
+  }
 }
 .btn.ghost.plain {
   color: var(--text);
 }
-.btn.ghost.plain:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  .btn.ghost.plain:hover {
+    background: var(--surface-subtle);
+  }
 }
 .btn.danger {
   background: var(--danger);
   color: var(--on-danger);
 }
-.btn.danger:hover {
-  background: var(--danger-hover);
+@media (hover: hover) {
+  .btn.danger:hover {
+    background: var(--danger-hover);
+  }
 }
 .btn:disabled,
 .btn:disabled:hover,
@@ -207,8 +225,10 @@
   cursor: pointer;
   text-decoration: none;
 }
-.linkbtn:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .linkbtn:hover {
+    text-decoration: underline;
+  }
 }
 
 /* ───────── Card ───────── */
@@ -255,11 +275,17 @@ button.card {
   text-align: left;
   font: inherit;
   cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-standard);
+  transition:
+    box-shadow var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
 }
-a.card:hover,
-button.card:hover {
-  background: var(--surface-subtle);
+/* 누르는 카드: 바탕은 그대로, 그림자가 한 단계 올라가고 2px 떠올라요 */
+@media (hover: hover) {
+  a.card:hover,
+  button.card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
 }
 
 /* ───────── Badge · Chip ───────── */
@@ -327,7 +353,13 @@ button.card:hover {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   position: relative;
-  transition: background-color var(--duration-fast) var(--ease-standard);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+.chip:active:not(:disabled):not(:has(.x)) {
+  transform: scale(0.97);
 }
 /* 칩은 36px이지만 누르는 영역은 44px */
 .chip::after {
@@ -335,8 +367,10 @@ button.card:hover {
   position: absolute;
   inset: -4px 0;
 }
-.chip:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  .chip:hover {
+    background: var(--surface-subtle);
+  }
 }
 .chip.on {
   background: var(--primary-subtle);
@@ -344,8 +378,10 @@ button.card:hover {
   color: var(--primary-subtle-text);
   font-weight: 700;
 }
-.chip.on:hover {
-  box-shadow: inset 0 0 0 1px var(--primary-text);
+@media (hover: hover) {
+  .chip.on:hover {
+    box-shadow: inset 0 0 0 1px var(--primary-text);
+  }
 }
 .chip:disabled {
   background: var(--disabled-bg);
@@ -368,8 +404,10 @@ button.card:hover {
   position: relative;
   z-index: 1;
 }
-.chip .x:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  .chip .x:hover {
+    background: var(--surface-subtle);
+  }
 }
 /* 지우기 버튼은 28px 이지만 누르는 영역은 44px */
 .chip .x::before {
@@ -439,8 +477,10 @@ button.card:hover {
   white-space: nowrap;
   cursor: pointer;
 }
-.banner .act:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  .banner .act:hover {
+    background: var(--surface-subtle);
+  }
 }
 .banner.success .ic {
   color: var(--success);
@@ -470,8 +510,10 @@ button.card:hover {
   background: var(--info-subtle);
   border-color: var(--info-border);
 }
-.banner.tinted .act:hover {
-  background: var(--surface);
+@media (hover: hover) {
+  .banner.tinted .act:hover {
+    background: var(--surface);
+  }
 }
 
 /* ───────── Field · Input ───────── */
@@ -507,6 +549,8 @@ button.card:hover {
   align-items: center;
   gap: var(--space-1);
   font-weight: 500;
+  /* 안내 문구는 위에서 내려와요 */
+  animation: ds-drop-in var(--duration-base) var(--ease-out);
 }
 .input {
   height: 48px;
@@ -529,8 +573,10 @@ button.card:hover {
 .input::placeholder {
   color: var(--text-muted);
 }
-.input:hover:not(:disabled):not(:focus) {
-  box-shadow: 0 0 0 3px var(--border);
+@media (hover: hover) {
+  .input:hover:not(:disabled):not(:focus) {
+    box-shadow: 0 0 0 3px var(--border);
+  }
 }
 .input:focus,
 .input:focus-visible {
@@ -541,6 +587,8 @@ button.card:hover {
 .input.is-error,
 .input[aria-invalid='true'] {
   border-color: var(--danger-text);
+  /* 틀린 칸은 좌우 4px로 한 번 흔들려요 */
+  animation: ds-shake var(--duration-base) var(--ease-standard) 1;
 }
 .input:disabled {
   background: var(--disabled-bg);
@@ -633,8 +681,10 @@ input[type='date'].input::-webkit-date-and-time-value {
   font-weight: 700;
   cursor: pointer;
 }
-.money-sign:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  .money-sign:hover {
+    background: var(--surface-subtle);
+  }
 }
 .money-sign[aria-pressed='true'] {
   border-color: var(--danger-text);
@@ -644,6 +694,7 @@ input[type='date'].input::-webkit-date-and-time-value {
 
 /* ───────── Tabs · Pill(Segmented) ───────── */
 .tabs {
+  position: relative;
   display: flex;
   gap: var(--space-2);
   border-bottom: 1px solid var(--border);
@@ -664,15 +715,41 @@ input[type='date'].input::-webkit-date-and-time-value {
   color: var(--text-muted);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-standard);
+  transition: color var(--duration-base) var(--ease-standard);
 }
-.tab:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--text);
+  }
 }
 .tab.on {
   color: var(--primary-text);
   border-bottom-color: var(--primary);
   font-weight: 700;
+}
+/* 밑줄 이동: 스크립트(Tabs)가 눌린 탭의 --x 와 width 를 넣고 .tabs 에 has-ink 를 붙여요 */
+.tab-ink {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  border-radius: 3px;
+  background: var(--primary);
+  transform: translateX(var(--x, 0));
+  pointer-events: none;
+  opacity: 0;
+}
+.tabs.has-ink .tab-ink {
+  opacity: 1;
+}
+.tabs.has-ink.ink-ready .tab-ink {
+  transition:
+    transform var(--duration-base) var(--ease-out),
+    width var(--duration-base) var(--ease-out);
+}
+.tabs.has-ink .tab.on {
+  border-bottom-color: transparent;
 }
 .tab:focus-visible {
   outline-offset: -2px;
@@ -711,16 +788,24 @@ input[type='date'].input::-webkit-date-and-time-value {
   color: var(--text-muted);
   cursor: pointer;
   position: relative;
-  transition: background-color var(--duration-fast) var(--ease-standard);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+.pill button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .pill button::after {
   content: '';
   position: absolute;
   inset: -4px 0;
 }
-.pill button:hover {
-  color: var(--text);
-  background: var(--surface);
+@media (hover: hover) {
+  .pill button:hover {
+    color: var(--text);
+    background: var(--surface);
+  }
 }
 .pill button.on,
 .pill button[aria-checked='true'] {
@@ -765,7 +850,8 @@ input[type='date'].input::-webkit-date-and-time-value {
   cursor: pointer;
   transition:
     background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard);
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 /* 버튼은 36px 이지만 바깥 틀(44px)까지 눌리게 */
 .theme button::after {
@@ -779,8 +865,10 @@ input[type='date'].input::-webkit-date-and-time-value {
 .theme.labeled button {
   flex: 1;
 }
-.theme button:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .theme button:hover {
+    color: var(--text);
+  }
 }
 .theme button[aria-checked='true'] {
   background: var(--surface);
@@ -805,7 +893,7 @@ input[type='date'].input::-webkit-date-and-time-value {
   inset: 0;
   background: var(--scrim);
   z-index: var(--z-modal-dim);
-  animation: ds-fade-in var(--duration-base) var(--ease-out);
+  animation: ds-fade-in var(--duration-base) var(--ease-out) both;
 }
 .dialog {
   position: relative;
@@ -824,7 +912,17 @@ input[type='date'].input::-webkit-date-and-time-value {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  animation: ds-rise-in var(--duration-slow) var(--ease-out);
+  animation: ds-rise-in var(--duration-slow) var(--ease-out) both;
+}
+/* 닫힐 때: Dialog 가 화면 그대로의 사본을 남겨 두고 .is-leaving 으로 물러나게 해요 (등장의 약 60% · ease-in) */
+.dialog-root.is-leaving {
+  pointer-events: none;
+}
+.dialog-root.is-leaving .scrim {
+  animation: ds-fade-out var(--duration-base) var(--ease-in) both;
+}
+.dialog-root.is-leaving .dialog {
+  animation: ds-sink-out var(--duration-base) var(--ease-in) both;
 }
 .dialog:focus {
   outline: none;
@@ -882,6 +980,9 @@ input[type='date'].input::-webkit-date-and-time-value {
     padding: var(--space-6);
     animation-name: ds-pop-in;
   }
+  .dialog-root.is-leaving .dialog {
+    animation-name: ds-pop-out;
+  }
   .dialog.wide {
     max-width: 640px;
   }
@@ -935,7 +1036,11 @@ body[data-scroll-lock] .toast-region {
   font-size: 16px;
   line-height: 24px;
   min-height: 56px;
-  animation: ds-rise-in var(--duration-base) var(--ease-out);
+  animation: ds-rise-in var(--duration-slow) var(--ease-out) both;
+}
+.toast.is-leaving {
+  pointer-events: none;
+  animation: ds-sink-out var(--duration-base) var(--ease-in) both;
 }
 .toast .ic {
   flex: none;
@@ -969,8 +1074,10 @@ body[data-scroll-lock] .toast-region {
   font-weight: 700;
   cursor: pointer;
 }
-.toast .toastbtn:hover {
-  background: var(--primary-subtle);
+@media (hover: hover) {
+  .toast .toastbtn:hover {
+    background: var(--primary-subtle);
+  }
 }
 .toast .toastclose {
   flex: none;
@@ -985,8 +1092,10 @@ body[data-scroll-lock] .toast-region {
   justify-content: center;
   cursor: pointer;
 }
-.toast .toastclose:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  .toast .toastclose:hover {
+    background: var(--surface-subtle);
+  }
 }
 
 /* ───────── Empty · Spinner · Skeleton · Progress ───────── */
@@ -1084,7 +1193,9 @@ body[data-scroll-lock] .toast-region {
   height: 100%;
   background: var(--primary);
   border-radius: var(--radius-full);
-  transition: width var(--duration-base) var(--ease-out);
+  transition:
+    width var(--duration-slow) var(--ease-out),
+    background-color var(--duration-base) var(--ease-standard);
 }
 .bar.warning > span {
   background: var(--warning);
@@ -1153,6 +1264,18 @@ body[data-scroll-lock] .toast-region {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
+  /* 결과가 처음 나올 때 살짝 커지며 나타나고, 신호가 바뀌면 바탕색이 부드럽게 바뀌어요 */
+  animation: ds-pop-in var(--duration-slow) var(--ease-out) both;
+  transition:
+    background-color var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
+}
+/* 신호가 바뀔 때마다 (key) 동그라미가 커지며 들어오고 제목·문구가 겹쳐 바뀌어요 */
+.verdict .head .signal-icon {
+  animation: ds-signal-in var(--duration-base) var(--ease-out) both;
+}
+.verdict .head .txt {
+  animation: ds-fade-in var(--duration-base) var(--ease-out) both;
 }
 .verdict.ok {
   background: var(--signal-ok-subtle);
@@ -1312,9 +1435,11 @@ button.lrow {
   border-radius: var(--radius-md);
   transition: background-color var(--duration-fast) var(--ease-standard);
 }
-a.lrow:hover,
-button.lrow:hover {
-  background: var(--surface-subtle);
+@media (hover: hover) {
+  a.lrow:hover,
+  button.lrow:hover {
+    background: var(--surface-subtle);
+  }
 }
 .lrow .lead {
   flex: none;
@@ -1502,6 +1627,12 @@ button.lrow:hover {
 }
 .shell-side {
   display: none;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+/* 화면을 옮기면 본문이 살짝 떠오르며 나타나요. 본문 자체가 아니라 자식에 걸어서 고정 버튼(position: fixed) 기준을 바꾸지 않아요 */
+.shell-content.route-enter > * {
+  animation: ds-float-in var(--duration-base) var(--ease-out) backwards;
 }
 .skip-link {
   position: absolute;
@@ -1557,17 +1688,27 @@ button.lrow:hover {
   line-height: 18px;
   font-weight: 500;
   white-space: nowrap;
-  transition: color var(--duration-base) var(--ease-standard);
+  transition:
+    color var(--duration-base) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
 }
-.dock a:hover {
-  background: var(--surface-subtle);
+/* 누른 메뉴의 아이콘이 4px 튀어 올라요 (AppShell 이 메뉴가 바뀔 때만 bump 를 붙여요) */
+.dock a.on.bump .icon {
+  animation: ds-bump var(--duration-base) var(--ease-out) 1;
+}
+@media (hover: hover) {
+  .dock a:hover {
+    background: var(--surface-subtle);
+  }
 }
 .dock a.on {
   color: var(--primary-text);
   font-weight: 700;
 }
-.dock a.on:hover {
-  background: transparent;
+@media (hover: hover) {
+  .dock a.on:hover {
+    background: transparent;
+  }
 }
 .dock-pill {
   position: absolute;
@@ -1592,7 +1733,6 @@ button.lrow:hover {
   gap: var(--space-4);
   padding: var(--space-4) var(--space-3);
   background: var(--surface);
-  border-right: 1px solid var(--border);
   overflow-y: auto;
 }
 .side-brand {
@@ -1613,6 +1753,7 @@ button.lrow:hover {
   height: 32px;
 }
 .side-nav {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -1631,14 +1772,44 @@ button.lrow:hover {
   white-space: nowrap;
   position: relative;
 }
-.side-nav a:hover {
-  background: var(--surface-subtle);
-  color: var(--text);
+@media (hover: hover) {
+  .side-nav a:hover {
+    background: var(--surface-subtle);
+    color: var(--text);
+  }
 }
 .side-nav a.on {
   background: var(--primary-subtle);
   color: var(--primary-subtle-text);
   font-weight: 700;
+}
+.side-nav a {
+  z-index: 1;
+  transition:
+    color var(--duration-base) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+/* 선택 배경이 누른 메뉴로 미끄러져요. AppShell 이 위치를 넣고 has-ind 를 붙여요 (스크립트가 없으면 a.on 바탕이 그대로) */
+.nav-ind {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-radius: var(--radius-md);
+  background: var(--primary-subtle);
+  transform: translate(var(--ind-x, 0), var(--ind-y, 0));
+  pointer-events: none;
+  opacity: 0;
+}
+.side-nav.has-ind .nav-ind {
+  opacity: 1;
+}
+.side-nav.has-ind.ind-ready .nav-ind {
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.side-nav.has-ind a.on {
+  background: transparent;
 }
 .side-slot {
   min-width: 0;
@@ -1707,11 +1878,15 @@ button.lrow:hover {
     white-space: nowrap;
     opacity: 0;
     pointer-events: none;
-    transition: opacity var(--duration-fast) var(--ease-standard);
+    transform: translateY(calc(-50% + 4px));
+    transition:
+      opacity var(--duration-fast) var(--ease-out),
+      transform var(--duration-fast) var(--ease-out);
   }
   .side-nav a:hover .tip-label,
   .side-nav a:focus-visible .tip-label {
     opacity: 1;
+    transform: translateY(-50%);
   }
   .side {
     overflow: visible;
@@ -1836,17 +2011,214 @@ button.lrow:hover {
     transform: none;
   }
 }
+@keyframes ds-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes ds-pop-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes ds-sink-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+@keyframes ds-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ds-float-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ds-shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+@keyframes ds-bump {
+  0%,
+  100% {
+    transform: none;
+  }
+  45% {
+    transform: translateY(-4px);
+  }
+}
+@keyframes ds-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ds-signal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ds-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* 목록 항목이 빠질 때: 옅어지며 높이가 접혀요 (행 높이는 160px 안이라 max-height 로 접어요) */
+@keyframes ds-row-out {
+  from {
+    opacity: 1;
+    max-height: 160px;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+@keyframes ds-settle {
+  from {
+    opacity: 0.6;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 공용 모션 클래스 · 붙이는 순간 한 번 재생돼요 */
+.mo-shake {
+  animation: ds-shake var(--duration-base) var(--ease-standard) 1;
+}
+.mo-check path,
+.mo-check polyline {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: ds-draw var(--duration-slow) var(--ease-out) forwards;
+}
+.mo-row-in {
+  animation: ds-row-in var(--duration-base) var(--ease-out) both;
+}
+.mo-row-out {
+  overflow: hidden;
+  pointer-events: none;
+  animation: ds-row-out var(--duration-fast) var(--ease-in) both;
+}
+/* 다단계 폼: 다음 단계는 오른쪽에서, 이전 단계는 왼쪽에서 들어와요 (320ms) */
+.mo-step-next {
+  animation: ds-step-next var(--duration-slow) var(--ease-out) both;
+}
+.mo-step-prev {
+  animation: ds-step-prev var(--duration-slow) var(--ease-out) both;
+}
+@keyframes ds-step-next {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ds-step-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* 상태가 바뀐 요소(정산 완료, 할부 냄)가 제자리에 놓이듯 나타나요 */
+.mo-settle {
+  animation: ds-settle var(--duration-base) var(--ease-out) both;
+}
+
+/* 고대비 설정에서는 컨트롤 테두리를 한 단계 진하게 */
+@media (prefers-contrast: more) {
+  .input,
+  .btn.outline,
+  .chip,
+  .money-sign {
+    border-color: var(--border-strong);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0s !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0s !important;
+    transition-delay: 0s !important;
   }
   .skel {
     animation: none !important;
   }
+  /* 눌림·떠오름도 끄고 최종 상태만 보여요 */
+  .btn:active:not(:disabled),
+  .chip:active:not(:disabled),
+  .pill button:active:not(:disabled),
+  a.card:hover,
+  button.card:hover {
+    transform: none !important;
+  }
+  .mo-check path,
+  .mo-check polyline {
+    stroke-dashoffset: 0;
+  }
+
   /* 스피너만 진행 중임을 알리려고 느리게 돌아요 */
   .spin {
     animation-duration: 2.4s !important;
@@ -1879,9 +2251,13 @@ button.lrow:hover {
   color: var(--text);
   text-decoration: none;
 }
-.focus-brand:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .focus-brand:hover {
+    color: var(--text);
+  }
 }
-.side-brand:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .side-brand:hover {
+    color: var(--text);
+  }
 }
