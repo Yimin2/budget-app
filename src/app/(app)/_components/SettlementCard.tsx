@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { formatMan, formatMonthKo, formatShortDate, settlementSplitText, settlementSummary, shortfallText } from '@/domain';
-import type { Settlement, SettlementSummary } from '@/domain';
+import { eventMonthUsage, eventUsageNoteText, formatMan, formatMonthKo, formatShortDate, settlementSummary, shortfallText } from '@/domain';
+import type { EventMonthUsage, Settlement, SettlementSummary } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, Card, cx, useToast } from '@/ui';
 import styles from './claims.module.css';
@@ -58,9 +58,10 @@ function nextText(sum: SettlementSummary, baseYear: number): string | null {
 
 /**
  * 이번 달 정산 한 줄 요약 (PLAN 4-9). 이벤트 화면과 홈에 보여요.
- * '이번 달 줄 돈 70만 (민구 55만 · 기쁜 15만) · 11/21 · 이벤트통장에서 2만 · 나머지 68만은 저수지에서 빌리거나 다음 달로 [정산하기]'.
- * 줄 돈 = 정산일까지 돌려줄 날이 된 모든 청구 (지금 줄 수 있는 몫만이 아니에요). 모바일에서는 어디서 줄지가 둘째 줄로 내려가요.
- * 줄 돈이 없으면 '이번 달 줄 돈이 없어요 · 다음 정산 12/21 2.4만'.
+ * 머리말은 이번 달 이벤트통장 돈: '이번 달 이벤트통장 쓴 돈 12만 + 예정 38만 · 들어올 돈 50만'
+ * (쓴 돈 = 이번 달 오늘까지 이벤트통장 지출 + 돌려준 청구, 예정 = 남은 일정 · 여행 · 할부 + 이벤트통장에서 줄 수 있는 청구 — eventMonthUsage).
+ * 옆(모바일은 둘째 줄)에 '11/21 정산 15만 · 못 준 돈 55만은 다음 달로 (민구)'. 이벤트통장이 줄 수 있는 돈보다 큰 '줄 돈'은 보이지 않아요.
+ * 예정이 0이면 '+ 예정'은 빼요. 줄 돈이 없으면 '… · 이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만'.
  * 이벤트통장이 음수면 '이벤트통장이 ○원 모자라요'를 함께 보여요.
  * 항목 고르기 · 지급은 정산 화면(/plan/settle)에서 해요. 아직 안 돌려준 청구가 하나도 없으면 그리지 않아요.
  * compact: 지금 돌려줄 돈이 있을 때만. home: 홈 (늘 같은 한 줄, 사람별 목록 카드 대신)
@@ -71,35 +72,33 @@ export function SettlementCard({ compact = false, home = false, className }: { c
   if (!s || !ledger.data) return null;
   if (compact && !s.dueNow) return null;
   const id = compact || home ? undefined : 'settlement';
-  return <SettlementLine s={s} baseYear={Number(ledger.today.slice(0, 4))} className={className} id={id} />;
+  const usage = eventMonthUsage(ledger.data, s, ledger.today);
+  return <SettlementLine s={s} usage={usage} baseYear={Number(ledger.today.slice(0, 4))} className={className} id={id} />;
 }
 
-function SettlementLine({ s, baseYear, className, id }: { s: Settlement; baseYear: number; className?: string; id?: string }) {
+function SettlementLine({ s, usage, baseYear, className, id }: { s: Settlement; usage: EventMonthUsage; baseYear: number; className?: string; id?: string }) {
   const sum = settlementSummary(s);
   if (!sum.hasClaims) return null;
   const next = sum.total > 0 ? null : nextText(sum, baseYear);
   const short = shortfallText(s);
-  const split = settlementSplitText(sum);
+  const note = [eventUsageNoteText(usage, sum), next].filter(Boolean).join(' · ');
   return (
     <Card as="section" id={id} aria-label="이번 달 정산" className={cx(styles.lineCard, className)}>
       <p className={styles.oneLine} data-testid="settlement-line">
-        {sum.total > 0 ? (
+        이번 달 이벤트통장 쓴 돈 <strong>{formatMan(usage.spent)}</strong>
+        {usage.planned > 0 ? (
           <>
-            이번 달 줄 돈 <strong>{formatMan(sum.total)}</strong>{' '}
-            <span className={styles.oneLineSub}>({peopleManText(sum.people)})</span> · {formatShortDate(sum.date)}
-            {split ? (
-              <span className={styles.oneLineSplit} data-testid="settlement-split">
-                <span className={styles.oneLineSep}> · </span>
-                {split}
-              </span>
-            ) : null}
+            {' '}
+            + 예정 <strong>{formatMan(usage.planned)}</strong>
           </>
-        ) : (
-          <>
-            <strong>이번 달 줄 돈이 없어요</strong>
-            {next ? <span className={styles.oneLineSub}> · {next}</span> : null}
-          </>
-        )}
+        ) : null}
+        {usage.incoming > 0 ? <span className={styles.oneLineSub}> · 들어올 돈 {formatMan(usage.incoming)}</span> : null}
+        {note ? (
+          <span className={styles.oneLineSplit} data-testid="settlement-split">
+            <span className={styles.oneLineSep}> · </span>
+            {note}
+          </span>
+        ) : null}
         {short ? (
           <span className={styles.oneLineWarn} data-testid="settlement-short">
             {' '}
