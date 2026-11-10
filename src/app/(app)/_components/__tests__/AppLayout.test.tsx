@@ -34,7 +34,7 @@ describe('앱 틀 (app)/layout', () => {
     expect(screen.queryByText('홈 내용')).toBeNull();
   });
 
-  it('체험 모드: 메뉴 4개(홈 · 내역 · 예산 · 이벤트) + 가운데 + 기록 · 내 정보 버튼 → 설정 · 가계부 전환', async () => {
+  it('체험 모드: 메뉴 4개(홈 · 내역 · 이벤트 · 예산) + 가운데 + 기록 · 내 정보 버튼 → 설정 · 가계부 전환', async () => {
     nav.pathname = '/settings';
     const h = renderApp(
       <AppLayout>
@@ -46,9 +46,9 @@ describe('앱 틀 (app)/layout', () => {
     nav.router.replace.mockClear();
     expect(screen.getByText('설정 내용')).toBeTruthy();
     const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
-    expect(within(side).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/budget', '/plan']);
-    // 하단 메뉴: 홈 · 내역 · [+] · 예산 · 이벤트
-    expect(within(dock).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '내역', '예산', '이벤트']);
+    expect(within(side).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/plan', '/budget']);
+    // 하단 메뉴: 홈 · 내역 · [+] · 이벤트 · 예산
+    expect(within(dock).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '내역', '이벤트', '예산']);
     const plus = within(dock).getByRole('button', { name: '기록' });
     expect(plus.previousElementSibling?.textContent).toBe('내역');
     expect(plus.nextElementSibling?.textContent).toBe('예산');
