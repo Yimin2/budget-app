@@ -1,11 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { addMonths, defaultSpreadFor, formatWon, hasLegacyLivingRow, isMonthActive, monthOf } from '@/domain';
-import type { Category, FixedExpense, LivingSpread } from '@/domain/types';
 import {
-  Badge, Banner, Button, Card, Chip, ChipGroup, ConfirmDialog, Dialog, EmptyState, Field, Icon, ListRow, Money, MoneyInput,
-  SegmentedControl, Select, focusFirstInvalid, isIconName,
+  addMonths, defaultSpreadFor, formatDateKo, formatWon, hasLegacyLivingRow, HOLIDAY_YEARS, holidayTableEndingSoon, isMonthActive,
+  isValidDate, monthOf, normalizeDays, previewLivingItem, scheduleLabel, scheduleMode, scheduleOf, schedulePreviewText, WEEK_ORDER,
+  WEEKDAY_SHORT, WEEKDAYS, WEEKENDS, type ScheduleMode,
+} from '@/domain';
+import type { Category, FixedExpense, LivingSchedule, LivingSpread } from '@/domain/types';
+import {
+  Badge, Banner, Button, Card, Chip, ChipGroup, ConfirmDialog, DateInput, Dialog, EmptyState, Field, Icon, ListRow, Money, MoneyInput,
+  SegmentedControl, Select, TextInput, focusFirstInvalid, isIconName,
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { defaultLivingDrafts, livingDraftFor, livingTotal, type LivingDraft } from '@/app/start/new/wizard';
@@ -19,6 +23,14 @@ const SPREAD_OPTIONS: { value: LivingSpread; label: string }[] = [
   { value: 'monthly', label: SPREAD_TEXT.monthly },
 ];
 
+const MODE_OPTIONS: { value: ScheduleMode; label: string }[] = [
+  { value: 'all', label: '매일' },
+  { value: 'weekdays', label: '평일' },
+  { value: 'weekends', label: '주말' },
+  { value: 'custom', label: '요일 직접' },
+  { value: 'weekly', label: '주 N회' },
+];
+
 interface Draft {
   id: string | null;
   categoryId: string; // '' = 카테고리 없음 (예전 생활비 한 줄)
@@ -26,9 +38,46 @@ interface Draft {
   spread: LivingSpread;
   /** 이 항목을 쓰는 생활비 통장 (사람별 생활비 통장이면 그 사람) */
   accountId: string;
+  /** 쓰는 날 (하루에 나눠 쓰기만) */
+  mode: ScheduleMode;
+  /** 요일 직접: 고른 요일 (0=일 … 6=토) */
+  days: number[];
+  skipHolidays: boolean;
+  /** 주 N회의 N (입력 중이면 null) */
+  perWeek: number | null;
 }
 
-type Errors = Partial<Record<'category' | 'amount' | 'account', string>>;
+type Errors = Partial<Record<'category' | 'amount' | 'account' | 'days' | 'perWeek', string>>;
+
+/** 고르는 중인 쓰는 날 → 저장할 쓰는 날 */
+function scheduleOfDraft(d: Draft): LivingSchedule {
+  switch (d.mode) {
+    case 'weekly':
+      return { days: null, skipHolidays: false, perWeek: d.perWeek };
+    case 'weekdays':
+      return { days: WEEKDAYS, skipHolidays: d.skipHolidays, perWeek: null };
+    case 'weekends':
+      return { days: WEEKENDS, skipHolidays: d.skipHolidays, perWeek: null };
+    case 'custom':
+      return { days: normalizeDays(d.days), skipHolidays: d.skipHolidays, perWeek: null };
+    default:
+      return { days: null, skipHolidays: d.skipHolidays, perWeek: null };
+  }
+}
+
+/** 고정지출 행에 넣을 쓰는 날 칸. 한 달 한도만 · 매일이면 비워요 (예전 행과 같게) */
+function scheduleFields(d: Draft): Pick<FixedExpense, 'useDays' | 'skipHolidays' | 'perWeek'> {
+  if (d.spread !== 'daily') return { useDays: undefined, skipHolidays: undefined, perWeek: undefined };
+  const s = scheduleOfDraft(d);
+  return { useDays: s.days ?? undefined, skipHolidays: s.skipHolidays || undefined, perWeek: s.perWeek ?? undefined };
+}
+
+/** 고정지출 행 → 쓰는 날 고르기 값 */
+function draftScheduleOf(f: FixedExpense | null): Pick<Draft, 'mode' | 'days' | 'skipHolidays' | 'perWeek'> {
+  const s = f ? scheduleOf(f) : null;
+  if (!s) return { mode: 'all', days: [...WEEKDAYS], skipHolidays: false, perWeek: 2 };
+  return { mode: scheduleMode(s), days: s.days ?? [...WEEKDAYS], skipHolidays: s.skipHolidays, perWeek: s.perWeek ?? 2 };
+}
 
 /**
  * 생활비 예산: 항목(카테고리)마다 한 달 예산과 쓰는 방식(하루에 나눠 쓰기 / 한 달 한도만).
@@ -40,6 +89,8 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const [errors, setErrors] = useState<Errors>({});
   const [confirm, setConfirm] = useState<{ action: 'end' | 'delete'; row: FixedExpense } | null>(null);
   const [split, setSplit] = useState<LivingDraft[] | null>(null);
+  const [newOff, setNewOff] = useState('');
+  const [offError, setOffError] = useState<string | undefined>(undefined);
 
   const month = monthOf(ledger.today);
   const data = ledger.data;
@@ -87,12 +138,15 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
     setErrors({});
     const used = new Set(rows.filter((f) => f.accountId === newAccountId || !multiAccount).filter((f) => isMonthActive(month, f.startMonth, f.endMonth)).map((f) => f.categoryId));
     const first = categories.find((c) => !used.has(c.id));
-    setDraft({ id: null, categoryId: first?.id ?? '', amount: null, spread: first ? defaultSpreadFor(first.name) : 'daily', accountId: newAccountId });
+    setDraft({
+      id: null, categoryId: first?.id ?? '', amount: null, spread: first ? defaultSpreadFor(first.name) : 'daily', accountId: newAccountId,
+      ...draftScheduleOf(null),
+    });
   }
 
   function openEdit(f: FixedExpense) {
     setErrors({});
-    setDraft({ id: f.id, categoryId: f.categoryId ?? '', amount: f.amount, spread: f.spread, accountId: f.accountId });
+    setDraft({ id: f.id, categoryId: f.categoryId ?? '', amount: f.amount, spread: f.spread, accountId: f.accountId, ...draftScheduleOf(f) });
   }
 
   /** 같은 달에 겹치는 같은 카테고리 예산 행 (자기 자신 빼고, 사람별 생활비 통장이면 같은 통장 안에서만) */
@@ -113,6 +167,10 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
     else if (draft.categoryId && duplicateOf(draft.categoryId, draft.id, draft.accountId)) next.category = '이미 예산이 있는 항목이에요';
     if (draft.amount === null || draft.amount <= 0) next.amount = '금액을 입력해 주세요';
     if (!draft.accountId) next.account = '생활비를 쓸 통장이 없어요';
+    if (draft.spread === 'daily' && draft.mode === 'custom' && draft.days.length === 0) next.days = '요일을 하나 이상 골라 주세요';
+    if (draft.spread === 'daily' && draft.mode === 'weekly' && !(draft.perWeek !== null && draft.perWeek >= 1 && draft.perWeek <= 7)) {
+      next.perWeek = '1~7회로 넣어 주세요';
+    }
     setErrors(next);
     if (Object.keys(next).length > 0) {
       focusFirstInvalid();
@@ -132,6 +190,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
             kind: 'living',
             targetEmail: null,
             spread: draft.spread,
+            ...scheduleFields(draft),
             startMonth: month,
             endMonth: null,
           });
@@ -145,6 +204,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
           categoryId: draft.categoryId || null,
           amount: draft.amount!,
           spread: draft.spread,
+          ...scheduleFields(draft),
           accountId: draft.accountId,
         });
       },
@@ -206,6 +266,48 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const splitUsed = new Set(split?.map((d) => d.categoryId) ?? []);
   const splitAddable = categories.filter((c) => !splitUsed.has(c.id) && !rows.some((f) => f.categoryId === c.id));
 
+  // 쓰는 날 미리 보기: 고치는 중인 행으로 이번 달을 다시 계산해요
+  const preview = (() => {
+    if (!draft || draft.spread !== 'daily' || draft.amount === null || draft.amount <= 0 || !draft.accountId) return '';
+    if (draft.mode === 'custom' && draft.days.length === 0) return '';
+    if (draft.mode === 'weekly' && !(draft.perWeek !== null && draft.perWeek >= 1 && draft.perWeek <= 7)) return '';
+    const row: FixedExpense = {
+      ...(editing ?? { name: '', dayOfMonth: null, targetEmail: null, deleted: false }),
+      id: draft.id ?? '__preview__',
+      kind: 'living',
+      categoryId: draft.categoryId || null,
+      amount: draft.amount,
+      accountId: draft.accountId,
+      spread: 'daily',
+      ...scheduleFields(draft),
+      startMonth: month,
+      endMonth: null,
+    };
+    const item = previewLivingItem(data, ledger.today, row);
+    return item ? schedulePreviewText(item, ledger.today) : '';
+  })();
+
+  // 쉬는 날 (회사 휴무 등): '공휴일 빼기' 항목이 있거나 이미 넣은 날이 있을 때 보여요
+  const daysOff = data.settings.daysOff ?? [];
+  const upcomingOff = daysOff.filter((d) => d >= `${month}-01`);
+  const usesHolidays = rows.some((f) => f.kind === 'living' && f.spread === 'daily' && scheduleOf(f).skipHolidays);
+  const showDaysOff = usesHolidays || upcomingOff.length > 0;
+  const tableEnding = usesHolidays && holidayTableEndingSoon(ledger.today);
+
+  async function addDayOff() {
+    if (!isValidDate(newOff)) {
+      setOffError('날짜를 골라 주세요');
+      return;
+    }
+    if (daysOff.includes(newOff)) {
+      setOffError('이미 넣은 날이에요');
+      return;
+    }
+    setOffError(undefined);
+    const ok = await run('off', () => ledger.saveDaysOff([...daysOff, newOff]), '쉬는 날을 넣었어요');
+    if (ok) setNewOff('');
+  }
+
   return (
     <Card
       id="st-living"
@@ -245,6 +347,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                     <span className="st-sub">
                       {multiAccount && (!people.show || people.selected === null) ? <span>{accountLabel(f.accountId)}</span> : null}
                       <span>{SPREAD_TEXT[f.spread]}</span>
+                      {f.spread === 'daily' && scheduleLabel(scheduleOf(f)) ? <span>{scheduleLabel(scheduleOf(f))}</span> : null}
                       {f.categoryId === null ? (
                         <Badge size="sm" tone="warning">
                           예전 방식
@@ -271,6 +374,43 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
           생활비 항목 추가
         </Button>
       </div>
+
+      {showDaysOff ? (
+        <section className="st-daysoff" aria-labelledby="st-daysoff-title">
+          <h3 className="st-label" id="st-daysoff-title">
+            쉬는 날
+          </h3>
+          <p className="st-desc">회사 휴무처럼 쉬는 날을 넣으면 &lsquo;공휴일 빼기&rsquo; 항목은 그날도 빼고 나눠요.</p>
+          {tableEnding ? (
+            <Banner tone="info" title={`공휴일은 ${HOLIDAY_YEARS.to}년까지 알고 있어요`}>
+              그 뒤로는 주말만 빼요. 공휴일은 쉬는 날로 넣어 주세요.
+            </Banner>
+          ) : null}
+          {upcomingOff.length > 0 ? (
+            <ChipGroup label="넣은 쉬는 날">
+              {upcomingOff.map((d) => (
+                <Chip
+                  key={d}
+                  removeLabel={`${formatDateKo(d)} 빼기`}
+                  onRemove={() =>
+                    void run('off', () => ledger.saveDaysOff(daysOff.filter((x) => x !== d)), '쉬는 날을 뺐어요')
+                  }
+                >
+                  {formatDateKo(d)}
+                </Chip>
+              ))}
+            </ChipGroup>
+          ) : null}
+          <div className="st-daysoff-add">
+            <Field label="쉬는 날 추가 (회사 휴무 등)" error={offError}>
+              <DateInput value={newOff} onChange={(v) => setNewOff(v)} min={`${month}-01`} />
+            </Field>
+            <Button variant="outline" icon="plus" onClick={() => void addDayOff()} loading={busy === 'off'} disabled={!newOff}>
+              추가
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       <Dialog
         open={draft !== null}
@@ -337,6 +477,66 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                   : '이번 달 남은 돈만 봐요. 쇼핑·의료처럼 가끔 쓰는 항목에 맞아요.'}
               </p>
             </div>
+            {draft.spread === 'daily' ? (
+              <div className="stack gap-2">
+                <span className="st-label" id="st-living-days">
+                  쓰는 날
+                </span>
+                <SegmentedControl<ScheduleMode>
+                  ariaLabel="쓰는 날"
+                  block
+                  value={draft.mode}
+                  onChange={(mode) => setDraft({ ...draft, mode })}
+                  options={MODE_OPTIONS}
+                />
+                {draft.mode === 'custom' ? (
+                  <Field label="요일" hideLabel error={errors.days}>
+                    <ChipGroup label="쓰는 요일">
+                      {WEEK_ORDER.map((d) => {
+                        const on = draft.days.includes(d);
+                        return (
+                          <Chip
+                            key={d}
+                            selected={on}
+                            onClick={() =>
+                              setDraft({ ...draft, days: on ? draft.days.filter((x) => x !== d) : [...draft.days, d].sort((a, b) => a - b) })
+                            }
+                          >
+                            {WEEKDAY_SHORT[d]}
+                          </Chip>
+                        );
+                      })}
+                    </ChipGroup>
+                  </Field>
+                ) : null}
+                {draft.mode === 'weekly' ? (
+                  <Field label="한 주에 몇 번 쓰나요?" error={errors.perWeek} hint="월요일부터 일요일까지 쓴 날을 세요.">
+                    <TextInput
+                      inputMode="numeric"
+                      value={draft.perWeek === null ? '' : String(draft.perWeek)}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, '').slice(0, 1);
+                        setDraft({ ...draft, perWeek: v ? Number(v) : null });
+                      }}
+                    />
+                  </Field>
+                ) : (
+                  <label className="st-check">
+                    <input
+                      type="checkbox"
+                      checked={draft.skipHolidays}
+                      onChange={(e) => setDraft({ ...draft, skipHolidays: e.target.checked })}
+                    />
+                    <span>공휴일 빼기 (넣어 둔 쉬는 날도 빼요)</span>
+                  </label>
+                )}
+                {preview ? (
+                  <p className="st-preview" aria-live="polite">
+                    {preview}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {editing ? (
               <div className="st-danger">
                 {editing.endMonth === null || editing.endMonth > month ? (

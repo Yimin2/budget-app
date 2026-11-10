@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { formatWon, hasLivingBudget, livingItemKey } from '@/domain';
+import { formatWon, hasLivingBudget, livingDayNote, livingItemKey } from '@/domain';
 import type { Category, Expense, LivingItem } from '@/domain';
 import { useLedger } from '@/state';
 import {
@@ -230,7 +230,9 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
     source === 'living'
       ? living && hasLivingBudget(living)
         ? selectedItem
-          ? selectedItem.todayAvailable !== null
+          ? livingDayNote(selectedItem, ledger.today) && !selectedItem.weekly?.usedToday
+            ? `${selectedItem.name} · ${livingDayNote(selectedItem, ledger.today)}`
+            : selectedItem.todayAvailable !== null
             ? `오늘 ${selectedItem.name}에 써도 되는 돈 ${formatWon(Math.max(0, selectedItem.todayAvailable))}`
             : `이번 달 남은 ${selectedItem.name} ${formatWon(selectedItem.remaining)}`
           : `오늘 써도 되는 돈 ${formatWon(Math.max(0, living.todayAvailable))}`

@@ -83,16 +83,63 @@ export function judgeLiving(living: LivingStatus, categoryId: Id | null, amount:
       projectionAfter: null,
     };
   }
+  if (item.spread === 'daily' && item.weekly) return judgeWeekly(item, a);
   return item.spread === 'daily'
-    ? judgeDaily(item, daysAfterToday, a)
+    ? judgeDaily(item, item.useDay ? item.useDay.daysAfterToday : daysAfterToday, a)
     : judgeMonthly(item, living.month, daysAfterToday, a);
+}
+
+/**
+ * 주 N회 항목 (PLAN 4-4): 한 번에 쓸 돈으로 본다.
+ *   ok: 이번 주 남은 횟수가 있고(또는 오늘 이미 쓴 날) A ≤ 오늘 써도 되는 돈 / warn: A ≤ 남은 돈 / bad: 그 외
+ *   warn 문구: 사고 나서 남은 횟수 U' = 남은 횟수 − 1 (오늘 이미 썼으면 그대로 오늘 몫을 다시 쓰지 않으니 U − 1),
+ *     U' > 0 이면 '사면 남은 n회에 한 번 X원씩 쓸 수 있어요' (X = 100원 내림((남은 돈 − A) ÷ U')), 아니면 '이번 달 남은 횟수를 다 써요'
+ */
+function judgeWeekly(item: LivingItem, a: Won): Verdict {
+  const w = item.weekly!;
+  const today = item.todayAvailable ?? 0;
+  const canToday = w.usedToday || w.leftThisWeek > 0;
+  const after = item.remaining - a;
+  const details = [
+    { label: '한 번에 쓸 돈', value: formatWon(w.perUse) },
+    { label: '이번 주 남은 횟수', value: `${w.leftThisWeek}회` },
+    { label: `이번 달 남은 ${item.name}`, value: formatWon(item.remaining) },
+    { label: '사고 나면 남는 돈', value: formatWon(after) },
+  ];
+  let signal: Signal;
+  let message: string;
+  if (canToday && a <= today) {
+    signal = 'ok';
+    message = `한 번에 쓸 ${item.name} 예산 안이에요`;
+  } else if (a <= item.remaining) {
+    signal = 'warn';
+    const usesAfter = Math.max(0, w.usesLeft - 1);
+    if (!canToday) {
+      message = `이번 주 ${item.name} ${w.perWeek}회를 다 썼어요`;
+    } else if (usesAfter > 0) {
+      const x = floorTo100(after / usesAfter);
+      message = `사면 남은 ${usesAfter}회에 한 번 ${formatWon(x)}씩 쓸 수 있어요`;
+    } else {
+      message = `이번 달 남은 ${item.name} 횟수를 다 써요`;
+    }
+  } else {
+    signal = 'bad';
+    message = `이번 달 ${item.name} 예산을 ${formatWon(a - item.remaining)} 넘어요`;
+  }
+  let when: string | null = null;
+  if (signal === 'warn' && !canToday) when = '다음 주 월요일부터 다시 쓸 수 있어요';
+  else if (signal === 'bad') {
+    when = `이번 달 ${item.name} 예산으로는 어려워요. 다음 달 예산으로 사거나 이벤트통장으로 살 수 있는지 확인해 보세요`;
+  }
+  return { signal, title: TITLES[signal], message, details, when, projectionAfter: null };
 }
 
 function judgeDaily(item: LivingItem, daysAfterToday: number, a: Won): Verdict {
   const today = item.todayAvailable ?? 0;
-  const daily = item.dailyBudget ?? 0;
+  const daily = item.useDay && !item.useDay.today ? (item.useDay.next?.amount ?? 0) : (item.dailyBudget ?? 0);
   const after = item.remaining - a;
-  const details = [
+  const scheduled = !!item.useDay;
+    const details = [
     { label: '오늘 써도 되는 돈', value: formatWon(today) },
     { label: `이번 달 남은 ${item.name}`, value: formatWon(item.remaining) },
     { label: '사고 나면 남는 돈', value: formatWon(after) },
@@ -106,11 +153,14 @@ function judgeDaily(item: LivingItem, daysAfterToday: number, a: Won): Verdict {
   } else if (a <= item.remaining) {
     signal = 'warn';
     if (daysAfterToday === 0) {
-      message = '이번 달 마지막 날이에요';
+      message = scheduled ? '이번 달 마지막 쓰는 날이에요' : '이번 달 마지막 날이에요';
     } else {
       const x = floorTo100(after / daysAfterToday);
-      message = `사면 내일부터 ${item.name}에 하루 ${formatWon(x)}씩 쓸 수 있어요`;
-      details.push({ label: '내일부터 하루 예산', value: formatWon(x) });
+      const off = scheduled && !item.useDay!.today ? '오늘은 쓰는 날이 아니에요. ' : '';
+      message = scheduled
+        ? `${off}사면 다음 쓰는 날부터 ${item.name}에 하루 ${formatWon(x)}씩 쓸 수 있어요`
+        : `사면 내일부터 ${item.name}에 하루 ${formatWon(x)}씩 쓸 수 있어요`;
+      details.push({ label: scheduled ? '다음 쓰는 날부터 하루 예산' : '내일부터 하루 예산', value: formatWon(x) });
     }
   } else {
     signal = 'bad';
@@ -124,7 +174,9 @@ function judgeDaily(item: LivingItem, daysAfterToday: number, a: Won): Verdict {
     const n = perDaySaving > 0 ? Math.ceil(need / perDaySaving) : Infinity;
     if (Number.isFinite(n) && n >= 1 && n <= daysAfterToday) {
       const y = floorTo100(daily * SAVE_SPEND_RATIO);
-      when = `하루 ${formatWon(y)}씩만 쓰면 ${n}일 뒤에 살 수 있어요`;
+      when = scheduled
+        ? `쓰는 날에 하루 ${formatWon(y)}씩만 쓰면 쓰는 날 ${n}번 뒤에 살 수 있어요`
+        : `하루 ${formatWon(y)}씩만 쓰면 ${n}일 뒤에 살 수 있어요`;
     } else {
       when = `이번 달 ${item.name} 예산으로는 어려워요. 다음 달 예산으로 사거나 이벤트통장으로 살 수 있는지 확인해 보세요`;
     }

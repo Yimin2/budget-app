@@ -8,6 +8,8 @@
  * - 청구: pending 은 낸 사람 · 돌려받을 통장 · 정산일을 앱 규칙(4-9)으로 정하고, settled 는 돌려준 이체 claim:<지출id> 도 함께 만든다
  * - v2 (PLAN 4-13 · 4-14): 수입 계획(incomePlans), 매달 배분의 방식(rules[].kind = fixed · remainder). 사람별 생활비 · 용돈 통장은
  *   v1 처럼 통장의 ownerName · ownerEmail 로 적는다. v1 파일은 그대로 읽는다 (v2 칸을 쓰면 버전을 올리라고 알린다)
+ * - v2 (PLAN 4-1): 생활비 항목의 쓰는 날 fixedExpenses[].useDays('every' · 'weekdays' · 'weekends' · ['mon', 'wed', …]),
+ *   skipHolidays(true/false), perWeek(1~7). 모두 선택이고, 비우면 매일 (예전과 같다)
  */
 import { isClaimExpense } from './balances';
 import { canClaimOnAccount, claimAccountFor, claimTransferId, computeClaimDue } from './claims';
@@ -85,6 +87,12 @@ export interface ImportFixed {
   kind: 'bill' | 'living' | 'allowance';
   dayOfMonth: number | null;
   spread: LivingSpread;
+  /** 생활비 쓰는 요일 (v2, 0=일 … 6=토). null = 매일 */
+  useDays: number[] | null;
+  /** 생활비 공휴일 · 쉬는 날 빼기 (v2) */
+  skipHolidays: boolean;
+  /** 생활비 주 N회 (v2, 1~7) */
+  perWeek: number | null;
   targetEmail: string | null;
   startMonth: YearMonth;
   endMonth: YearMonth | null;
@@ -299,6 +307,21 @@ const keysOf = (root: Obj, name: string): Set<string> => {
   return out;
 };
 
+const DAY_CODES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+/** 생활비 쓰는 요일 (v2): 'every' · 'weekdays' · 'weekends' · ['mon', 'wed', …]. 빈 칸 · 'every' · 7개 모두 = null (매일) */
+function readUseDays(v: unknown, bad: () => void): number[] | null {
+  if (blank(v) || v === 'every') return null;
+  if (v === 'weekdays') return [1, 2, 3, 4, 5];
+  if (v === 'weekends') return [0, 6];
+  if (Array.isArray(v) && v.length > 0 && v.every((d) => typeof d === 'string' && DAY_CODES.includes(d.toLowerCase()))) {
+    const days = [...new Set(v.map((d) => DAY_CODES.indexOf((d as string).toLowerCase())))].sort((a, b) => a - b);
+    return days.length === 7 ? null : days;
+  }
+  bad();
+  return null;
+}
+
 /** 가져오기 파일 글자 → 확인한 파일. 틀린 곳은 한국어 목록으로 (앞 30개) */
 export function parseImportFile(text: string): ParseResult {
   let root: unknown;
@@ -380,10 +403,14 @@ export function parseImportFile(text: string): ParseResult {
           endMonth: f.month('endMonth', true),
           memo: f.text('memo', true),
         }));
-  const fixedExpenses = readTable<ImportFixed>(root, 'fixedExpenses', '고정 지출', errors, (f, key, _r, fail) => {
+  const fixedExpenses = readTable<ImportFixed>(root, 'fixedExpenses', '고정 지출', errors, (f, key, r, fail) => {
     const kind = f.oneOf('kind', FIXED_KINDS);
     const day = f.int('dayOfMonth', { min: 1, max: 31, optional: true });
     if (kind !== 'living' && day === null) fail("'dayOfMonth' 칸을 확인해 주세요");
+    for (const k of ['useDays', 'skipHolidays', 'perWeek']) if (version === 1 && !blank(r[k])) fail(v2Only(k));
+    const useDays = version === 1 ? null : readUseDays(r.useDays, () => fail("'useDays' 칸을 확인해 주세요"));
+    if (!blank(r.skipHolidays) && typeof r.skipHolidays !== 'boolean') fail("'skipHolidays' 칸을 확인해 주세요");
+    const perWeek = version === 1 ? null : f.int('perWeek', { min: 1, max: 7, optional: true });
     return {
       key,
       name: f.text('name'),
@@ -393,6 +420,9 @@ export function parseImportFile(text: string): ParseResult {
       kind,
       dayOfMonth: kind === 'living' ? null : day,
       spread: f.oneOf<LivingSpread>('spread', ['daily', 'monthly'], 'daily'),
+      useDays,
+      skipHolidays: version !== 1 && r.skipHolidays === true,
+      perWeek,
       targetEmail: kind === 'allowance' ? f.optText('targetEmail') || null : null,
       startMonth: f.month('startMonth') ?? '',
       endMonth: f.month('endMonth', true),
@@ -785,6 +815,14 @@ export function planImport(
       id, name: f.name, amount: f.amount, accountId: acc, categoryId: categoryOf(f.category),
       dayOfMonth: f.dayOfMonth, kind: f.kind, targetEmail: f.targetEmail, spread: f.kind === 'living' ? f.spread : 'daily',
       startMonth: f.startMonth, endMonth: f.endMonth, memo: f.memo, deleted: false,
+      // 생활비 쓰는 날 (v2). 매일이면 칸을 두지 않아 예전 행과 같다
+      ...(f.kind === 'living' && f.spread === 'daily'
+        ? {
+            ...(f.perWeek !== null ? { perWeek: f.perWeek } : {}),
+            ...(f.perWeek === null && f.useDays !== null ? { useDays: f.useDays } : {}),
+            ...(f.perWeek === null && f.skipHolidays ? { skipHolidays: true } : {}),
+          }
+        : {}),
     });
   }
 

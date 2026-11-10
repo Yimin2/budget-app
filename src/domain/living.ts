@@ -1,10 +1,11 @@
-import { addMonths, daysInMonth, daysLeftInMonth, isMonthActive, monthOf } from './dates';
+import { addMonths, daysInMonth, daysLeftInMonth, formatDateKo, isMonthActive, monthOf } from './dates';
 import { activeAccountsSorted, livingAccountIdsFor } from './internal';
 import { orderedCategories } from './categories';
 import { livingOwnerName } from './household';
-import { floorTo100 } from './money';
+import { floorTo100, formatWon } from './money';
+import { isEveryDay, scheduleOf, useDayPlan, WEEKDAY_LONG, weekdayOf, weeklyPlan } from './schedule';
 import type {
-  Category, FixedExpense, Id, ISODate, LedgerData, LivingItem, LivingSpread, LivingStatus, MonthEndItem, YearMonth, Won,
+  Category, FixedExpense, Id, ISODate, LedgerData, LivingItem, LivingSchedule, LivingSpread, LivingStatus, MonthEndItem, YearMonth, Won,
 } from './types';
 
 /** 예산 행 없이 지출만 있는 생활비 묶음 이름 */
@@ -53,6 +54,9 @@ interface Bucket {
   spent: Won;
   spentToday: Won;
   hasRow: boolean;
+  schedule: LivingSchedule | null;
+  /** 이번 달에 지출이 있는 날 (주 N회 셈) */
+  dates: Set<ISODate>;
 }
 
 /**
@@ -89,6 +93,8 @@ function ownerOf(data: LedgerData, accountId: Id | null): string | null {
  * - 이월: 지난달 MonthEnd(choice='carryover').items 를 같은 항목에 더한다. 이번 달에 없는 항목의 이월과
  *   항목 구분 없는 예전 이월은 null 묶음으로
  * - daily 항목: 하루 예산 = (남은 돈 + 오늘 쓴 돈) ÷ 남은 일수(오늘 포함), 100원 내림
+ *   쓰는 날(요일 · 공휴일 빼기)이 있으면 남은 일수 대신 오늘 포함 남은 쓰는 날, 쉬는 날은 오늘 몫 0 (schedule.useDayPlan).
+ *   주 N회면 한 번에 쓸 돈 (schedule.weeklyPlan). 이번 달에 쓰는 날 · 횟수가 더 없으면 monthly 처럼 (noDaysLeft)
  * - 전체 dailyBudget · todayAvailable = daily 항목의 합. monthly 항목은 남은 돈만 본다
  */
 export function computeLiving(data: LedgerData, today: ISODate, accountId?: Id | null): LivingStatus {
@@ -138,7 +144,7 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
     if (!b) {
       b = {
         categoryId: null, name: LIVING_ETC_NAME, icon: 'dots', spread: 'monthly', order: Number.MAX_SAFE_INTEGER,
-        base: 0, carryIn: 0, spent: 0, spentToday: 0, hasRow: false,
+        base: 0, carryIn: 0, spent: 0, spentToday: 0, hasRow: false, schedule: null, dates: new Set(),
       };
       buckets.set('', b);
     }
@@ -159,6 +165,8 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
       name: row.categoryId ? (cat?.name ?? (row.name.trim() || '항목')) : row.name.trim() || '생활비',
       icon: row.categoryId ? (cat?.icon ?? 'dots') : 'wallet',
       spread: row.spread === 'monthly' ? 'monthly' : 'daily',
+      schedule: row.spread === 'monthly' ? null : scheduleOf(row),
+      dates: new Set(),
       order: row.categoryId ? (catPos.get(row.categoryId) ?? Number.MAX_SAFE_INTEGER - 1) : Number.MAX_SAFE_INTEGER,
       base: row.amount,
       carryIn: 0,
@@ -176,27 +184,57 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
   for (const e of livingExpenses(data, month, livingAccountId)) {
     const b = (e.categoryId !== null && buckets.get(e.categoryId)) || nullBucket();
     b.spent += e.amount;
+    b.dates.add(e.date);
     if (e.date === today) b.spentToday += e.amount;
   }
+  const daysOff = new Set(data.settings.daysOff ?? []);
 
   const items: LivingItem[] = [...buckets.values()]
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, 'ko'))
     .map((b) => {
       const monthBudget = b.base + b.carryIn;
       const remaining = monthBudget - b.spent;
+      let spread = b.spread;
       let dailyBudget: Won | null = null;
       let todayAvailable: Won | null = null;
-      if (b.spread === 'daily') {
-        const startOfDay = remaining + b.spentToday;
-        dailyBudget = startOfDay > 0 ? floorTo100(startOfDay / daysLeft) : 0;
-        todayAvailable = dailyBudget - b.spentToday;
+      const extra: Pick<LivingItem, 'schedule' | 'useDay' | 'weekly' | 'noDaysLeft'> = {};
+      if (spread === 'daily') {
+        const schedule = b.schedule;
+        if (!schedule || isEveryDay(schedule)) {
+          const startOfDay = remaining + b.spentToday;
+          dailyBudget = startOfDay > 0 ? floorTo100(startOfDay / daysLeft) : 0;
+          todayAvailable = dailyBudget - b.spentToday;
+        } else {
+          extra.schedule = schedule;
+          if (schedule.perWeek !== null) {
+            const w = weeklyPlan(remaining, b.spentToday, today, schedule.perWeek, b.dates);
+            if (w) {
+              const { dailyBudget: db, todayAvailable: ta, ...weekly } = w;
+              dailyBudget = db;
+              todayAvailable = ta;
+              extra.weekly = weekly;
+            }
+          } else {
+            const p = useDayPlan(remaining, b.spentToday, today, schedule, daysOff);
+            if (p) {
+              dailyBudget = p.dailyBudget;
+              todayAvailable = p.todayAvailable;
+              extra.useDay = { today: p.today, daysLeft: p.daysLeft, daysAfterToday: p.daysAfterToday, next: p.next };
+            }
+          }
+          // 이번 달에 쓰는 날 · 횟수가 더 없으면 남은 돈은 한 달 한도만처럼 봐요
+          if (dailyBudget === null) {
+            spread = 'monthly';
+            extra.noDaysLeft = true;
+          }
+        }
       }
       return {
         categoryId: b.categoryId,
         accountId: livingAccountId,
         name: b.name,
         icon: b.icon,
-        spread: b.spread,
+        spread,
         base: b.base,
         monthBudget,
         carryIn: b.carryIn,
@@ -206,6 +244,7 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
         dailyBudget,
         todayAvailable,
         unbudgeted: !b.hasRow,
+        ...extra,
       };
     });
   return summarize(month, daysLeft, livingAccountId, items);
@@ -271,4 +310,52 @@ export function livingLeftoverItems(data: LedgerData, month: YearMonth): (MonthE
       icon: i.icon,
       ...(multi && i.accountId ? { accountId: i.accountId } : {}),
     }));
+}
+
+/**
+ * 설정에서 고치는 중인 생활비 행으로 다시 계산한 그 항목 (쓰는 날 미리 보기). 같은 id 행은 바꿔 넣고, 없으면 더한다
+ */
+export function previewLivingItem(data: LedgerData, today: ISODate, row: FixedExpense): LivingItem | null {
+  const next: LedgerData = { ...data, fixedExpenses: [...data.fixedExpenses.filter((f) => f.id !== row.id), row] };
+  const items = computeLiving(next, today).items.filter((i) => i.categoryId === row.categoryId && !i.unbudgeted);
+  return items.find((i) => i.accountId === row.accountId) ?? items[0] ?? null;
+}
+
+/**
+ * 쓰는 날 미리 보기 한 줄 (설정 · 시작 마법사).
+ * '11월 남은 쓰는 날 15일 → 하루 14,600원' · '이번 주 남은 2회 · 한 번에 25,000원' · '11월 남은 21일 → 하루 21,400원'
+ */
+export function schedulePreviewText(item: LivingItem, today: ISODate): string {
+  const m = `${Number(today.slice(5, 7))}월`;
+  const won = (n: number) => formatWon(Math.max(0, n));
+  if (item.noDaysLeft) return `${m}에는 남은 쓰는 날이 없어요. 남은 돈은 한 달 한도처럼 봐요`;
+  if (item.weekly) return `이번 주 남은 ${item.weekly.leftThisWeek}회 · 한 번에 ${won(item.weekly.perUse)}`;
+  if (item.useDay) {
+    const daily = item.useDay.today ? (item.dailyBudget ?? 0) : (item.useDay.next?.amount ?? 0);
+    return `${m} 남은 쓰는 날 ${item.useDay.daysLeft}일 → 하루 ${won(daily)}`;
+  }
+  if (item.spread === 'daily') return `${m} 남은 ${daysLeftInMonth(today)}일 → 하루 ${won(item.dailyBudget ?? 0)}`;
+  return '';
+}
+
+/**
+ * 홈 · 사도 돼? 의 항목 한 줄 (쓰는 날 · 주 N회 항목이 오늘 하루 예산 대신 보여 줄 글). 그 밖에는 null.
+ * - 쉬는 날: '오늘은 쓰는 날이 아니에요 · 다음: 월요일 14,600원'
+ * - 주 N회: '이번 주 남은 1회 · 한 번에 25,000원' / '이번 주는 다 썼어요'
+ * - 쓰는 날이 더 없음: '이번 달은 쓰는 날이 끝났어요'
+ */
+export function livingDayNote(item: LivingItem, today: ISODate): string | null {
+  if (item.noDaysLeft) return '이번 달은 쓰는 날이 끝났어요';
+  if (item.weekly) {
+    const w = item.weekly;
+    if (!w.usedToday && w.leftThisWeek === 0) return '이번 주는 다 썼어요';
+    return `이번 주 남은 ${w.leftThisWeek}회 · 한 번에 ${formatWon(w.perUse)}`;
+  }
+  if (item.useDay && !item.useDay.today && item.useDay.next) {
+    const { date, amount } = item.useDay.next;
+    const gap = (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000;
+    const when = gap <= 6 ? WEEKDAY_LONG[weekdayOf(date)] : formatDateKo(date);
+    return `오늘은 쓰는 날이 아니에요 · 다음: ${when} ${formatWon(amount)}`;
+  }
+  return null;
 }
