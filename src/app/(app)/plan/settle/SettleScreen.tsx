@@ -8,11 +8,15 @@ import {
   formatMonthKo,
   formatShortDate,
   formatWon,
+  isCarriedOverClaim,
   planSettlement,
+  selectionLimitText,
+  settleExplanation,
   settleRoster,
+  shortfallText,
 } from '@/domain';
 import type { Expense, Id, LedgerData, PendingClaim, Settlement, SettleItem, SettleItemKind, SettlePerson } from '@/domain';
-import { Badge, Button, Card, EmptyState, Icon, PageHeader, cx, isIconName } from '@/ui';
+import { Badge, Banner, Button, Card, EmptyState, Icon, PageHeader, cx, isIconName } from '@/ui';
 import { PageSkeleton, RequireLedger, type ReadyLedger } from '../../_components';
 import { useSettleActions } from '../../_components/SettlementCard';
 import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
@@ -25,7 +29,9 @@ import styles from './settle.module.css';
 /**
  * '/plan/settle' 이번 달 정산 (PLAN 4-9). 이벤트 화면 한 줄 요약의 [정산하기]로 열어요.
  * 지급할 수 있는 돈과 어떻게 셌는지 → 사람마다 항목 목록(전체 선택 · 사람 선택 · 항목 선택) → 고른 합 막대 · [지급했어요].
- * 고른 이벤트통장 청구가 지급할 수 있는 돈보다 많으면 넘는 금액을 보이고 [저수지에서 빌려 지급].
+ * 지난달부터 못 준 청구를 먼저(이번 달 일정보다도 먼저) 지급할 수 있는 돈에 넣어요 ('지난달부터' 표시).
+ * [지급했어요]는 이벤트통장 청구 중 지급할 수 있는 돈 안에 드는 것만 지급하고, 넘는 것은 [저수지에서 빌려 지급]으로만 줄 수 있어요.
+ * 지급할 수 있는 돈이 0 이면 [지급했어요]는 이유와 함께 막고 [저수지에서 빌려 지급]만 둬요. 이벤트통장이 음수면 맨 위에 모자란 돈을 알려요.
  * 저수지 돈으로 낸 이벤트 청구는 사람 목록 안에 '저수지에서 빌려 지급' 표시로 함께 있어요 (저수지는 받는 사람이 아니에요).
  * 그 아래 '지급한 기록'(#paid, [지급 취소])과 맨 아래 '저수지' 칸(#loan: 빌리고 갚은 기록의 금액 고치기 · 취소, 하나씩 갚을 돈으로 바꾸기)이 있어요
  */
@@ -107,17 +113,38 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
     );
   }
 
-  const pay = () => {
+  /** [지급했어요]: 지급할 수 있는 돈 안에 드는 것만 (넘는 이벤트통장 청구는 남겨 둬요) */
+  const payWithin = () => {
+    const { settle, borrow } = plan;
+    const n = settle.length + borrow.length;
+    const total = plan.claims.filter((c) => !plan.over.includes(c.expense.id)).reduce((t, c) => t + c.amount, 0);
+    const message =
+      borrow.length > 0
+        ? `고른 ${n}건 ${formatWon(total)}을 지급했다고 기록했어요 (저수지에서 빌린 ${borrow.length}건 포함)`
+        : `고른 ${n}건 ${formatWon(total)}을 지급했다고 기록했어요`;
+    return run(
+      'pay',
+      async () => {
+        if (settle.length > 0) await ledger.settleClaims(settle);
+        if (borrow.length > 0) await ledger.borrowReservoirClaims(borrow);
+        const left = new Map<Id, boolean>();
+        for (const id of plan.over) left.set(id, true);
+        setPicked(left);
+      },
+      async () => {
+        if (borrow.length > 0) await ledger.undoReservoirClaims(borrow, 'borrowed');
+        if (settle.length > 0) await ledger.unsettleClaims(settle);
+      },
+      message,
+    );
+  };
+
+  /** [저수지에서 빌려 지급]: 안에 드는 것은 그대로 지급하고, 넘는 이벤트통장 청구만 저수지에서 빌려 지급 */
+  const payBorrow = () => {
     const { settle, over, borrow } = plan;
     const n = plan.claims.length;
-    const message =
-      over.length > 0
-        ? `고른 ${n}건을 지급하고 넘는 ${formatWon(plan.excess)}은 저수지에서 빌렸다고 기록했어요`
-        : borrow.length > 0
-          ? `고른 ${n}건 ${formatWon(plan.total)}을 지급했다고 기록했어요 (저수지에서 빌린 ${borrow.length}건 포함)`
-          : `고른 ${n}건 ${formatWon(plan.total)}을 지급했다고 기록했어요`;
     return run(
-      over.length > 0 ? 'borrow' : 'pay',
+      'borrow',
       async () => {
         if (settle.length > 0) await ledger.settleClaims(settle);
         if (over.length > 0) await ledger.borrowAndSettleClaims(over);
@@ -129,7 +156,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
         const rest = [...settle, ...over];
         if (rest.length > 0) await ledger.unsettleClaims(rest);
       },
-      message,
+      `고른 ${n}건을 지급하고 넘는 ${formatWon(plan.excess)}은 저수지에서 빌렸다고 기록했어요`,
     );
   };
 
@@ -138,8 +165,21 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
     .filter((c) => plan.borrow.includes(c.expense.id))
     .reduce((t, c) => t + c.amount, 0);
 
+  const limitText = selectionLimitText(s, plan, canBorrow);
+  const withinCount = plan.settle.length + plan.borrow.length;
+  // 지급할 수 있는 돈이 0 인데 이벤트통장 청구를 골랐으면 [지급했어요]는 막아요 (저수지에서 빌려서만 줄 수 있어요)
+  const payBlocked = !plan.fits && s.payable === 0;
+  const payReason = payBlocked ? '이벤트통장에서 줄 수 있는 돈이 없어서 지급할 수 없어요' : null;
+  const payReasonId = `${listTitleId}-pay-reason`;
+  const shortText = shortfallText(s);
+
   return (
     <>
+      {shortText ? (
+        <Banner tone="warning" title={shortText}>
+          들어올 돈이 먼저 모자란 돈을 메워요
+        </Banner>
+      ) : null}
       <PayableCard s={s} baseYear={baseYear} />
 
       <Card as="section" aria-labelledby={listTitleId} className={styles.listCard}>
@@ -156,7 +196,9 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
             </Button>
           </div>
         </div>
-        <p className={claims.note}>처음엔 오래된 것부터 지급할 수 있는 돈 안에서 골라 뒀어요. 항목을 누르면 자세히 볼 수 있어요</p>
+        <p className={claims.note}>
+          처음엔 지난달에 못 준 것부터, 그다음 오래된 것부터 지급할 수 있는 돈 안에서 골라 뒀어요. 항목을 누르면 자세히 볼 수 있어요
+        </p>
         <ul className={styles.people}>
           {roster.map((p) => (
             <PersonBlock
@@ -179,39 +221,38 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
           <strong>
             고른 {plan.claims.length}건 · {formatWon(plan.total)}
           </strong>
-          {!plan.fits ? (
-            <span className={styles.overText}>
-              지급할 수 있는 돈보다 {formatWon(plan.excess)} 많아요
-              {canBorrow ? ` · 넘는 ${plan.over.length}건은 저수지에서 빌려 지급해요` : ''}
+          {limitText ? <span className={styles.overText}>{limitText}</span> : null}
+          {payReason ? (
+            <span id={payReasonId} className={styles.overText}>
+              {payReason}
             </span>
           ) : null}
           {plan.borrow.length > 0 ? (
             <span>저수지에서 빌려 지급 {plan.borrow.length}건 {formatWon(borrowTotal)} 포함 · 저수지에 갚을 돈이 돼요</span>
           ) : null}
         </div>
-        {plan.fits ? (
+        <div className={styles.totalActions}>
           <Button
             icon="check"
+            variant={plan.fits ? 'primary' : 'outline'}
             loading={busy === 'pay'}
-            disabled={plan.claims.length === 0 || (busy !== null && busy !== 'pay')}
-            onClick={() => void pay()}
+            disabled={withinCount === 0 || payBlocked || (busy !== null && busy !== 'pay')}
+            aria-describedby={payReason ? payReasonId : undefined}
+            onClick={() => void payWithin()}
           >
             지급했어요
           </Button>
-        ) : canBorrow ? (
-          <Button
-            icon="arrow-right"
-            loading={busy === 'borrow'}
-            disabled={busy !== null && busy !== 'borrow'}
-            onClick={() => void pay()}
-          >
-            저수지에서 빌려 지급
-          </Button>
-        ) : (
-          <Button icon="check" disabled>
-            지급했어요
-          </Button>
-        )}
+          {!plan.fits && canBorrow ? (
+            <Button
+              icon="arrow-right"
+              loading={busy === 'borrow'}
+              disabled={busy !== null && busy !== 'borrow'}
+              onClick={() => void payBorrow()}
+            >
+              저수지에서 빌려 지급
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {editing ? <ExpenseDialog expense={editing} onClose={() => setEditing(null)} /> : null}
@@ -233,6 +274,9 @@ function PayableCard({ s, baseYear }: { s: Settlement; baseYear: number }) {
       <p className={claims.summaryLine}>
         지급할 수 있는 돈 <strong>{formatWon(s.payable)}</strong>
       </p>
+      <p className={styles.explain} data-testid="settle-explain">
+        {settleExplanation(s)}
+      </p>
       <dl className={styles.calc}>
         <div>
           <dt>
@@ -241,6 +285,12 @@ function PayableCard({ s, baseYear }: { s: Settlement; baseYear: number }) {
           </dt>
           <dd>{formatWon(s.balance)}</dd>
         </div>
+        {s.oldPay > 0 ? (
+          <div>
+            <dt>지난달에 못 준 돈 (먼저 돌려줘요)</dt>
+            <dd>{formatWon(s.oldPay)}</dd>
+          </div>
+        ) : null}
         {s.reserved > 0 ? (
           <div>
             <dt>이번 달 남은 일정 · 여행 · 할부</dt>
@@ -248,6 +298,11 @@ function PayableCard({ s, baseYear }: { s: Settlement; baseYear: number }) {
           </div>
         ) : null}
       </dl>
+      {s.plannedShort ? (
+        <p className={styles.shortNote} role="status">
+          이 돈을 먼저 돌려주면 {formatMonthKo(s.plannedShort.month, baseYear)} 일정에 {formatWon(s.plannedShort.amount)}이 모자라요
+        </p>
+      ) : null}
       <p className={claims.note}>이벤트통장 청구만 이 돈과 견줘요. 생활비 통장 청구는 그 통장에서, 저수지 돈으로 낸 청구는 저수지에서 줘요</p>
       {s.carry.length > 0 ? (
         <div className={styles.carry}>
@@ -345,6 +400,7 @@ function PersonBlock({
             on={isOn(item.claim.expense.id)}
             onToggle={() => onToggle(item.claim.expense.id)}
             onOpen={() => onOpen(item.claim.expense)}
+            s={s}
             estimate={item.kind === 'carry' ? estimateOf(person.name) : null}
             baseYear={baseYear}
           />
@@ -360,6 +416,7 @@ function ItemRow({
   on,
   onToggle,
   onOpen,
+  s,
   estimate,
   baseYear,
 }: {
@@ -368,6 +425,7 @@ function ItemRow({
   on: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  s: Settlement;
   estimate: string | null;
   baseYear: number;
 }) {
@@ -375,6 +433,7 @@ function ItemRow({
   const cat = c.expense.categoryId ? data.categories.find((x) => x.id === c.expense.categoryId) : undefined;
   const title = claimTitle(data, c);
   const badge = KIND_BADGE[item.kind];
+  const carriedOver = (item.kind === 'pay' || item.kind === 'carry') && isCarriedOverClaim(s, c);
   return (
     <li className={cx(claims.item, on && claims.itemOn)}>
       <input type="checkbox" className={claims.itemCheck} checked={on} onChange={onToggle} aria-label={`${title} ${formatWon(c.amount)} 고르기`} />
@@ -388,6 +447,11 @@ function ItemRow({
           {badge ? (
             <Badge tone={badge.tone} size="sm">
               {item.kind === 'carry' && estimate ? `${badge.text} · ${formatMonthKo(estimate, baseYear)}쯤` : badge.text}
+            </Badge>
+          ) : null}
+          {carriedOver ? (
+            <Badge tone="warning" size="sm">
+              지난달부터
             </Badge>
           ) : null}
           {item.kind === 'upcoming' ? (

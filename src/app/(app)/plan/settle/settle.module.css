@@ -168,3 +168,26 @@
 .paidMonth li.recordRow > :first-child {
   flex: 1 1 12em;
 }
+
+/* 막대의 버튼 두 개 ([지급했어요] · [저수지에서 빌려 지급]) */
+.totalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* 지급할 수 있는 돈의 쉬운 설명 · 지난달 청구를 먼저 주면 모자라는 일정 */
+.explain {
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.shortNote {
+  margin: var(--space-2) 0 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--warning-text);
+  font-weight: 500;
+}

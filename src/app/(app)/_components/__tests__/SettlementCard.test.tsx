@@ -57,6 +57,19 @@ describe('이번 달 정산 한 줄 요약', () => {
     await waitFor(() => expect(screen.queryByRole('region', { name: '이번 달 정산' })).toBeNull());
   });
 
+  it("이벤트통장이 음수면 한 줄 요약에 '이벤트통장이 ○원 모자라요'를 함께 보여요", async () => {
+    const h = makeHarness();
+    render(<SettlementCard />, { wrapper: h.Wrapper });
+    const card = await screen.findByRole('region', { name: '이번 달 정산' });
+    expect(within(card).queryByTestId('settlement-short')).toBeNull();
+    await act(async () => {
+      await L(h).addExpense({ date: '2026-11-03', amount: 5_000_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '큰 지출' });
+    });
+    await waitFor(() => expect(L(h).settlement!.shortfall).toBeGreaterThan(0));
+    const won = L(h).settlement!.shortfall.toLocaleString('ko-KR');
+    await waitFor(() => expect(within(card).getByTestId('settlement-line').textContent).toContain(` · 이벤트통장이 ${won}원 모자라요`));
+  });
+
   it('홈(compact)은 지금 돌려줄 돈이 있을 때만 보여요', async () => {
     const h = makeHarness();
     render(<SettlementCard compact />, { wrapper: h.Wrapper });

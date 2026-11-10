@@ -51,6 +51,7 @@ import {
   isLoanTransferId,
   isReservoirEventExpense,
   computeSettlement,
+  settleRefusal,
   expenseLoanTransferId,
   followLoanTransfers,
   loanCandidates as loanCandidatesDomain,
@@ -974,6 +975,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       const ids = new Set(expenseIds);
       const due = pendingClaims(d, todayRef.current).filter((c) => ids.has(c.expense.id));
       if (due.length === 0) return;
+      // 이벤트통장에서 바로 주는 몫은 지급할 수 있는 돈 안에서만 (넘는 것은 [저수지에서 빌려 지급]으로)
+      const current = computeSettlement(d, todayRef.current);
+      const refusal = settleRefusal(d, current, due.map((c) => c.expense.id));
+      if (refusal) throw new Error(refusal);
       const s = stamp();
       const day = date ?? todayRef.current;
       const rows: Transfer[] = due.map((c) => {

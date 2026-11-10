@@ -113,16 +113,57 @@ describe('정산 화면', () => {
     const big = await waitFor(() => box(list, '바다 결혼 선물 900,000원 고르기'));
     expect(big.checked).toBe(false);
     fireEvent.click(big);
-    expect(bar.textContent).toMatch(/지급할 수 있는 돈보다 450,000원 많아요/);
-    expect(within(bar).queryByRole('button', { name: '지급했어요' })).toBeNull();
+    expect(bar.textContent).toContain('이벤트통장에서 줄 수 있는 돈은 75만이에요 · 나머지 90만은 저수지에서 빌려 줄 수 있어요');
+    // [지급했어요]는 안에 드는 것만 (막히지 않음), 넘는 것은 [저수지에서 빌려 지급]으로만
+    expect((within(bar).getByRole('button', { name: '지급했어요' }) as HTMLButtonElement).disabled).toBe(false);
     await act(async () => {
       fireEvent.click(within(bar).getByRole('button', { name: '저수지에서 빌려 지급' }));
     });
-    await screen.findByText('고른 2건을 지급하고 넘는 450,000원은 저수지에서 빌렸다고 기록했어요');
+    await screen.findByText('고른 2건을 지급하고 넘는 900,000원은 저수지에서 빌렸다고 기록했어요');
     const id = L(h).data!.expenses.find((e) => e.memo === '바다 결혼 선물')!.id;
     expect(L(h).data!.transfers.some((t) => t.id === claimLoanTransferId(id) && !t.deleted)).toBe(true);
     expect(L(h).data!.transfers.some((t) => t.id === claimLoanTransferId('demo-claim-jeju') && !t.deleted)).toBe(false);
     expect(L(h).settlement!.loan.balance).toBe(900_000);
+  });
+
+  it('이벤트통장이 음수면 맨 위에 모자란 돈, 지급할 수 있는 돈이 0 이면 [지급했어요]는 이유와 함께 막히고 빌려 지급만 돼요', async () => {
+    const { h, list, bar } = await renderScreen();
+    await act(async () => {
+      await L(h).addExpense({ date: '2026-11-03', amount: 5_000_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '큰 지출' });
+    });
+    await waitFor(() => expect(L(h).settlement!.shortfall).toBeGreaterThan(0));
+    const s = L(h).settlement!;
+    expect(s.payable).toBe(0);
+    const short = `이벤트통장이 ${s.shortfall.toLocaleString('ko-KR')}원 모자라요`;
+    expect(await screen.findByText(short)).toBeTruthy();
+    expect(screen.getByTestId('settle-explain').textContent).toMatch(/^지갑\(이벤트통장\)이 .+만 모자라.*줄 수 있는 돈은 0원이에요\.$/);
+
+    const jeju = box(list, '제주 항공권 300,000원 고르기');
+    if (!jeju.checked) fireEvent.click(jeju);
+    expect(bar.textContent).toContain('이벤트통장에서 줄 수 있는 돈이 없어요 · 나머지 30만은 저수지에서 빌려 줄 수 있어요');
+    const pay = within(bar).getByRole('button', { name: '지급했어요' }) as HTMLButtonElement;
+    expect(pay.disabled).toBe(true);
+    expect(bar.textContent).toContain('이벤트통장에서 줄 수 있는 돈이 없어서 지급할 수 없어요');
+    await act(async () => {
+      fireEvent.click(within(bar).getByRole('button', { name: '저수지에서 빌려 지급' }));
+    });
+    await screen.findByText('고른 1건을 지급하고 넘는 300,000원은 저수지에서 빌렸다고 기록했어요');
+    expect(L(h).data!.transfers.some((t) => t.id === claimLoanTransferId('demo-claim-jeju') && !t.deleted)).toBe(true);
+  });
+
+  it("지난달에 못 준 청구는 '지난달부터' 표시와 함께 먼저 골라 두고, 설명에 먼저 돌려준다고 알려요", async () => {
+    const { h, list } = await renderScreen();
+    await act(async () => {
+      const e = await L(h).addExpense({ date: '2026-10-02', amount: 70_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '지난 돌잔치', paidBy: '민지' });
+      // 10월 정산일에 못 준 청구로 (돌려줄 날만 바꾸면 그대로 둬요)
+      await L(h).updateExpense({ ...e, claimDue: '2026-10-21' });
+    });
+    const old = await waitFor(() => box(list, '지난 돌잔치 70,000원 고르기'));
+    expect(old.checked).toBe(true);
+    const row = old.closest('li')!;
+    expect(row.textContent).toContain('지난달부터');
+    expect(box(list, '제주 항공권 300,000원 고르기').closest('li')!.textContent).not.toContain('지난달부터');
+    expect(screen.getByTestId('settle-explain').textContent).toContain('지난달에 못 준 돈 7만을 먼저 돌려줘요.');
   });
 
   it('저수지 돈으로 낸 이벤트 청구는 사람 목록 안에 "저수지에서 빌려 지급" 표시로, 지급하면 저수지에 갚을 돈이 돼요', async () => {
