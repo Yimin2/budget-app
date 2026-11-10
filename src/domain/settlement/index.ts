@@ -35,3 +35,4 @@ export * from './loans';
 export * from './claimsAllocation';
 export * from './summary';
 export * from './usage';
+export * from './settleList';

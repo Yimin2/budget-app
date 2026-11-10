@@ -140,7 +140,7 @@ export interface SettlementSummary {
 
 /**
  * 이벤트 화면 · 홈 · 정산 화면 맨 위의 요약: '이번 달 줄 돈 70만 (민구 55만 · 기쁜 15만) · 11/21'
- * 과 그중 어디서 줄 수 있는지 (splitText)
+ * 과 그중 어디서 줄 수 있는지 (fromEvent · fromFixed · fromReservoir · borrow · rest)
  */
 export function settlementSummary(s: Settlement): SettlementSummary {
   const roster = settleRoster(s);
@@ -182,30 +182,6 @@ export function settlementSummary(s: Settlement): SettlementSummary {
     carry,
     hasClaims: roster.length > 0,
   };
-}
-
-/**
- * 줄 돈을 어디서 주는지 한 줄: '이벤트통장에서 2만 · 나머지 68만은 저수지에서 빌리거나 다음 달로'
- * (모두 이벤트통장 몫이고 다 들어가면 '모두 이벤트통장에서 줄 수 있어요'). 줄 돈이 없으면 null
- */
-export function settlementSplitText(sum: SettlementSummary): string | null {
-  if (sum.total <= 0) return null;
-  if (sum.rest === 0 && sum.fromFixed === 0 && sum.fromReservoir === 0 && sum.borrow === 0) return '모두 이벤트통장에서 줄 수 있어요';
-  const parts: string[] = [];
-  if (sum.fromEvent > 0) parts.push(`이벤트통장에서 ${formatMan(sum.fromEvent)}`);
-  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatMan(sum.fromFixed)}`);
-  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatMan(sum.fromReservoir)}`);
-  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatMan(sum.borrow)}`);
-  if (sum.rest > 0) {
-    const head =
-      parts.length > 0
-        ? '나머지 '
-        : sum.payable > 0
-          ? `이벤트통장에서 줄 수 있는 ${formatMan(sum.payable)}에 안 들어가 `
-          : '이벤트통장에서 줄 수 있는 돈이 없어 ';
-    parts.push(`${head}${formatMan(sum.rest)}은 저수지에서 빌리거나 다음 달로`);
-  }
-  return parts.join(' · ');
 }
 
 /**
