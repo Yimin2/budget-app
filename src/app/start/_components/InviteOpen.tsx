@@ -3,8 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isGoogleError } from '@/google';
-import { useSession } from '@/state';
+import { buildInviteLink, useSession } from '@/state';
 import { Banner, Button, Icon, useToast } from '@/ui';
+import { InAppNotice, SafariNotice } from './EnvNotices';
+import { useBrowserEnv } from './useBrowserEnv';
 
 type Phase = { kind: 'opening' } | { kind: 'cancelled' } | { kind: 'error'; message: string };
 
@@ -12,7 +14,8 @@ type Phase = { kind: 'opening' } | { kind: 'cancelled' } | { kind: 'error'; mess
  * 초대 링크(/start?open=<id>)로 들어왔을 때.
  * 로그인 전: 구글 로그인 요청 → 로그인하면 바로 열기 시도.
  * 구글 로그인: 바로 열리면 홈으로, 아니면 그 파일을 미리 골라 둔 구글 선택 창 → [선택] 하면 홈으로.
- * 체험 모드: 구글 가계부에서만 된다고 안내
+ * 체험 모드: 구글 가계부에서만 된다고 안내.
+ * 아이폰 홈 화면 앱 · 앱 안 브라우저: 선택 창 없이 바로 열어 보고, 안 되면 Safari(또는 Chrome)에서 한 번 열라고 안내
  */
 export function InviteOpen({ spreadsheetId, onDismiss }: { spreadsheetId: string; onDismiss: () => void }) {
   const session = useSession();
@@ -38,6 +41,7 @@ function InviteSignIn({ onDismiss }: { onDismiss: () => void }) {
   const session = useSession();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const env = useBrowserEnv();
 
   async function signIn() {
     setBusy(true);
@@ -56,6 +60,7 @@ function InviteSignIn({ onDismiss }: { onDismiss: () => void }) {
     <>
       <InviteTitle sub="함께 쓰는 가계부예요. 초대받은 구글 계정으로 로그인하면 바로 열려요." />
       {session.notice ? <Banner tone="warning" title={session.notice} /> : null}
+      {session.googleAvailable ? <InAppNotice env={env} /> : null}
       <div className="sp-cta">
         <Button
           size="lg"
@@ -75,7 +80,11 @@ function InviteSignIn({ onDismiss }: { onDismiss: () => void }) {
         {session.googleAvailable ? (
           <p id="sp-invite-how" className="sp-note">
             <Icon name="info" size={16} />
-            <span>로그인한 뒤 구글 파일 선택 창이 뜨면 [선택]을 눌러 주세요. 처음 한 번만 하면 돼요.</span>
+            <span>
+              {env.kind === 'ios-standalone'
+                ? '로그인하면 바로 열어 볼게요. 이 앱에서 열리지 않으면 Safari에서 한 번만 열어 주세요.'
+                : '로그인한 뒤 구글 파일 선택 창이 뜨면 [선택]을 눌러 주세요. 처음 한 번만 하면 돼요.'}
+            </span>
           </p>
         ) : (
           <p id="sp-google-off" className="sp-note">
@@ -112,6 +121,111 @@ function InviteDemo({ onDismiss }: { onDismiss: () => void }) {
 }
 
 function InviteOpening({ spreadsheetId, onDismiss }: { spreadsheetId: string; onDismiss: () => void }) {
+  const env = useBrowserEnv();
+  const [forcePicker, setForcePicker] = useState(false);
+  if (env.kind === 'normal' || forcePicker) return <InvitePickerOpening spreadsheetId={spreadsheetId} onDismiss={onDismiss} />;
+  return (
+    <InviteDirectOpening
+      spreadsheetId={spreadsheetId}
+      onDismiss={onDismiss}
+      standalone={env.kind === 'ios-standalone'}
+      onUsePicker={() => setForcePicker(true)}
+    />
+  );
+}
+
+type DirectPhase = { kind: 'opening' } | { kind: 'denied' } | { kind: 'error'; message: string };
+
+/** 아이폰 홈 화면 앱 · 앱 안 브라우저: 선택 창 없이 바로 열기 (내 파일이거나 한 번 고른 적 있으면 열려요) */
+function InviteDirectOpening({
+  spreadsheetId,
+  onDismiss,
+  standalone,
+  onUsePicker,
+}: {
+  spreadsheetId: string;
+  onDismiss: () => void;
+  standalone: boolean;
+  onUsePicker: () => void;
+}) {
+  const session = useSession();
+  const router = useRouter();
+  const toast = useToast();
+  const env = useBrowserEnv();
+  const [phase, setPhase] = useState<DirectPhase>({ kind: 'opening' });
+  const started = useRef(false);
+  const { openLedgerDirect } = session;
+
+  const run = useCallback(() => {
+    openLedgerDirect(spreadsheetId).then(
+      (result) => {
+        if (result.kind === 'denied') {
+          setPhase({ kind: 'denied' });
+          return;
+        }
+        toast.success('초대받은 가계부를 열었어요');
+        router.replace('/');
+      },
+      (e: unknown) => {
+        setPhase({ kind: 'error', message: e instanceof Error && e.message ? e.message : '가계부를 열지 못했어요. 잠시 뒤 다시 시도해 주세요' });
+      },
+    );
+  }, [openLedgerDirect, spreadsheetId, toast, router]);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    run();
+  }, [run]);
+
+  function retry() {
+    setPhase({ kind: 'opening' });
+    run();
+  }
+
+  if (phase.kind === 'opening') {
+    return (
+      <>
+        <InviteTitle sub="가계부를 여는 중이에요." />
+        <div className="sp-invite-wait" role="status" aria-live="polite">
+          <span className="spin" aria-hidden />
+          <span>잠시만 기다려 주세요.</span>
+        </div>
+      </>
+    );
+  }
+
+  const link = typeof window === 'undefined' ? '' : buildInviteLink(window.location.origin, spreadsheetId);
+  return (
+    <>
+      <InviteTitle sub={phase.kind === 'denied' ? '여기서는 아직 이 가계부를 열 수 없어요.' : '가계부를 열지 못했어요.'} />
+      {phase.kind === 'error' ? (
+        <Banner tone="danger" title="가계부를 열지 못했어요">
+          {phase.message}
+        </Banner>
+      ) : standalone ? (
+        <SafariNotice link={link} />
+      ) : (
+        <InAppNotice env={env} href={link} />
+      )}
+      <div className="sp-cta">
+        <Button size="lg" block variant={phase.kind === 'error' ? 'primary' : 'outline'} icon="refresh" onClick={retry}>
+          다시 시도
+        </Button>
+        {phase.kind === 'denied' && !standalone ? (
+          <Button size="lg" block variant="ghost" onClick={onUsePicker}>
+            그래도 파일 선택 창 열기
+          </Button>
+        ) : null}
+        <Button size="lg" block variant="ghost" onClick={onDismiss}>
+          다른 가계부 고르기
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function InvitePickerOpening({ spreadsheetId, onDismiss }: { spreadsheetId: string; onDismiss: () => void }) {
   const session = useSession();
   const router = useRouter();
   const toast = useToast();

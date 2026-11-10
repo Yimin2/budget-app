@@ -7,6 +7,8 @@ import { shouldPromptShared, useSession } from '@/state';
 import type { LedgerRef } from '@/storage/types';
 import { Badge, Button, Card, EmptyState, Icon, useToast } from '@/ui';
 import { LEDGER_KIND_TEXT, LedgerKindBadge } from '@/app/(app)/_components/LedgerKindBadge';
+import { InAppNotice, PasteInvite } from './EnvNotices';
+import { useBrowserEnv } from './useBrowserEnv';
 
 /** 로그인했지만 가계부를 고르지 않았을 때: 최근 가계부 · 새로 만들기 · 공유받은 가계부 열기 */
 export function LedgerPicker() {
@@ -14,6 +16,10 @@ export function LedgerPicker() {
   const router = useRouter();
   const toast = useToast();
   const [opening, setOpening] = useState(false);
+  const env = useBrowserEnv();
+  // 아이폰 홈 화면 앱은 구글 파일 선택 창이 열리지 않아요 ("Google 계정에 액세스할 수 없습니다") → 초대 링크 붙여넣기
+  const pasteMode = env.kind === 'ios-standalone';
+  const [pasteOpen, setPasteOpen] = useState(false);
   const user = session.user;
   const canOpenShared = session.mode === 'google';
   // 구글로 처음 로그인해 최근 가계부가 없으면: 공유받은 가계부부터 물어봐요 (배우자가 이미 만들어 둔 경우가 많아요)
@@ -25,6 +31,10 @@ export function LedgerPicker() {
   }
 
   async function openShared() {
+    if (pasteMode) {
+      setPasteOpen((v) => !v);
+      return;
+    }
     setOpening(true);
     try {
       const ref = await session.openSharedLedger();
@@ -49,6 +59,8 @@ export function LedgerPicker() {
         </span>
       </div>
 
+      {canOpenShared ? <InAppNotice env={env} /> : null}
+
       {prompt ? (
         <Card as="section" className="sp-prompt" aria-labelledby="sp-prompt-title">
           <div className="t">
@@ -57,13 +69,25 @@ export function LedgerPicker() {
             </span>
             <div className="stack gap-1">
               <h2 id="sp-prompt-title">공유받은 가계부가 있나요?</h2>
-              <p>함께 쓰는 사람이 이미 만들었다면, 구글 파일 선택 창에서 그 시트를 골라 열어 주세요.</p>
+              <p>
+                {pasteMode
+                  ? '함께 쓰는 사람이 이미 만들었다면, 받은 초대 링크를 붙여 넣어 열어 주세요.'
+                  : '함께 쓰는 사람이 이미 만들었다면, 구글 파일 선택 창에서 그 시트를 골라 열어 주세요.'}
+              </p>
             </div>
           </div>
           <div className="acts">
-            <Button size="lg" block icon="link" onClick={openShared} loading={opening}>
+            <Button
+              size="lg"
+              block
+              icon="link"
+              onClick={openShared}
+              loading={opening}
+              aria-expanded={pasteMode ? pasteOpen : undefined}
+            >
               공유받은 가계부 열기
             </Button>
+            {pasteMode && pasteOpen ? <PasteInvite /> : null}
             <Button size="lg" block variant="outline" icon="plus" href="/start/new">
               새 가계부 만들기
             </Button>
@@ -146,14 +170,20 @@ export function LedgerPicker() {
                 loading={opening}
                 disabled={!canOpenShared}
                 aria-describedby={canOpenShared ? undefined : 'sp-shared-off'}
+                aria-expanded={pasteMode && canOpenShared ? pasteOpen : undefined}
               >
                 공유받은 가계부 열기
               </Button>
             </div>
+            {pasteMode && canOpenShared && pasteOpen ? <PasteInvite /> : null}
             {canOpenShared ? (
               <p className="sp-note">
                 <Icon name="info" size={16} />
-                <span>공유받은 가계부는 구글 파일 선택 창에서 그 시트를 고르면 열려요.</span>
+                <span>
+                  {pasteMode
+                    ? '아이폰 홈 화면 앱에서는 구글 파일 선택 창이 열리지 않아요. 받은 초대 링크를 붙여 넣어 열어 주세요.'
+                    : '공유받은 가계부는 구글 파일 선택 창에서 그 시트를 고르면 열려요.'}
+                </span>
               </p>
             ) : (
               <p id="sp-shared-off" className="sp-note">

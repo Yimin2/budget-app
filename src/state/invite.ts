@@ -101,3 +101,51 @@ export async function openInvitedLedger(deps: InviteOpenDeps, spreadsheetId: str
     throw toKorean(e, INVITE_MESSAGES.failed);
   }
 }
+
+/* ---------- 붙여 넣은 초대 링크 (아이폰 홈 화면 앱) ---------- */
+
+/**
+ * 붙여 넣은 글에서 스프레드시트 id 를 꺼내요: 초대 링크(…/start?open=<id>) · 시트 주소 · id 그대로.
+ * 카카오톡 메시지처럼 앞뒤에 글이 있어도 첫 주소를 찾아요. 없으면 null
+ */
+export function parseInviteInput(raw: string | null | undefined): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  const direct = normalizeSpreadsheetId(v);
+  if (direct) return direct;
+  for (const m of v.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
+    try {
+      const fromInvite = parseInviteSearch(new URL(m[0]).search);
+      if (fromInvite) return fromInvite;
+    } catch {
+      /* 주소가 아니면 다음 */
+    }
+    const fromSheet = normalizeSpreadsheetId(m[0]);
+    if (fromSheet) return fromSheet;
+  }
+  // 주소 없이 '?open=…' 만 붙여 넣은 경우
+  const q = /[?&]open=([^&\s#]+)/.exec(v);
+  return q ? normalizeSpreadsheetId(decodeURIComponent(q[1]!)) : null;
+}
+
+export type DirectOpenResult = { kind: 'opened'; ref: LedgerRef } | { kind: 'denied' };
+
+export const SAFARI_ONCE = {
+  title: 'Safari에서 한 번만 열어 주세요',
+  body: 'Safari에서 초대 링크를 열고 가계부를 고르면, 그다음부터 이 앱에서도 열려요',
+} as const;
+
+/**
+ * 선택 창 없이 바로 열기 (아이폰 홈 화면 앱 · 앱 안 브라우저).
+ * 내 파일이거나 Safari 등에서 한 번 고른 적 있으면 열리고, 아직 이 앱에 허락되지 않았으면 { kind: 'denied' }.
+ * 가계부가 아닌 파일 · 연결 오류는 그대로 알려요
+ */
+export async function openInviteDirect(deps: Pick<InviteOpenDeps, 'describe'>, spreadsheetId: string): Promise<DirectOpenResult> {
+  try {
+    const ref = await deps.describe(spreadsheetId);
+    return { kind: 'opened', ref };
+  } catch (e) {
+    if (needsPicker(e)) return { kind: 'denied' };
+    throw toKorean(e, INVITE_MESSAGES.failed);
+  }
+}

@@ -608,3 +608,35 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+
+/* ───────── 아이폰 홈 화면 앱 · 앱 안 브라우저 ───────── */
+.sp-env {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.sp-env-acts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+@media (min-width: 768px) {
+  .sp-env-acts {
+    flex-direction: row;
+  }
+  .sp-env-acts > * {
+    flex: 1;
+  }
+}
+.sp-paste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+.sp-paste .input {
+  min-width: 0;
+}
