@@ -8,27 +8,19 @@ import {
 import type { FixedExpense, FixedKind, FixedSubItem, LedgerData } from '@/domain/types';
 import {
   Badge, Button, Card, ConfirmDialog, DateInput, Dialog, EmptyState, Field, ListRow, Money, MoneyInput,
-  SegmentedControl, Select, TextInput, focusFirstInvalid,
+  Select, TextInput, focusFirstInvalid,
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
-import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
 import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
-import { DAY_OPTIONS, isEmail } from '@/app/start/new/wizard';
+import { DAY_OPTIONS } from '@/app/start/new/wizard';
 import { accountNameWithOwner, accountOptions as accountOptionsOf, categorySelectOptions, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
 import { useRunner } from '../useRunner';
 
-/** 생활비 항목 예산은 생활비 예산 카드(LivingCard), 할부는 할부 카드(InstallmentCard)에서 다뤄요 */
-type BillKind = Exclude<FixedKind, 'living' | 'installment'>;
-
-const KIND_OPTIONS: { value: BillKind; label: string }[] = [
-  { value: 'bill', label: '고정비' },
-  { value: 'allowance', label: '용돈' },
-];
-
-const GROUPS: { kind: BillKind; title: string }[] = [
-  { kind: 'bill', title: '고정비' },
-  { kind: 'allowance', title: '용돈' },
-];
+/**
+ * 생활비 항목 예산은 생활비 예산 카드(LivingCard), 할부는 할부 카드(InstallmentCard)에서 다뤄요.
+ * 용돈은 고정비가 아니라 용돈 통장으로 가는 매달 배분이에요 (8-2). 예전 '용돈' 행은 열 때 배분 · 고정비로 옮겨요
+ */
+type BillKind = Extract<FixedKind, 'bill'>;
 
 interface ItemDraft {
   key: number;
@@ -50,7 +42,6 @@ interface Draft {
   dayTouched: boolean;
   accountId: string;
   categoryId: string;
-  targetEmail: string;
   startDate: string;
   endDate: string;
   items: ItemDraft[];
@@ -58,7 +49,7 @@ interface Draft {
   amountFrom: string;
 }
 
-type Errors = Partial<Record<'name' | 'amount' | 'email' | 'account' | 'end' | 'items' | 'from', string>>;
+type Errors = Partial<Record<'name' | 'amount' | 'account' | 'end' | 'items' | 'from', string>>;
 
 let itemKey = 0;
 
@@ -90,7 +81,7 @@ export function subItemsSummary(f: Pick<FixedExpense, 'subItems'>, date: string)
     .join(' · ');
 }
 
-/** 고정 지출: 고정비 · 용돈. 결제일에 자동 기록 (생활비 항목 예산은 LivingCard) */
+/** 고정 지출: 고정비 하나의 목록을 사람별 탭으로. 결제일에 자동 기록 (생활비 항목 예산은 LivingCard) */
 export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   const { busy, run } = useRunner();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -108,15 +99,12 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
     .map(([, rows]) => currentBillRow(rows, today))
     .filter((f): f is FixedExpense => !!f)
     .sort((a, b) => (a.dayOfMonth ?? 0) - (b.dayOfMonth ?? 0));
-  const isShared = ledger.data.settings.kind === 'shared';
   const accountOptions = accountOptionsOf(accounts);
-  const people = peopleOptions(ledger.data);
   const categoryOptions = categorySelectOptions(ledger.activeCategories, [draft?.categoryId]);
   const editing = draft?.id ? ledger.data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
   const editingRows = editing ? (series.get(billSeriesId(editing.id)) ?? [editing]) : [];
-  // 사람별로 나눠 보기: 용돈은 받는 사람, 고정비는 나가는 통장 주인
-  const keyOf = (f: FixedExpense) =>
-    f.kind === 'allowance' && f.targetEmail ? f.targetEmail.trim().toLowerCase() : ownerKeyOf(accounts.find((a) => a.id === f.accountId));
+  // 사람별로 나눠 보기: 나가는 통장 주인 (주인 없는 통장은 함께)
+  const keyOf = (f: FixedExpense) => ownerKeyOf(accounts.find((a) => a.id === f.accountId));
   const myKey = ledger.myLivingAccountId ? ownerKeyOf(ledger.activeAccounts.find((a) => a.id === ledger.myLivingAccountId)) : null;
   const owners = useOwnerFilter(items.map(keyOf), ledger.data, undefined, myKey);
   const shown = items.filter((f) => owners.matches(keyOf(f)));
@@ -126,18 +114,17 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
     return ledger.myLivingAccountId ?? (ledger.accountByRole('fixed') ?? ledger.accountByRole('allowance') ?? accounts[0])?.id ?? '';
   }
 
-  function openNew(kind: BillKind = 'bill') {
+  function openNew() {
     setErrors({});
     setDraft({
       id: null,
-      kind,
+      kind: 'bill',
       name: '',
       amount: null,
       day: 1,
       dayTouched: false,
       accountId: defaultAccountId(),
       categoryId: '',
-      targetEmail: '',
       startDate: '',
       endDate: '',
       items: [],
@@ -153,14 +140,14 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
     const tomorrow = addDays(today, 1);
     setDraft({
       id: f.id,
-      kind: f.kind,
+      // 아직 옮기지 못한 예전 '용돈' 행도 고정비로 고쳐요
+      kind: 'bill',
       name: f.name,
       amount: f.amount,
       day: f.dayOfMonth ?? 1,
       dayTouched: true,
       accountId: f.accountId,
       categoryId: f.categoryId ?? '',
-      targetEmail: f.targetEmail ?? '',
       startDate: rows[0]?.startDate ?? '',
       endDate: tail.endDate ?? '',
       items: toItemDrafts(f.subItems),
@@ -222,8 +209,6 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
       else if (itemsTotal <= 0) next.items = '세부 항목 금액을 넣어 주세요';
     } else if (draft.amount === null || draft.amount <= 0) next.amount = '금액을 입력해 주세요';
     if (!draft.accountId) next.account = '통장을 골라 주세요';
-    if (draft.kind === 'allowance' && !draft.targetEmail.trim()) next.email = '받는 사람을 골라 주세요';
-    else if (draft.kind === 'allowance' && !isEmail(draft.targetEmail)) next.email = '받는 사람 이메일을 확인해 주세요';
     if (draft.startDate && draft.endDate && draft.endDate < draft.startDate) next.end = '해지 · 만기일이 시작일보다 앞이에요';
     const amountChanged = !!editing && !withItems && draft.amount !== null && draft.amount !== editing.amount;
     if (amountChanged && !draft.amountFrom) next.from = '언제부터 바뀌는지 골라 주세요';
@@ -239,7 +224,7 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
       accountId: draft.accountId,
       categoryId: draft.categoryId || null,
       dayOfMonth: draft.day,
-      targetEmail: draft.kind === 'allowance' ? draft.targetEmail.trim() : null,
+      targetEmail: null,
       subItems: withItems ? toSubItems(draft.items) : null,
     };
     const ok = await run(
@@ -299,10 +284,7 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   function subtitle(f: FixedExpense) {
     const rows = series.get(billSeriesId(f.id)) ?? [f];
     const label = periodLabel(rows[0]?.startMonth ?? f.startMonth, rows[rows.length - 1]?.endMonth ?? f.endMonth, month);
-    const parts =
-      f.kind === 'allowance'
-        ? [`매달 ${f.dayOfMonth ?? 1}일`, f.targetEmail ? `${ledger.displayName(f.targetEmail)}(${f.targetEmail})에게` : '받는 사람 없음']
-        : [`매달 ${f.dayOfMonth ?? 1}일`, accountNameWithOwner(accounts, f.accountId)];
+    const parts = [`매달 ${f.dayOfMonth ?? 1}일`, accountNameWithOwner(accounts, f.accountId)];
     const next = nextChargeOnOrAfter(f, today) ?? today;
     const items = hasSubItems(f) ? subItemsSummary(f, next) : '';
     if (items) parts.push(items);
@@ -328,39 +310,33 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
 
   return (
     <Card id="st-fixed" title="고정 지출">
-      <p className="st-desc">고정비와 용돈은 결제일에 지출로 자동 기록돼요. 생활비 예산은 아래 생활비 예산에서 정해요.</p>
+      <p className="st-desc">
+        고정비는 결제일에 나가는 통장에서 지출로 자동 기록돼요. 용돈은 매달 배분에서 용돈 통장으로 보내고, 용돈 통장에서 나가는 십일조 · 헌금도
+        여기에 그 통장의 고정비로 넣어요.
+      </p>
 
       <OwnerTabs filter={owners} label="누구 고정 지출" />
 
       {shown.length === 0 ? (
         <EmptyState icon="receipt" headingLevel={3} title="고정 지출이 없어요" description="월세·통신비처럼 매달 나가는 돈을 등록해 주세요." />
       ) : (
-        GROUPS.map((g) => {
-          const rows = shown.filter((f) => f.kind === g.kind);
-          if (rows.length === 0) return null;
-          return (
-            <div key={g.kind}>
-              <h3 className="st-group-title">{g.title}</h3>
-              <ul className="list">
-                {rows.map((f) => (
-                  <li key={f.id}>
-                    <ListRow
-                      icon={g.kind === 'allowance' ? 'user' : 'receipt'}
-                      title={f.name}
-                      subtitle={subtitle(f)}
-                      trailing={<Money amount={billAmountOn(f, nextChargeOnOrAfter(f, today) ?? today)} />}
-                      onClick={() => openEdit(f)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })
+        <ul className="list" aria-label="고정비">
+          {shown.map((f) => (
+            <li key={f.id}>
+              <ListRow
+                icon="receipt"
+                title={f.name}
+                subtitle={subtitle(f)}
+                trailing={<Money amount={billAmountOn(f, nextChargeOnOrAfter(f, today) ?? today)} />}
+                onClick={() => openEdit(f)}
+              />
+            </li>
+          ))}
+        </ul>
       )}
 
       <div className="st-foot">
-        <Button variant="outline" icon="plus" onClick={() => openNew('bill')} disabled={accounts.length === 0}>
+        <Button variant="outline" icon="plus" onClick={() => openNew()} disabled={accounts.length === 0}>
           고정 지출 추가
         </Button>
       </div>
@@ -390,13 +366,6 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
               void save();
             }}
           >
-            <SegmentedControl
-              ariaLabel="종류"
-              block
-              options={KIND_OPTIONS.map((o) => ({ ...o, disabled: o.value === 'allowance' && !isShared && draft.kind !== 'allowance' }))}
-              value={draft.kind}
-              onChange={(kind) => setDraft({ ...draft, kind })}
-            />
             <Field label="이름" error={errors.name} required>
               <TextInput value={draft.name} maxLength={30} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
             </Field>
@@ -481,25 +450,6 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
                 <DateInput value={draft.amountFrom} onChange={(v) => setDraft({ ...draft, amountFrom: v })} />
               </Field>
             ) : null}
-            {editing && draft.kind === 'allowance' && draft.amount !== editing.amount ? (
-              <Field label="언제부터 새 금액인가요" error={errors.from}>
-                <DateInput value={draft.amountFrom} onChange={(v) => setDraft({ ...draft, amountFrom: v })} />
-              </Field>
-            ) : null}
-            {draft.kind === 'allowance' ? (
-              <PersonPicker
-                label="받는 사람"
-                required
-                emailOnly
-                emailRequired
-                people={people}
-                value={{ name: '', email: draft.targetEmail }}
-                onChange={(v) => setDraft({ ...draft, targetEmail: v.email })}
-                error={errors.email}
-                emailError={errors.email}
-                hint="받는 사람의 개인 가계부에 수입으로 들어가요."
-              />
-            ) : null}
             {draft.kind === 'bill' && (!editing || editingRows[0]?.id === editing.id) ? (
               <Field label="시작일" optional hint="첫 결제는 이날 이후 첫 결제일이에요.">
                 <DateInput
@@ -511,7 +461,7 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
               </Field>
             ) : null}
             <Field
-              label={draft.kind === 'allowance' ? '주는 날' : '결제일'}
+              label="결제일"
               hint={draft.id || draft.startDate ? undefined : startMonthHint(today, draft.day)}
             >
               <Select

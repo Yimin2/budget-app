@@ -15,7 +15,7 @@ import { RulesCard } from '../settings/sections/RulesCard';
 const BUDGET_SECTIONS = [
   { id: 'bd-income', title: '월급과 배분', desc: '누가 언제 얼마를 받는지, 월급날 어느 통장으로 얼마씩 보낼지 정해요.' },
   { id: 'bd-living', title: '생활비 항목', desc: '사람마다 식비 · 카페처럼 항목별로 한 달에 쓸 돈을 정해요.' },
-  { id: 'bd-fixed', title: '고정비 · 할부', desc: '월세 · 통신비 · 용돈처럼 매달 나가는 돈과 나눠 내는 할부예요.' },
+  { id: 'bd-fixed', title: '고정비 · 할부', desc: '월세 · 통신비 · 십일조처럼 통장에서 매달 나가는 돈과 나눠 내는 할부예요. 용돈은 매달 배분에서 용돈 통장으로 보내요.' },
 ] as const;
 
 /**

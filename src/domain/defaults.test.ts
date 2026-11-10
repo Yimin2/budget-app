@@ -121,8 +121,10 @@ describe('createDemoLedger', () => {
     ]);
     expect(d.favorites.map((f) => [f.name, f.amount])).toEqual([['커피', 4_500], ['점심', 9_000], ['버스', 1_500]]);
     const bills = d.fixedExpenses.filter((f) => f.kind === 'bill').map((f) => [f.name, f.amount]);
-    expect(bills).toEqual([['월세', 800_000], ['통신비', 120_000], ['보험', 180_000]]);
-    expect(d.fixedExpenses.filter((f) => f.kind === 'allowance').map((f) => f.amount)).toEqual([150_000, 150_000]);
+    expect(bills).toEqual([['월세', 800_000], ['통신비', 120_000], ['보험', 180_000], ['용돈(민지)', 150_000], ['용돈(준호)', 150_000]]);
+    // 용돈 종류 행은 만들지 않아요 (8-2)
+    expect(d.fixedExpenses.filter((f) => f.kind === 'allowance')).toEqual([]);
+    expect(createDemoLedger('2026-11-09', NOW, { couple: true }).fixedExpenses.filter((f) => f.kind === 'allowance')).toEqual([]);
     const authors = new Set(d.expenses.filter((e) => e.fixedExpenseId === null).map((e) => e.author));
     expect(authors).toEqual(new Set(['minji@demo', 'junho@demo']));
     expect(d.rules.map((r) => r.amount).reduce((a, b) => a + b, 0)).toBe(5_000_000);

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { current, renderApp, startDemo } from '@/app/(app)/_components/__tests__/harness';
+import { isAllowanceRuleId } from '@/domain';
 
 const nav = vi.hoisted(() => ({
   router: { replace: vi.fn(), push: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() },
@@ -58,6 +59,9 @@ describe('새 가계부 만들기 마법사', () => {
     money(minji, '이벤트통장', '300000');
     expect(within(minji).queryByText(/월급보다/)).toBeNull();
     expect(within(minji).getByText('나머지 → 저수지통장').parentElement!.textContent).toContain('700,000원');
+    // 용돈: '민지 용돈' 통장을 만들어 월급날 보내요 (배분 합계에 들어가요)
+    money(minji, '용돈', '300000');
+    expect(within(minji).getByText('나머지 → 저수지통장').parentElement!.textContent).toContain('400,000원');
 
     fireEvent.click(screen.getByRole('button', { name: '사람 추가' }));
     const second = screen.getByRole('group', { name: '2번째 사람' });
@@ -79,8 +83,10 @@ describe('새 가계부 만들기 마법사', () => {
     expect(within(junho).getByText('월급을 남김없이 나눴어요')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
 
-    // ④ 고정 지출
-    await screen.findByRole('heading', { level: 1, name: '고정 지출과 용돈' });
+    // ④ 고정 지출: 용돈 칸은 없어요 (용돈은 ③에서 배분으로)
+    await screen.findByRole('heading', { level: 1, name: '고정 지출' });
+    expect(screen.queryByRole('button', { name: '용돈 추가' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '용돈' })).toBeNull();
     fireEvent.click(within(screen.getByRole('group', { name: '고정 지출 추가' })).getByRole('button', { name: '월세' }));
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     // 월세 금액이 없어서 멈춰요
@@ -115,15 +121,22 @@ describe('새 가계부 만들기 마법사', () => {
       ['준호', null, 2_000_000, 21, incomes[0]!.id],
     ]);
     const rules = data.rules.filter((r) => !r.deleted);
+    const wallets = data.accounts.filter((a) => !a.deleted && a.role === 'allowance');
+    expect(wallets.map((a) => [a.name, a.ownerName, a.ownerEmail])).toEqual([['민지 용돈', '민지', 'minji@demo']]);
     expect(rules.map((r) => [r.fromAccountId, r.toAccountId, r.kind ?? 'fixed', r.amount, r.dayOfMonth])).toEqual([
       [incomes[0]!.id, byRole('fixed').id, 'fixed', 2_000_000, 25],
       [incomes[0]!.id, byRole('event').id, 'fixed', 300_000, 25],
       [incomes[0]!.id, byRole('fixed').id, 'fixed', 800_000, 21],
       [incomes[0]!.id, byRole('savings').id, 'fixed', 1_200_000, 21],
+      [incomes[0]!.id, wallets[0]!.id, 'fixed', 300_000, 25],
       [incomes[0]!.id, byRole('reservoir').id, 'remainder', 0, 25],
       [incomes[0]!.id, byRole('reservoir').id, 'remainder', 0, 21],
     ]);
     expect(rules.every((r) => r.startMonth === '2026-11')).toBe(true);
+    // 용돈 배분은 '알아서 맞추기'로 바뀌지 않게 표시한 id
+    expect(isAllowanceRuleId(rules.find((r) => r.toAccountId === wallets[0]!.id)!.id)).toBe(true);
+    // 용돈 종류의 고정지출 행은 만들지 않아요
+    expect(data.fixedExpenses.some((f) => f.kind === 'allowance')).toBe(false);
     const fixed = data.fixedExpenses.filter((f) => !f.deleted);
     expect(fixed.map((f) => [f.kind, f.name, f.amount, f.kind === 'living' ? f.spread : '-'])).toEqual([
       ['bill', '월세', 800_000, '-'],
@@ -145,26 +158,31 @@ describe('새 가계부 만들기 마법사', () => {
     fireEvent.change(within(screen.getByRole('group', { name: '민지' })).getByLabelText('저축투자통장'), {
       target: { value: '1000000' },
     });
+    fireEvent.change(within(screen.getByRole('group', { name: '민지' })).getByLabelText('용돈'), { target: { value: '200000' } });
     fireEvent.click(screen.getByRole('button', { name: '사람 추가' }));
     const second = screen.getByRole('group', { name: '2번째 사람' });
     fireEvent.change(within(second).getByRole('combobox', { name: /누구 월급인가요/ }), { target: { value: '__manual__' } });
     fireEvent.change(within(second).getByLabelText('이름'), { target: { value: '준호' } });
     fireEvent.change(within(screen.getByRole('group', { name: '준호' })).getByLabelText('한 달 월급'), { target: { value: '2000000' } });
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    await screen.findByRole('heading', { level: 1, name: '고정 지출과 용돈' });
+    await screen.findByRole('heading', { level: 1, name: '고정 지출' });
     const incomes = () => current(h).ledger.data!.accounts.filter((a) => !a.deleted && a.role === 'income');
     const plans = () => current(h).ledger.data!.incomePlans.filter((p) => !p.deleted);
     expect(incomes().map((a) => a.name)).toEqual(['월급통장']);
     expect(plans().map((p) => p.personName)).toEqual(['준호']);
+    const wallets = () => current(h).ledger.data!.accounts.filter((a) => !a.deleted && a.role === 'allowance');
+    expect(wallets().map((a) => a.name)).toEqual(['민지 용돈']);
 
     fireEvent.click(screen.getByRole('button', { name: /이전/ }));
     await screen.findByRole('heading', { level: 1, name: '매달 배분' });
     fireEvent.change(within(screen.getByRole('group', { name: '민지' })).getByLabelText('저축투자통장'), {
       target: { value: '1200000' },
     });
+    // 용돈을 비우면 배분과 마법사가 만든 용돈 통장을 함께 빼요
+    fireEvent.change(within(screen.getByRole('group', { name: '민지' })).getByLabelText('용돈'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: '준호 빼기' }));
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
-    await screen.findByRole('heading', { level: 1, name: '고정 지출과 용돈' });
+    await screen.findByRole('heading', { level: 1, name: '고정 지출' });
     const rules = current(h).ledger.data!.rules.filter((r) => !r.deleted);
     expect(rules.map((r) => [r.kind ?? 'fixed', r.amount])).toEqual([
       ['fixed', 1_200_000],
@@ -172,24 +190,25 @@ describe('새 가계부 만들기 마법사', () => {
     ]);
     expect(incomes().map((a) => a.name)).toEqual(['월급통장']);
     expect(plans()).toEqual([]);
+    expect(wallets()).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
     await screen.findByRole('heading', { level: 1, name: '생활비 예산' });
     fireEvent.click(screen.getByRole('button', { name: '나중에 할게요' }));
     expect(nav.router.replace).toHaveBeenCalledWith('/');
   });
 
-  it('개인: 이름 + 공용 가계부 연결 → 용돈 통장 시작 잔액 → 홈', async () => {
+  it('개인: 이름 → 용돈 통장 시작 잔액 → 홈 (공용 가계부 연결은 묻지 않아요)', async () => {
     const h = renderApp(<NewLedgerPage />);
     await startDemo(h);
     fireEvent.click(screen.getByRole('radio', { name: /개인 가계부/ }));
     expect((screen.getByLabelText(/가계부 이름/) as HTMLInputElement).value).toBe('내 용돈 가계부');
     expect(screen.getByRole('list', { name: '2단계 중 1단계' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText(/공용 가계부 연결/), { target: { value: 'local:demo' } });
+    expect(screen.queryByLabelText(/공용 가계부 연결/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '가계부 만들기' }));
     await screen.findByLabelText('용돈');
     const settings = current(h).ledger.data!.settings;
     expect(settings.kind).toBe('personal');
-    expect(settings.sharedLedgerId).toBe('local:demo');
+    expect(settings.sharedLedgerId).toBeNull();
     typeMoney('용돈', '50000');
     fireEvent.click(screen.getByRole('button', { name: '완료' }));
     await waitFor(() => expect(nav.router.replace).toHaveBeenCalledWith('/'));

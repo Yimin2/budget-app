@@ -12,16 +12,12 @@ import type { ReadyLedger } from '../../_components/RequireLedger';
 import { spreadsheetUrl } from '../helpers';
 import { useRunner } from '../useRunner';
 
-/** 가계부 이름 (공용/개인 표시, 개인이면 연결된 공용 가계부) */
+/** 가계부 이름 (공용/개인 표시) */
 export function LedgerNameCard({ ledger }: { ledger: ReadyLedger }) {
-  const session = useSession();
   const { busy, run } = useRunner();
   const settings = ledger.data.settings;
   const [name, setName] = useState(settings.name);
   const [error, setError] = useState<string | undefined>();
-  const linked = settings.sharedLedgerId
-    ? (session.recentLedgers.find((r) => r.id === settings.sharedLedgerId)?.name ?? '연결된 공용 가계부')
-    : null;
 
   async function save() {
     if (!name.trim()) {
@@ -51,11 +47,7 @@ export function LedgerNameCard({ ledger }: { ledger: ReadyLedger }) {
         </Button>
       </form>
       {settings.kind === 'personal' ? (
-        <p className="st-desc">
-          {linked
-            ? `${linked}에서 나에게 배분한 용돈이 매달 수입으로 들어와요.`
-            : '연결된 공용 가계부가 없어요. 용돈 수입은 내역의 통장 잔액에서 직접 기록해 주세요.'}
-        </p>
+        <p className="st-desc">용돈 수입은 내역의 통장 잔액에서 직접 기록해 주세요.</p>
       ) : (
         <>
           <p className="st-desc">함께 쓰는 사람은 아래 멤버 · 공유에서 초대할 수 있어요.</p>

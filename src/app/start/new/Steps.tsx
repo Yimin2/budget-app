@@ -3,15 +3,14 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { formatWon, LIVING_ETC_NAME } from '@/domain';
 import type { Account, Category, LedgerKind, LivingSpread } from '@/domain/types';
-import type { LedgerRef } from '@/storage/types';
 import {
   Banner, Button, Chip, ChipGroup, DateInput, Field, Icon, MoneyInput, SegmentedControl, Select, TextInput, isIconName,
 } from '@/ui';
 import { PersonPicker, type PersonOption } from '@/app/(app)/_components/PersonPicker';
 import {
-  BILL_SUGGESTIONS, DAY_OPTIONS, allocationSummary, draftKey, fixedTargets, livingDraftFor, livingTotal,
-  newEarner,
-  type AllocRole, type AllocationSummary, type AllowanceDraft, type BillDraft, type DraftErrors, type EarnerDraft,
+  BILL_SUGGESTIONS, DAY_OPTIONS, allocationSummary, allowanceAccountName, draftKey, earnerAmounts, fixedTargets, livingDraftFor,
+  livingTotal, newEarner,
+  type AllocRole, type AllocationSummary, type BillDraft, type DraftErrors, type EarnerDraft,
   type LivingDraft,
 } from './wizard';
 
@@ -23,12 +22,9 @@ export function StepBasics(props: {
   name: string;
   onName: (v: string) => void;
   nameError?: string;
-  link: string;
-  onLink: (v: string) => void;
-  sharedLedgers: LedgerRef[];
   disabled?: boolean;
 }) {
-  const { kind, onKind, name, onName, nameError, link, onLink, sharedLedgers, disabled } = props;
+  const { kind, onKind, name, onName, nameError, disabled } = props;
   return (
     <>
       <fieldset className="wz-options" disabled={disabled}>
@@ -44,7 +40,7 @@ export function StepBasics(props: {
           <input type="radio" name="wz-kind" value="personal" checked={kind === 'personal'} onChange={() => onKind('personal')} />
           <span className="txt">
             <strong>개인 가계부</strong>
-            <span className="s">혼자 쓰는 용돈 가계부예요. 공용 가계부에서 받은 용돈이 수입으로 들어와요.</span>
+            <span className="s">혼자 쓰는 용돈 가계부예요. 용돈 통장 하나로 시작해요.</span>
           </span>
         </label>
       </fieldset>
@@ -59,27 +55,6 @@ export function StepBasics(props: {
         />
       </Field>
 
-      {kind === 'personal' ? (
-        <Field
-          label="공용 가계부 연결"
-          optional
-          hint={
-            sharedLedgers.length > 0
-              ? '연결하면 공용 가계부에서 나에게 배분한 용돈이 매달 수입으로 들어와요.'
-              : '최근에 연 공용 가계부가 없어요. 공용 가계부를 먼저 한 번 열어 두면 여기에서 고를 수 있어요.'
-          }
-        >
-          <Select
-            value={link}
-            onChange={onLink}
-            disabled={disabled || sharedLedgers.length === 0}
-            options={[
-              { value: '', label: '연결하지 않기' },
-              ...sharedLedgers.map((r) => ({ value: r.id, label: r.name || '이름 없는 공용 가계부' })),
-            ]}
-          />
-        </Field>
-      ) : null}
     </>
   );
 }
@@ -138,7 +113,7 @@ export function StepAllocation(props: {
   const reservoirName = accountName('reservoir');
   const grand = allocationSummary(
     earners.reduce<number | null>((s, e) => (e.salary && e.salary > 0 ? (s ?? 0) + e.salary : s), null),
-    earners.flatMap((e) => fixedTargets(e).map((t) => e.alloc[t.role])),
+    earners.flatMap(earnerAmounts),
   );
 
   return (
@@ -153,7 +128,7 @@ export function StepAllocation(props: {
         {earners.map((e, i) => {
           const err = errors[e.key];
           const targets = fixedTargets(e);
-          const summary = allocationSummary(e.salary, targets.map((t) => e.alloc[t.role]));
+          const summary = allocationSummary(e.salary, earnerAmounts(e));
           const groupName = e.name.trim() || `${i + 1}번째 사람`;
           const restOn = e.rest && !!reservoirName;
           return (
@@ -205,6 +180,9 @@ export function StepAllocation(props: {
                       </Field>
                     );
                   })}
+                  <Field label="용돈" hint={`'${allowanceAccountName(e.name)}' 통장을 만들어 월급날 보내요. 용돈 통장에서 나가는 돈은 예산의 고정비로 넣어요`}>
+                    <MoneyInput value={e.allowance} onChange={(v) => patch(e.key, { allowance: v })} />
+                  </Field>
                 </div>
                 {reservoirName ? (
                   <label className="wz-check">
@@ -371,27 +349,19 @@ export function StepLiving(props: {
   );
 }
 
-/* ───────── ④ 고정 지출 · 용돈 ───────── */
+/* ───────── ④ 고정 지출 (용돈은 ③ 매달 배분에서) ───────── */
 
 export function StepFixed(props: {
-  isShared: boolean;
   bills: BillDraft[];
   setBills: Dispatch<SetStateAction<BillDraft[]>>;
-  allowances: AllowanceDraft[];
-  setAllowances: Dispatch<SetStateAction<AllowanceDraft[]>>;
   billErrors: DraftErrors;
-  allowanceErrors: DraftErrors;
-  /** 고를 수 있는 사람 (나 + 이 가계부 멤버) */
-  people: PersonOption[];
 }) {
-  const { isShared, bills, setBills, allowances, setAllowances, billErrors, allowanceErrors, people } = props;
+  const { bills, setBills, billErrors } = props;
   const used = new Set(bills.map((b) => b.name.trim()));
   const suggestions = BILL_SUGGESTIONS.filter((s) => !used.has(s));
 
   const patchBill = (key: string, patch: Partial<BillDraft>) =>
     setBills((list) => list.map((b) => (b.key === key ? { ...b, ...patch } : b)));
-  const patchAllowance = (key: string, patch: Partial<AllowanceDraft>) =>
-    setAllowances((list) => list.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   return (
     <>
@@ -448,66 +418,6 @@ export function StepFixed(props: {
         </ChipGroup>
       </section>
 
-      {isShared ? (
-        <section className="wz-section" aria-labelledby="wz-allowance-title">
-          <h2 id="wz-allowance-title">용돈</h2>
-          <p>멤버에게 매달 주는 용돈이에요. 받는 사람의 개인 가계부에 수입으로 들어가요.</p>
-          {allowances.length > 0 ? (
-            <ul className="wz-items">
-              {allowances.map((r, i) => {
-                const err = allowanceErrors[r.key];
-                return (
-                  <li key={r.key}>
-                    <div className="wz-item" role="group" aria-label={`용돈 ${i + 1}${r.name.trim() ? ` (${r.name.trim()})` : ''}`}>
-                      <div className="top">
-                        <div className="wz-person">
-                          <PersonPicker
-                            label="받는 사람"
-                            people={people}
-                            emailRequired
-                            value={{ name: r.name, email: r.email }}
-                            onChange={(v) => patchAllowance(r.key, { name: v.name, email: v.email })}
-                            error={err?.email}
-                            emailError={err?.email}
-                            hint="기록에 '용돈(이름)'으로 보여요"
-                          />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          plain
-                          iconOnly
-                          icon="trash"
-                          aria-label={`${r.name || r.email || '용돈'} 빼기`}
-                          onClick={() => setAllowances((list) => list.filter((x) => x.key !== r.key))}
-                        />
-                      </div>
-                      <div className="pair">
-                        <Field label="금액" error={err?.amount}>
-                          <MoneyInput value={r.amount} onChange={(v) => patchAllowance(r.key, { amount: v })} />
-                        </Field>
-                        <Field label="주는 날">
-                          <Select value={String(r.day)} onChange={(v) => patchAllowance(r.key, { day: Number(v) })} options={DAY_OPTIONS} />
-                        </Field>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-          <div>
-            <Button
-              variant="outline"
-              icon="plus"
-              onClick={() =>
-                setAllowances((list) => [...list, { key: draftKey('al'), email: '', name: '', amount: null, day: 1 }])
-              }
-            >
-              용돈 추가
-            </Button>
-          </div>
-        </section>
-      ) : null}
     </>
   );
 }

@@ -170,20 +170,23 @@ describe('설정 화면', () => {
     expect(within(card('통장')).getByText('준호 · junho@demo')).toBeTruthy();
   });
 
-  it('용돈 받는 사람: 함께 쓰는 사람에서 골라요', async () => {
+  it('고정 지출: 용돈 탭 · 종류 없이 고정비 하나로 (용돈 행을 만들지 않아요)', async () => {
     const h = renderApp(<Pages />);
     await startDemo(h);
-    fireEvent.click(within(card('고정 지출')).getByRole('button', { name: '고정 지출 추가' }));
+    const fixed = card('고정 지출');
+    expect(within(fixed).queryByRole('heading', { name: '용돈' })).toBeNull();
+    expect(within(fixed).getByRole('list', { name: '고정비' })).toBeTruthy();
+    fireEvent.click(within(fixed).getByRole('button', { name: '고정 지출 추가' }));
     const dialog = screen.getByRole('dialog', { name: '고정 지출 추가' });
-    fireEvent.click(within(dialog).getByRole('radio', { name: '용돈' }));
-    fireEvent.change(within(dialog).getByLabelText(/^이름/), { target: { value: '간식비' } });
+    expect(within(dialog).queryByRole('radio', { name: '용돈' })).toBeNull();
+    expect(within(dialog).queryByRole('radiogroup', { name: '종류' })).toBeNull();
+    expect(within(dialog).queryByRole('combobox', { name: /받는 사람/ })).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText(/^이름/), { target: { value: '십일조' } });
     fireEvent.change(within(dialog).getByLabelText(/^금액/), { target: { value: '50000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    expect(within(dialog).getByText('받는 사람을 골라 주세요')).toBeTruthy();
-    fireEvent.change(within(dialog).getByRole('combobox', { name: /^받는 사람/ }), { target: { value: 'junho@demo' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(current(h).ledger.data!.fixedExpenses.find((f) => f.name === '간식비')).toMatchObject({ kind: 'allowance', targetEmail: 'junho@demo' });
+    expect(current(h).ledger.data!.fixedExpenses.find((f) => f.name === '십일조')).toMatchObject({ kind: 'bill', targetEmail: null });
+    expect(current(h).ledger.data!.fixedExpenses.some((f) => f.kind === 'allowance')).toBe(false);
   });
 
   it('생활비 예산: 항목 추가 · 쓰는 방식 · 예전 생활비 한 줄을 항목으로 나누기', async () => {

@@ -318,7 +318,8 @@ export interface LedgerApi {
   adjustBalance(accountId: Id, actual: Won): Promise<void>;
   // 설정
   saveRule(rule: AllocationRule): Promise<void>;
-  addRule(input: Omit<AllocationRule, 'id' | 'deleted'>): Promise<AllocationRule>;
+  /** id 를 주면 그 id 로 (용돈 배분 `allowance-rule-…`), 없으면 새 id */
+  addRule(input: Omit<AllocationRule, 'id' | 'deleted'> & { id?: string }): Promise<AllocationRule>;
   /**
    * 적립액 변경: 기존 규칙을 지난달로 끝내고 이번 달부터 새 규칙. fromMonth 를 주면 그 달부터
    * ([배분 금액 맞추기]는 다음 배분의 달부터)
