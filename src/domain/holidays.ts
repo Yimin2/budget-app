@@ -300,3 +300,70 @@ export function nextLunarOccurrence(month: number, day: number, onOrAfter: strin
   }
   return null;
 }
+
+/** 그해 그 음력 달의 날 수 (29 · 30). 윤달은 셈하지 않아요(평달). 모르면 null */
+export function lunarMonthLength(year: number, month: number): 29 | 30 | null {
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+  const months = lunarMonths(year);
+  if (months) {
+    const m = months.find((x) => x.month === month && !x.leap);
+    return m ? (m.length === 30 ? 30 : 29) : null;
+  }
+  const d29 = lunarToSolar(year, month, 29);
+  const d30 = lunarToSolar(year, month, 30);
+  if (!d29 || !d30) return null;
+  return d29 === d30 ? 29 : 30;
+}
+
+/** 음력 월 · 일을 어느 해 양력으로 바꾼 결과 (그달에 없는 30일이면 29일로 줄였다는 표시) */
+export interface LunarConversion {
+  /** 그 음력 해 (양력 날짜의 해와 다를 수 있어요: 음력 12월은 양력 다음 해 1~2월) */
+  lunarYear: number;
+  date: ISODate;
+  /** 그해 그달이 29일까지라 30일을 29일로 셈했으면 true */
+  clamped: boolean;
+  monthLength: 29 | 30;
+}
+
+/** 음력 월 · 일 → 그 음력 해의 양력 (줄인 날 표시 포함). 말이 안 되거나 모르면 null */
+export function convertLunar(year: number, month: number, day: number): LunarConversion | null {
+  const date = lunarToSolar(year, month, day);
+  const monthLength = lunarMonthLength(year, month);
+  if (!date || !monthLength) return null;
+  return { lunarYear: year, date, clamped: day > monthLength, monthLength };
+}
+
+/**
+ * 음력 월 · 일의 '올해' 양력과 다음 회차. 올해 = 오늘이 든 양력 해에 오는 그 음력 월-일 (음력 해 기준이 아니라 양력 해 기준,
+ * 두 번 오면 아직 안 온 쪽).
+ * 올해 날짜가 이미 지났으면 next 는 다음 해 날짜. 모르면 null
+ */
+export function lunarThisYear(month: number, day: number, today: ISODate): { thisYear: LunarConversion | null; next: LunarConversion | null } | null {
+  if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 30) return null;
+  const y = Number(today.slice(0, 4));
+  const options = [y - 1, y, y + 1].map((ly) => convertLunar(ly, month, day)).filter((c): c is LunarConversion => c !== null);
+  // 한 양력 해에 같은 음력 월-일이 두 번 올 수 있어요 (2026-01-03 · 2026-12-23 = 음력 11/15): 아직 안 온 것, 없으면 마지막
+  const inYear = options.filter((c) => c.date.slice(0, 4) === String(y));
+  const thisYear = inYear.find((c) => c.date >= today) ?? inYear[inYear.length - 1] ?? null;
+  const next = options.find((c) => c.date >= today) ?? null;
+  if (!thisYear && !next) return null;
+  return { thisYear, next };
+}
+
+/** '음력 8/15' (말이 안 되면 빈 문자열) */
+export function lunarShortLabel(text: string | null | undefined): string {
+  const md = parseLunarMonthDay(text);
+  return md ? `음력 ${md.month}/${md.day}` : '';
+}
+
+/**
+ * 음력 반복 일정의 목록 꼬리표: '음력 8/15 (올해 10/6)'. 이 회차 양력 날짜가 올해가 아니면 '(2027년 2/7)'.
+ * 음력 값이 말이 안 되면 빈 문자열
+ */
+export function lunarRepeatLabel(lunar: string | null | undefined, date: ISODate, today: ISODate): string {
+  const base = lunarShortLabel(lunar);
+  if (!base || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return base;
+  const md = `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
+  const when = date.slice(0, 4) === today.slice(0, 4) ? '올해' : `${date.slice(0, 4)}년`;
+  return `${base} (${when} ${md})`;
+}

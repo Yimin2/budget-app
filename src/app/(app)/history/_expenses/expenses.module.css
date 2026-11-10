@@ -276,8 +276,21 @@
   gap: var(--space-2);
   min-width: 0;
 }
-.whoName {
+.whoText {
   display: none;
+}
+.recorded {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 .cAmt {
   grid-area: amt;
@@ -379,13 +392,29 @@
     grid-area: acc;
     color: var(--text-muted);
   }
-  .whoName {
-    display: inline;
-    font-size: 14px;
-    line-height: 22px;
+  .whoText {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .whoName,
+  .whoNote {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .whoName {
+    font-size: 14px;
+    line-height: 22px;
+  }
+  .whoNote {
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--text-muted);
+  }
+  .cMemo .badges {
+    flex-wrap: nowrap;
+    margin-top: 0;
   }
   .chev {
     grid-area: chev;

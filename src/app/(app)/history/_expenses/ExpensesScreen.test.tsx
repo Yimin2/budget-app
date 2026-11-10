@@ -14,6 +14,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => nav.params,
 }));
 
+import { expenseSpender } from '@/domain';
 import { ExpensesScreen } from './ExpensesScreen';
 
 beforeEach(() => {
@@ -114,7 +115,14 @@ describe('지출 화면', () => {
     await screen.findByText('반찬 18,000원 기록했어요 · 준호가 12월 1일에 18,000원 돌려받아요');
     const added = current(h).ledger.data!.expenses.find((e) => e.memo === '반찬')!;
     expect(added).toMatchObject({ accountId: 'demo-acc-fixed', paidBy: '준호', claimDue: '2026-12-01' });
-    expect(within(list()).getAllByText('준호 돌려받기 전').length).toBeGreaterThan(0);
+    // 실제로 쓴 사람은 낸 사람(준호), 기록한 사람이 다르면 'OO가 기록', 아직 안 돌려준 청구는 '돌려줄 돈'
+    const row = within(list()).getAllByText('반찬')[0]!.closest('li') as HTMLElement;
+    expect(within(row).getByText(/^준호 · 식비/)).toBeTruthy();
+    const recorder = current(h).ledger.displayName(added.author);
+    expect(recorder).not.toBe('준호');
+    expect(within(row).getAllByText(new RegExp(`${recorder}[이가] 기록`)).length).toBeGreaterThan(0);
+    expect(within(row).getAllByText('돌려줄 돈').length).toBeGreaterThan(0);
+    expect(within(row).getAllByText('돌려줄 돈')[0]!.className).toContain('warning');
   });
 
   it('낸 사람은 멤버만 고를 수 있고, 예전 청구에 적힌 다른 이름은 그 지출을 고칠 때 보여요', async () => {
@@ -216,15 +224,24 @@ describe('지출 화면', () => {
     expect(current(h).ledger.data!.expenses.find((e) => e.id === added.id)!.excluded).toBeUndefined();
   });
 
-  it('작성자 필터 · 필터 지우기 · 조건에 맞는 지출이 없을 때', async () => {
+  it('쓴 사람 필터 · 필터 지우기 · 조건에 맞는 지출이 없을 때', async () => {
     const h = await open();
+    // 민지가 기록했지만 준호가 개인 돈으로 낸 청구 → 준호로 걸러져요
+    await act(async () => {
+      await current(h).ledger.addExpense({
+        date: '2026-11-20', amount: 7_000, accountId: 'demo-acc-fixed', categoryId: null, memo: '준호가 낸 것', paidBy: '준호',
+      });
+    });
     fireEvent.click(screen.getByRole('button', { name: '필터' }));
-    const group = screen.getByRole('group', { name: '작성자' });
+    const group = screen.getByRole('group', { name: '쓴 사람' });
     fireEvent.click(within(group).getByRole('button', { name: '준호' }));
-    const junho = current(h).ledger.data!.expenses.filter(
-      (e) => !e.deleted && e.date.startsWith('2026-11') && e.author === 'junho@demo',
+    const data = current(h).ledger.data!;
+    const junho = data.expenses.filter(
+      (e) => !e.deleted && e.date.startsWith('2026-11') && expenseSpender(data, e).key === 'junho@demo',
     );
+    expect(junho.some((e) => e.memo === '준호가 낸 것' && e.author !== 'junho@demo')).toBe(true);
     expect(within(list()).getAllByRole('listitem')).toHaveLength(junho.length);
+    expect(within(list()).getAllByText('준호가 낸 것').length).toBeGreaterThan(0);
     expect(screen.getByText('2026년 11월 지출 (필터 적용)')).toBeTruthy();
 
     // 이벤트통장 + 준호 → 없음

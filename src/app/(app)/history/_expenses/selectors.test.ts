@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createDemoLedger, createDefaultLedger } from '@/domain';
-import type { Expense, LedgerData } from '@/domain/types';
+import type { Expense, LedgerData, Transfer } from '@/domain/types';
 import {
-  accountForCategory, activeFilterCount, applyFilter, authorOptions, EMPTY_FILTER, groupByDate, isISODate, linkableEvents,
+  accountForCategory, activeFilterCount, applyFilter, EMPTY_FILTER, expenseBadges, spenderFilterOptions, spendersById, groupByDate, isISODate, linkableEvents,
   livingAccountIdFor, monthBounds, monthExpenses, monthLabel, parseMonthParam, splitTotals,
 } from './selectors';
 
@@ -114,7 +114,7 @@ describe('livingAccountIdFor · accountForCategory', () => {
 });
 
 describe('필터', () => {
-  it('통장 · 카테고리 · 작성자 · 카테고리 없음', () => {
+  it('통장 · 카테고리 · 쓴 사람 · 카테고리 없음', () => {
     const list = [
       expense({ id: '1', categoryId: 'c1', author: 'minji@demo' }),
       expense({ id: '2', categoryId: null, author: 'junho@demo' }),
@@ -124,19 +124,81 @@ describe('필터', () => {
     expect(ids({})).toEqual(['1', '2', '3']);
     expect(ids({ categoryId: 'c1' })).toEqual(['1', '3']);
     expect(ids({ categoryId: 'none' })).toEqual(['2']);
-    expect(ids({ author: 'junho@demo' })).toEqual(['2', '3']);
-    expect(ids({ accountId: 'demo-acc-event', author: 'junho@demo' })).toEqual(['3']);
-    expect(activeFilterCount({ accountId: 'a', categoryId: 'none', author: null })).toBe(2);
+    // 쓴 사람을 알려 주지 않으면 기록한 사람으로 걸러요
+    expect(ids({ spender: 'junho@demo' })).toEqual(['2', '3']);
+    expect(ids({ accountId: 'demo-acc-event', spender: 'junho@demo' })).toEqual(['3']);
+    expect(activeFilterCount({ accountId: 'a', categoryId: 'none', spender: null })).toBe(2);
   });
 
-  it('작성자 목록: 멤버 먼저, 그다음 멤버가 아닌 작성자', () => {
+  it('쓴 사람으로 걸러요: 민지가 기록했어도 준호가 개인 돈으로 낸 청구는 준호', () => {
     const data = demo();
-    const opts = authorOptions(data, [expense({ author: 'guest@x.com' }), expense({ author: 'MINJI@demo' })]);
+    const list = [
+      expense({ id: 'm', author: 'minji@demo' }),
+      expense({ id: 'claim', author: 'minji@demo', paidBy: '준호' }),
+      expense({ id: 'j', author: 'junho@demo' }),
+    ];
+    const spenders = spendersById(data, list);
+    const by = (key: string) =>
+      applyFilter(list, { ...EMPTY_FILTER, spender: key }, (e) => spenders.get(e.id)!.key).map((e) => e.id);
+    expect(by('junho@demo')).toEqual(['claim', 'j']);
+    expect(by('minji@demo')).toEqual(['m']);
+  });
+
+  it('쓴 사람 목록: 가계부의 사람 먼저, 그다음 목록에서 쓴 다른 사람', () => {
+    const data = demo();
+    const list = [expense({ id: 'a', author: 'guest@x.com' }), expense({ id: 'b', author: 'MINJI@demo', paidBy: '가온' })];
+    const opts = spenderFilterOptions(data, spendersById(data, list).values());
     expect(opts).toEqual([
-      { email: 'minji@demo', name: '민지' },
-      { email: 'junho@demo', name: '준호' },
-      { email: 'guest@x.com', name: 'guest' },
+      { key: 'minji@demo', name: '민지' },
+      { key: 'junho@demo', name: '준호' },
+      { key: 'guest@x.com', name: 'guest' },
+      { key: 'name:가온', name: '가온' },
     ]);
+  });
+});
+
+describe('줄 배지', () => {
+  const kinds = (data: LedgerData, e: Expense) => expenseBadges(data, e).map((b) => `${b.label}:${b.tone}`);
+  const done = (id: string, from: string | null): Transfer => ({
+    id,
+    ruleId: null,
+    date: TODAY,
+    amount: 1000,
+    fromAccountId: from,
+    toAccountId: null,
+    memo: '',
+    kind: 'transfer',
+    status: 'done',
+    author: 'minji@demo',
+    createdAt: NOW,
+    updatedAt: NOW,
+    deleted: false,
+  });
+
+  it('돌려줄 돈 · 돌려줌 · 저수지에서 빌려 줌 · 예외 · 자동 · 일정', () => {
+    const data = demo();
+    const claim = expense({ id: 'c1', paidBy: '준호' });
+    expect(kinds(data, claim)).toEqual(['돌려줄 돈:warning']);
+
+    data.transfers.push(done('claim:c1', 'demo-acc-fixed'));
+    expect(kinds(data, claim)).toEqual(['돌려줌:success']);
+
+    // 저수지에서 빌려 지급
+    data.transfers.push(done('loan:claim:c1', 'demo-acc-reservoir'));
+    expect(kinds(data, claim)).toEqual(['저수지에서 빌려 줌:info']);
+    // 돌려준 이체가 저수지에서 나가도 같아요
+    const c2 = expense({ id: 'c2', paidBy: '준호' });
+    data.transfers.push(done('claim:c2', 'demo-acc-reservoir'));
+    expect(kinds(data, c2)).toEqual(['저수지에서 빌려 줌:info']);
+    // 지운 이체는 돌려주지 않은 것
+    const c3 = expense({ id: 'c3', paidBy: '준호' });
+    data.transfers.push({ ...done('claim:c3', 'demo-acc-fixed'), deleted: true });
+    expect(kinds(data, c3)).toEqual(['돌려줄 돈:warning']);
+
+    expect(kinds(data, expense({ excluded: true }))).toEqual(['예외:neutral']);
+    expect(kinds(data, expense({ id: 'fx-1', fixedExpenseId: 'f1' }))).toEqual(['자동:neutral']);
+    expect(kinds(data, expense({ eventId: 'e1' }))).toEqual(['일정:neutral']);
+    expect(kinds(data, expense({}))).toEqual([]);
   });
 });
 

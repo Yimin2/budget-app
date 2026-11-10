@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
-import { addMonths, claimTransferId, compareMonth, formatDateKo, formatWon, isAutoFixedRecord, isClaimExpense, monthOf } from '@/domain';
+import { addMonths, compareMonth, formatDateKo, formatWon, monthOf, withSubject, type ExpenseSpender } from '@/domain';
 import type { Account, Category, Expense, Id, YearMonth } from '@/domain/types';
 import {
   Avatar, Badge, Button, Card, Chip, ChipGroup, EmptyState, Icon, Money, PageHeader, Skeleton, cx, presenceClass, useChanged, usePresence,
@@ -11,8 +11,9 @@ import { useLedger } from '@/state';
 import { RequireLedger, isLedgerReady, type ReadyLedger } from '../../_components/RequireLedger';
 import { CategoryIcon, ExpenseDialog, categoryIcon } from './ExpenseDialog';
 import {
-  activeFilterCount, applyFilter, authorOptions, EMPTY_FILTER, groupByDate, monthBounds, monthExpenses, monthLabel,
-  parseMonthParam, SPLIT_KEYS, SPLIT_LABEL, splitTotals, type ExpenseFilter, type SplitKey,
+  activeFilterCount, applyFilter, EMPTY_FILTER, expenseBadgeReader, groupByDate, monthBounds, monthExpenses, monthLabel,
+  parseMonthParam, SPLIT_KEYS, SPLIT_LABEL, spenderFilterOptions, spendersById, splitTotals,
+  type ExpenseBadge, type ExpenseFilter, type SplitKey,
 } from './selectors';
 import styles from './expenses.module.css';
 import { ownerLabel } from '../../settings/helpers';
@@ -92,7 +93,13 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
   const min = compareMonth(month, bounds.min) < 0 ? month : bounds.min;
   const max = compareMonth(month, bounds.max) > 0 ? month : bounds.max;
   const all = useMemo(() => monthExpenses(data, month), [data, month]);
-  const list = useMemo(() => applyFilter(all, filter), [all, filter]);
+  // 실제로 쓴 사람 (청구의 낸 사람 → 개인 통장 주인 → 기록한 사람)
+  const spenders = useMemo(() => spendersById(data, all), [data, all]);
+  const list = useMemo(
+    () => applyFilter(all, filter, (e) => spenders.get(e.id)?.key ?? e.author.toLowerCase()),
+    [all, filter, spenders],
+  );
+  const badgesOf = useMemo(() => expenseBadgeReader(data), [data]);
   const totals = useMemo(() => splitTotals(data, list, month), [data, list, month]);
   const groups = useMemo(() => groupByDate(list), [list]);
   const visibleIds = useMemo(() => groups.flatMap((g) => g.items.map((e) => e.id)), [groups]);
@@ -100,11 +107,6 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
 
   const accountsById = useMemo(() => new Map(data.accounts.map((a) => [a.id, a] as const)), [data.accounts]);
   const categoriesById = useMemo(() => new Map(data.categories.map((c) => [c.id, c] as const)), [data.categories]);
-  // 돌려준 청구 (이체 claim:<지출id>)
-  const settledClaimIds = useMemo(
-    () => new Set(data.transfers.filter((t) => !t.deleted && t.status === 'done').map((t) => t.id)),
-    [data.transfers],
-  );
   const memberIndex = useMemo(
     () => new Map(data.members.map((m, i) => [m.email.toLowerCase(), i] as const)),
     [data.members],
@@ -123,8 +125,9 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
     return data.categories.filter((c) => !c.deleted || used.has(c.id)).sort((a, b) => a.order - b.order);
   }, [data.categories, all]);
   const hasUncategorized = all.some((e) => e.categoryId === null) || filter.categoryId === 'none';
-  const authors = useMemo(() => authorOptions(data, all), [data, all]);
-  const showAuthors = data.settings.kind === 'shared' || authors.length > 1;
+  const spenderOptions = useMemo(() => spenderFilterOptions(data, spenders.values()), [data, spenders]);
+  const showSpenders = data.settings.kind === 'shared' || spenderOptions.length > 1;
+  const spenderName = (key: string) => spenderOptions.find((o) => o.key === key)?.name ?? key.replace(/^name:/, '');
 
   function onDone(expense: Expense, action: 'added' | 'updated' | 'deleted') {
     if (action === 'deleted') return;
@@ -196,12 +199,12 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
               ...(hasUncategorized ? [{ value: 'none', label: '카테고리 없음' }] : []),
             ]}
           />
-          {showAuthors ? (
+          {showSpenders ? (
             <FilterGroup
-              label="작성자"
-              value={filter.author}
-              onChange={(v) => setFilter({ ...filter, author: v })}
-              options={authors.map((a) => ({ value: a.email, label: ledger.displayName(a.email) || a.name }))}
+              label="쓴 사람"
+              value={filter.spender}
+              onChange={(v) => setFilter({ ...filter, spender: v })}
+              options={spenderOptions.map((o) => ({ value: o.key, label: o.name }))}
             />
           ) : null}
           {filterCount > 0 ? (
@@ -224,9 +227,9 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
               {filter.categoryId === 'none' ? '카테고리 없음' : (categoriesById.get(filter.categoryId)?.name ?? '지운 카테고리')}
             </Chip>
           ) : null}
-          {filter.author ? (
-            <Chip selected onRemove={() => setFilter({ ...filter, author: null })} removeLabel="작성자 필터 지우기">
-              {ledger.displayName(filter.author)}
+          {filter.spender ? (
+            <Chip selected onRemove={() => setFilter({ ...filter, spender: null })} removeLabel="쓴 사람 필터 지우기">
+              {spenderName(filter.spender)}
             </Chip>
           ) : null}
         </ChipGroup>
@@ -301,7 +304,7 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
               <span>카테고리</span>
               <span>내용</span>
               <span>통장</span>
-              <span>기록한 사람</span>
+              <span>쓴 사람</span>
               <span>금액</span>
             </div>
             {groups.map((g) => {
@@ -328,9 +331,9 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
                           expense={e}
                           category={e.categoryId ? categoriesById.get(e.categoryId) : undefined}
                           account={accountsById.get(e.accountId)}
-                          authorName={ledger.displayName(e.author)}
-                          authorAlt={(memberIndex.get(e.author.toLowerCase()) ?? 0) % 2 === 1}
-                          claim={isClaimExpense(e) ? (settledClaimIds.has(claimTransferId(e.id)) ? 'settled' : 'pending') : null}
+                          spender={spenders.get(e.id) ?? fallbackSpender(e.author, ledger.displayName(e.author))}
+                          spenderAlt={(memberIndex.get(spenders.get(e.id)?.key ?? e.author.toLowerCase()) ?? 0) % 2 === 1}
+                          badges={badgesOf(e)}
                           onOpen={() => setDialog({ mode: 'edit', expense: e })}
                         />
                     )}
@@ -395,10 +398,11 @@ interface RowProps {
   expense: Expense;
   category: Category | undefined;
   account: Account | undefined;
-  authorName: string;
-  authorAlt: boolean;
-  /** 개인 돈으로 낸 지출: 아직 돌려주지 않음(pending) · 돌려줌(settled) */
-  claim?: 'pending' | 'settled' | null;
+  /** 실제로 쓴 사람 (기록한 사람이 다르면 '○○가 기록') */
+  spender: ExpenseSpender;
+  spenderAlt: boolean;
+  /** 청구 상태 · 예외 · 자동 · 일정 (expenseBadges) */
+  badges: ExpenseBadge[];
   onOpen: () => void;
 }
 
@@ -416,38 +420,40 @@ function PresenceRows({ items, className, children }: { items: Expense[]; classN
   );
 }
 
-function ExpenseRow({ expense, category, account, authorName, authorAlt, claim, onOpen }: RowProps) {
-  // 돌려받기 전 → 돌려받음으로 바뀌면 배지가 제자리에 놓이듯 나타나요
-  const claimChanged = useChanged(claim);
+function fallbackSpender(author: string, name: string): ExpenseSpender {
+  const key = author.toLowerCase();
+  return { key, name, source: 'recorder', recorderKey: key, recorderName: name, recordedByOther: false };
+}
+
+/** 청구 상태 배지만 바뀔 때 제자리에 놓이듯 나타나요 */
+const CLAIM_KINDS = new Set<ExpenseBadge['kind']>(['claim-pending', 'claim-settled', 'claim-reservoir']);
+
+function ExpenseRow({ expense, category, account, spender, spenderAlt, badges, onOpen }: RowProps) {
+  const claimKind = badges.find((b) => CLAIM_KINDS.has(b.kind))?.kind ?? null;
+  const claimChanged = useChanged(claimKind);
   const memo = expense.memo.trim();
   const catName = category?.name ?? null;
   const accName = account ? account.name : '지운 통장';
   const title = memo || catName || '지출';
-  const sub = [memo ? catName : null, accName].filter(Boolean).join(' · ');
-  const badges: ReactNode = (
-    <>
-      {isAutoFixedRecord(expense) ? (
-        <Badge size="sm" dot={false}>
-          자동
-        </Badge>
-      ) : null}
-      {expense.eventId ? (
-        <Badge size="sm" tone="info" dot={false}>
-          일정
-        </Badge>
-      ) : null}
-      {expense.excluded ? (
-        <Badge size="sm" dot={false}>
-          예외
-        </Badge>
-      ) : null}
-      {claim ? (
-        <Badge size="sm" tone={claim === 'pending' ? 'warning' : undefined} dot={false} className={claimChanged ? 'mo-settle' : undefined} key={claim}>
-          {claim === 'pending' ? `${expense.paidBy?.trim() ?? ''} 돌려받기 전` : `${expense.paidBy?.trim() ?? ''} 돌려받음`}
-        </Badge>
-      ) : null}
-    </>
-  );
+  const sub = [spender.name, memo ? catName : null, accName].filter(Boolean).join(' · ');
+  const recorded = spender.recordedByOther && spender.recorderName ? `${withSubject(spender.recorderName)} 기록` : null;
+  const badgeList: ReactNode =
+    badges.length > 0 ? (
+      <span className={styles.badges}>
+        {badges.map((b) => (
+          <Badge
+            key={b.kind}
+            size="sm"
+            variant="soft"
+            tone={b.tone}
+            dot={false}
+            className={CLAIM_KINDS.has(b.kind) && claimChanged ? 'mo-settle' : undefined}
+          >
+            {b.label}
+          </Badge>
+        ))}
+      </span>
+    ) : null;
   return (
     <button type="button" className={styles.row} onClick={onOpen} data-expense-id={expense.id}>
       <CategoryIcon category={category} className={styles.rowIcon} />
@@ -455,23 +461,27 @@ function ExpenseRow({ expense, category, account, authorName, authorAlt, claim, 
         <span className={styles.rowTitle}>{title}</span>
         <span className={styles.rowSub}>
           <span className={styles.ellipsis}>{sub}</span>
-          {badges}
+          {recorded ? <span className={styles.recorded}>· {recorded}</span> : null}
         </span>
+        {badgeList}
       </span>
       <span className={styles.cCat}>
         <span className={styles.ellipsis}>{catName ?? (expense.fixedExpenseId ? '고정 지출' : '카테고리 없음')}</span>
       </span>
       <span className={styles.cMemo}>
         {memo ? <span className={styles.ellipsis}>{memo}</span> : <span className="muted" aria-hidden>-</span>}
-        {badges}
+        {badgeList}
       </span>
       <span className={styles.cAcc}>
         <span className={styles.ellipsis}>{accName}</span>
       </span>
       <span className={styles.cWho}>
-        <Avatar name={authorName} size="sm" alt={authorAlt} />
-        <span className={styles.whoName} aria-hidden>
-          {authorName}
+        <Avatar name={spender.name} size="sm" alt={spenderAlt} />
+        <span className={styles.whoText}>
+          <span className={styles.whoName} aria-hidden>
+            {spender.name}
+          </span>
+          {recorded ? <span className={styles.whoNote}>{recorded}</span> : null}
         </span>
       </span>
       <span className={styles.cAmt}>
