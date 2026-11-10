@@ -303,3 +303,103 @@
   line-height: 22px;
   color: var(--text-muted);
 }
+/* 여행 줄: 링크 + 미리 낸 돈 [펼치기] */
+.tripLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.tripLine > .rowMain {
+  flex: 1;
+  min-width: 0;
+}
+.tripToggle {
+  flex: none;
+}
+.tripBar {
+  display: block;
+  height: 4px;
+  margin-top: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.tripBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+.tripBarFill.tripBarOver {
+  background: var(--danger);
+}
+.prePanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2) calc(44px + var(--space-3) + var(--space-2));
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.preTitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.preList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.preRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.preDate {
+  flex: none;
+  width: 40px;
+  font-size: 13px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.preMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.preName {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.preMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.preAmt {
+  flex: none;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 479.98px) {
+  .prePanel {
+    margin-left: 0;
+  }
+}

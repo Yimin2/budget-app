@@ -38,7 +38,7 @@ type Place = 'down' | 'up';
  * 버튼 aria-haspopup="menu" · aria-expanded, 메뉴 role="menu" · 항목 role="menuitem".
  * ↑ · ↓ (돌아가요) · Home · End 로 옮기고 Enter · Space 로 고르고 Esc 로 닫아 버튼으로 돌아가요. Tab · 바깥 누르기도 닫아요.
  * 항목을 고르면 메뉴를 닫고 버튼으로 포커스를 돌린 뒤 onSelect 를 불러요 (onSelect 가 포커스를 옮겨도 돼요).
- * 버튼 오른쪽 끝에 맞춰 아래로 열고, 아래 자리가 모자라면 위로 열어요
+ * 버튼 오른쪽 끝에 맞춰 아래로 열고, 아래 자리가 모자라면 위로 열어요. 왼쪽이 화면 밖으로 나가면 화면 안으로 밀어요
  */
 export function MenuButton({ label, icon, variant = 'primary', items, menuLabel, className, buttonRef }: MenuButtonProps) {
   const ids = useId().replace(/:/g, '');
@@ -46,6 +46,8 @@ export function MenuButton({ label, icon, variant = 'primary', items, menuLabel,
   const menuId = `${ids}-menu`;
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<Place>('down');
+  /** 왼쪽이 화면 밖으로 나가면 오른쪽으로 민 거리 (px) */
+  const [shift, setShift] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -62,6 +64,7 @@ export function MenuButton({ label, icon, variant = 'primary', items, menuLabel,
 
   const close = useCallback((returnFocus: boolean) => {
     setOpen(false);
+    setShift(0);
     if (returnFocus) btnRef.current?.focus();
   }, []);
 
@@ -75,6 +78,10 @@ export function MenuButton({ label, icon, variant = 'primary', items, menuLabel,
       const h = menu.offsetHeight;
       const below = window.innerHeight - r.bottom;
       setPlace(h > 0 && below < h + 16 && r.top > below ? 'up' : 'down');
+      // 화면 왼쪽 16px 안으로 (버튼이 왼쪽에 있는 좁은 화면)
+      // 열리는 움직임(scale) 중이라 getBoundingClientRect 대신 offsetWidth 로 셈해요
+      const left = (wrapRef.current?.getBoundingClientRect().right ?? r.right) - menu.offsetWidth;
+      setShift(left < 16 ? Math.ceil(16 - left) : 0);
     }
     const list = itemEls();
     (startRef.current === 'last' ? list[list.length - 1] : list[0])?.focus();
@@ -171,6 +178,7 @@ export function MenuButton({ label, icon, variant = 'primary', items, menuLabel,
           aria-label={menuLabel}
           aria-orientation="vertical"
           className={cx(styles.menu, place === 'up' && styles.up)}
+          style={shift ? { right: -shift } : undefined}
           onKeyDown={onMenuKey}
         >
           {items.map((item) => (

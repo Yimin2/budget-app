@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { formatMan, formatShortDate, formatWon, lunarRepeatLabel, monthOf, tripPeriodText } from '@/domain';
-import type { Category, Id, ISODate, LedgerData, PlannedEvent, TripStatus, Won, YearMonth } from '@/domain';
+import { eventRecordStatus, formatMan, formatManShort, formatShortDate, formatWon, liveTransferIds, lunarRepeatLabel, monthOf, tripPeriodText } from '@/domain';
+import type { Category, EventRecordStatus, Expense, Id, ISODate, LedgerData, PlannedEvent, TripStatus, Won, YearMonth } from '@/domain';
 import { RECURRING_HINT_KEY } from '@/state';
 import { Badge, Button, Card, Icon, MenuButton, cx, type MenuItem } from '@/ui';
 import { AnnualCard } from './AnnualCard';
@@ -103,7 +103,7 @@ export function scheduleGroups(sections: EventSections, trips: TripStatus[], tod
  * 이벤트 화면 카드 4 '일정 · 10건 170만' (PLAN 4-3 · 4-11).
  * 제목 줄 버튼은 [+ 추가] 하나: 버튼에 붙는 작은 메뉴(창 아님)로 새 일정 · 여행 추가 · 매년 일정 한 번에 등록 · 기록에서 찾기 N건(0건이면 없음).
  * 매년 일정 · 기록에서 찾기는 카드 안에서 펼쳐요 ([닫기]로 접음). 기록에서 찾은 게 있으면 목록 위에 '… N건을 찾았어요 [보기]' 안내(이 기기에서 닫을 수 있음).
- * 날짜가 지난 예정 일정(썼어요 / 취소됐어요) → 다가오는 일정과 여행(달별, 날짜순. 여행은 '여행' 표시 · '45만 / 90만' · '남은 45만', 누르면 여행 화면)
+ * 날짜가 지난 예정 일정(썼어요 / 취소됐어요) → 다가오는 일정과 여행(달별, 날짜순. 여행은 여행 달에 한 줄: '여행' 표시 · '쓴 돈 45만 / 예산 90만 · 미리 낸 돈 2건 포함' · 막대 · '남은 45만', 누르면 여행 화면, [펼치기]로 미리 낸 돈)
  * → 지난 일정(접힘). 넓은 카드는 달 묶음을 두 칸으로 흘려요. 폰에서는 첫 달만 보이고 [펼치기]로 나머지
  */
 export function ScheduleCard(props: ScheduleCardProps) {
@@ -235,7 +235,7 @@ export function ScheduleCard(props: ScheduleCardProps) {
                             e.kind === 'event' ? (
                               <EventRow key={e.event.id} event={e.event} variant="upcoming" {...props} />
                             ) : (
-                              <TripEntryRow key={`trip:${e.trip.trip.id}`} status={e.trip} />
+                              <TripEntryRow key={`trip:${e.trip.trip.id}`} status={e.trip} data={data} displayName={props.displayName} />
                             ),
                           )}
                         </ul>
@@ -260,37 +260,113 @@ export function ScheduleCard(props: ScheduleCardProps) {
   );
 }
 
-/** 여행 한 줄: 떠나는 날 · 이름 [여행] · '45만 / 90만' · 남은 예산, 누르면 여행 화면 */
-function TripEntryRow({ status: s }: { status: TripStatus }) {
+/** 여행 줄의 미리 낸 돈 정산 상태 (그냥 지출은 표시 없음) */
+const PRE_STATUS: Partial<Record<EventRecordStatus, { text: string; tone: 'warning' | 'success' | 'info' }>> = {
+  claimPending: { text: '줄 돈', tone: 'warning' },
+  claimPaid: { text: '지급함', tone: 'success' },
+  borrowed: { text: '저수지에서 빌려 줌', tone: 'info' },
+};
+
+/** 여행에 묶은 지출 중 떠나는 날 전에 쓴 것 (미리 낸 돈, 날짜순) */
+export function tripPrepaid(s: TripStatus): Expense[] {
+  return s.expenses.filter((e) => e.date < s.trip.startDate);
+}
+
+/**
+ * 여행 한 줄 (여행 달에 한 줄만): 떠나는 날 · 이름 [여행] · '쓴 돈 45만 / 예산 90만 · 미리 낸 돈 2건 포함' · 가는 막대 · 남은 예산, 누르면 여행 화면.
+ * 미리 낸 돈이 있으면 오른쪽 [펼치기]로 같은 자리에서 '여행 전 (미리 낸 돈)' 목록(날짜 · 이름 · 누가 냈는지 · 정산 상태 · 금액)과 여행 화면 링크
+ */
+function TripEntryRow({ status: s, data, displayName }: { status: TripStatus; data: LedgerData; displayName: (email: string) => string }) {
+  const ids = useId().replace(/:/g, '');
+  const [open, setOpen] = useState(false);
   const over = s.remaining < 0;
+  const pre = tripPrepaid(s);
+  const live = useMemo(() => liveTransferIds(data), [data]);
+  const ratio = s.budget > 0 ? Math.min(1, s.spent / s.budget) : s.spent > 0 ? 1 : 0;
+  const preText = pre.length > 0 ? ` · 미리 낸 돈 ${pre.length}건 포함` : '';
+  const listId = `${ids}-pre`;
   return (
-    <li className={styles.item}>
-      <Link
-        href={tripHref(s.trip.id)}
-        className={styles.rowMain}
-        // 숫자를 한 번씩만 읽도록 짧은 이름을 준다
-        aria-label={`${s.trip.name}, ${tripPhaseText(s)}, ${tripPeriodText(s.trip)}, ${formatWon(s.budget)} 중 ${formatWon(s.spent)} 썼어요, ${remainingText(s.remaining)}`}
-      >
-        <span className={styles.date} aria-hidden>
-          <span className={styles.md}>{formatShortDate(s.trip.startDate)}</span>
-          <span className={styles.wd}>{s.phase === 'ongoing' ? '여행 중' : weekdayShort(s.trip.startDate)}</span>
-        </span>
-        <span className={styles.main}>
-          <span className={styles.nameLine}>
-            <span className={styles.name}>{s.trip.name}</span>
-            <Badge size="sm" tone="info" variant="soft" dot={false}>
-              <Icon name="plane" size={16} />
-              여행
-            </Badge>
+    <li className={cx(styles.item, styles.tripItem)}>
+      <div className={styles.tripLine}>
+        <Link
+          href={tripHref(s.trip.id)}
+          className={styles.rowMain}
+          // 숫자를 한 번씩만 읽도록 짧은 이름을 준다
+          aria-label={`${s.trip.name}, ${tripPhaseText(s)}, ${tripPeriodText(s.trip)}, ${formatWon(s.budget)} 중 ${formatWon(s.spent)} 썼어요${pre.length > 0 ? `, 미리 낸 돈 ${pre.length}건 포함` : ''}, ${remainingText(s.remaining)}`}
+        >
+          <span className={styles.date} aria-hidden>
+            <span className={styles.md}>{formatShortDate(s.trip.startDate)}</span>
+            <span className={styles.wd}>{s.phase === 'ongoing' ? '여행 중' : weekdayShort(s.trip.startDate)}</span>
           </span>
-          <span className={styles.meta}>
-            {formatMan(s.spent)} / {formatMan(s.budget)} · {tripPeriodText(s.trip)}
+          <span className={styles.main}>
+            <span className={styles.nameLine}>
+              <span className={styles.name}>{s.trip.name}</span>
+              <Badge size="sm" tone="info" variant="soft" dot={false}>
+                <Icon name="plane" size={16} />
+                여행
+              </Badge>
+            </span>
+            <span className={styles.meta}>
+              쓴 돈 {formatManShort(s.spent)} / 예산 {formatManShort(s.budget)}
+              {preText}
+            </span>
+            <span className={styles.tripBar} aria-hidden>
+              <span className={cx(styles.tripBarFill, over && styles.tripBarOver)} style={{ width: `${Math.round(ratio * 100)}%` }} />
+            </span>
           </span>
-        </span>
-        <span className={cx(styles.amt, over && shared.bad)}>
-          <span>{over ? `${formatMan(-s.remaining)} 넘었어요` : `남은 ${formatMan(s.remaining)}`}</span>
-        </span>
-      </Link>
+          <span className={cx(styles.amt, over && shared.bad)}>
+            <span>{over ? `${formatManShort(-s.remaining)} 넘었어요` : `남은 ${formatManShort(s.remaining)}`}</span>
+          </span>
+        </Link>
+        {pre.length > 0 ? (
+          <Button
+            variant="ghost"
+            plain
+            iconOnly
+            icon={open ? 'chevron-up' : 'chevron-down'}
+            className={styles.tripToggle}
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-label={`${s.trip.name} 미리 낸 돈 ${open ? '접기' : '펼치기'}`}
+            onClick={() => setOpen((o) => !o)}
+          />
+        ) : null}
+      </div>
+      {open && pre.length > 0 ? (
+        <div id={listId} className={styles.prePanel}>
+          <h4 id={`${listId}-t`} className={styles.preTitle}>
+            <span aria-hidden>▸ </span>여행 전 (미리 낸 돈)
+          </h4>
+          <ul className={styles.preList} aria-labelledby={`${listId}-t`}>
+            {pre.map((e) => {
+              const st = PRE_STATUS[eventRecordStatus(data, e, live)];
+              const payer = (e.paidBy ?? '').trim() || (e.author ? displayName(e.author) : '');
+              const title = e.memo.trim() || (e.categoryId ? data.categories.find((c) => c.id === e.categoryId)?.name : '') || '지출';
+              return (
+                <li key={e.id} className={styles.preRow}>
+                  <span className={styles.preDate}>{formatShortDate(e.date)}</span>
+                  <span className={styles.preMain}>
+                    <span className={styles.preName}>{title}</span>
+                    <span className={styles.preMeta}>
+                      {payer ? `${payer} 냄` : null}
+                      {st ? (
+                        <Badge size="sm" tone={st.tone} variant="soft" dot={false}>
+                          {st.text}
+                        </Badge>
+                      ) : null}
+                    </span>
+                  </span>
+                  <span className={styles.preAmt}>{formatWon(e.amount)}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <Link href={tripHref(s.trip.id)} className={styles.moreLink}>
+            자세히는 여행 화면
+            <Icon name="chevron-right" size={16} />
+          </Link>
+        </div>
+      ) : null}
     </li>
   );
 }

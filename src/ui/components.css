@@ -2767,3 +2767,39 @@ button.lrow {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+
+/* 보라 배지 (여행 표시 등). 밝은 화면 글자 #6d28d9 / 바탕 #f5f3ff ≈ 6.6:1, 어두운 화면 #c4b5fd / 바탕 ≈ 9:1 */
+.badge.violet {
+  --violet-bg: #f5f3ff;
+  --violet-border: #ddd6fe;
+  --violet-text: #6d28d9;
+  --violet-dot: #7c3aed;
+}
+[data-theme='dark'] .badge.violet {
+  --violet-bg: rgba(167, 139, 250, 0.16);
+  --violet-border: rgba(167, 139, 250, 0.32);
+  --violet-text: #c4b5fd;
+  --violet-dot: #a78bfa;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .badge.violet {
+    --violet-bg: rgba(167, 139, 250, 0.16);
+    --violet-border: rgba(167, 139, 250, 0.32);
+    --violet-text: #c4b5fd;
+    --violet-dot: #a78bfa;
+  }
+}
+.badge.violet .dot {
+  background: var(--violet-dot);
+}
+.badge.soft.violet {
+  background: var(--violet-bg);
+  border-color: var(--violet-border);
+  color: var(--violet-text);
+}
+a.badge.violet {
+  text-decoration: none;
+}
+a.badge.violet:hover {
+  text-decoration: underline;
+}

@@ -222,3 +222,60 @@ describe('일정 카드 — 기록에서 찾은 일 안내', () => {
     expect(within(card).queryByText('지난 기록에서 매년 반복되는 일 1건을 찾았어요')).toBeNull();
   });
 });
+
+describe('일정 카드 — 여행 줄', () => {
+  it('여행 달에 한 줄: 쓴 돈 / 예산 · 미리 낸 돈 N건 포함 · 막대 · 남은 예산, [펼치기]로 여행 전 지출과 여행 화면 링크', async () => {
+    const { h, card } = await renderCard();
+    const trips = within(card).getAllByRole('link', { name: /^제주 여행,/ });
+    expect(trips).toHaveLength(1);
+    const link = trips[0]!;
+    const trip = h.probe.ledger!.trips.find((t) => t.trip.name === '제주 여행')!;
+    const pre = trip.expenses.filter((e) => e.date < trip.trip.startDate);
+    expect(pre.length).toBeGreaterThan(0);
+    expect(link.textContent).toContain(`쓴 돈 45만 / 예산 90만 · 미리 낸 돈 ${pre.length}건 포함`);
+    expect(link.textContent).toContain('남은 45만');
+    // 미리 낸 지출은 일정 목록에 따로 나오지 않아요
+    for (const e of pre) expect(within(card).queryByText(e.memo)).toBeNull();
+
+    const toggle = within(card).getByRole('button', { name: '제주 여행 미리 낸 돈 펼치기' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('제주 여행 미리 낸 돈 접기');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+    expect(within(panel).getByRole('heading', { name: /여행 전 \(미리 낸 돈\)/ })).toBeTruthy();
+    const rows = within(panel).getAllByRole('listitem');
+    expect(rows).toHaveLength(pre.length);
+    expect(rows[0]!.textContent).toContain(pre[0]!.memo);
+    expect(within(panel).getByText('제주 숙소 예약금').closest('li')!.textContent).toMatch(/150,000원$/);
+    expect(within(panel).getByRole('link', { name: /자세히는 여행 화면/ }).getAttribute('href')).toBe('/plan/trips?id=demo-trip-jeju');
+    fireEvent.click(toggle);
+    expect(document.getElementById(panel.id)).toBeNull();
+  });
+
+  it('미리 낸 청구는 누가 냈는지와 정산 상태(줄 돈 → 지급함)를 보여요', async () => {
+    const { h, card } = await renderCard();
+    const trip = h.probe.ledger!.trips.find((t) => t.trip.name === '제주 여행')!;
+    await act(async () => {
+      await h.probe.ledger!.addExpense({
+        date: '2026-11-10',
+        amount: 200_000,
+        accountId: 'demo-acc-event',
+        categoryId: null,
+        memo: '렌터카 예약',
+        tripId: trip.trip.id,
+        tripItem: 'transport',
+        paidBy: '민지',
+        claimAccountId: 'demo-acc-living',
+      } as never);
+    });
+    const link = within(card).getByRole('link', { name: /^제주 여행,/ });
+    await waitFor(() => expect(link.textContent).toContain('쓴 돈 65만 / 예산 90만'));
+    fireEvent.click(within(card).getByRole('button', { name: '제주 여행 미리 낸 돈 펼치기' }));
+    const row = within(card).getByText('렌터카 예약').closest('li')!;
+    expect(row.textContent).toContain('민지 냄');
+    expect(row.textContent).toContain('줄 돈');
+    expect(row.textContent).toContain('200,000원');
+  });
+});

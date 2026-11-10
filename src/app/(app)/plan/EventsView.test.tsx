@@ -274,14 +274,14 @@ describe('EventsView — 체험 가계부', () => {
     const link = within(card).getByRole('link', { name: /제주 여행/ });
     expect(link.getAttribute('href')).toBe('/plan/trips?id=demo-trip-jeju');
     expect(link.textContent).toContain('여행');
-    expect(link.textContent).toContain('45만 / 90만');
+    expect(link.textContent).toContain('쓴 돈 45만 / 예산 90만');
     expect(link.textContent).toContain('남은 45만');
     // 일정과 함께 떠나는 날의 달에, 날짜순으로
     const febList = within(card).getByRole('list', { name: '2027년 2월' });
     expect(within(febList).getByRole('link', { name: /제주 여행/ })).toBe(link);
     // 링크 이름은 짧게 한 번씩만: 막대는 화면 읽기에서 숨기고 숫자는 이름에 한 번
     expect(within(card).queryByRole('progressbar')).toBeNull();
-    expect(link.getAttribute('aria-label')).toMatch(/^제주 여행, .+, 900,000원 중 450,000원 썼어요, 남은 예산 450,000원$/);
+    expect(link.getAttribute('aria-label')).toMatch(/^제주 여행, .+, 900,000원 중 450,000원 썼어요(, 미리 낸 돈 \d건 포함)?, 남은 예산 450,000원$/);
     // 남은 예산은 여행 달 예측에 '여행 남은 예산'으로 들어가요
     const feb = h.probe.ledger!.eventProjection!.months.find((m) => m.tripList?.length)!;
     expect(feb.trips).toBe(450_000);
@@ -307,6 +307,10 @@ describe('EventsView — 체험 가계부', () => {
     const added = h.probe.ledger!.trips.find((t) => t.trip.name === '오사카')!;
     expect(added.budget).toBe(400_000);
     expect(await within(screen.getByRole('region', { name: /^일정 · / })).findByRole('link', { name: /오사카/ })).toBeTruthy();
+    // 미리 낸 돈이 없으면 그 문구와 [펼치기]가 없어요
+    const osaka = within(screen.getByRole('region', { name: /^일정 · / })).getByRole('link', { name: /오사카/ });
+    expect(osaka.textContent).not.toContain('미리 낸 돈');
+    expect(screen.queryByRole('button', { name: '오사카 미리 낸 돈 펼치기' })).toBeNull();
   });
 
   it('일정이 하나도 없으면 예시와 함께 빈 상태를 보여요', async () => {
