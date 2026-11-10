@@ -19,6 +19,7 @@ import {
   revisedAmounts,
   autoTransferId,
   endBillSeries,
+  canAutoFill,
   isDatedBill,
   normalizeBill,
   splitBillAmount,
@@ -1361,7 +1362,11 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       if (isRemainderRule(input) && conflictingRemainderRule(requireData().data, input)) {
         throw new Error('같은 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요');
       }
-      const row: AllocationRule = isRemainderRule(input) ? { ...input, amount: 0, id: newId(), deleted: false } : { ...input, id: newId(), deleted: false };
+      if (input.kind === 'auto' && !canAutoFill(requireData().data.accounts.find((a) => a.id === input.toAccountId))) {
+        throw new Error('필요한 만큼은 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요');
+      }
+      const computed = isRemainderRule(input) || input.kind === 'auto';
+      const row: AllocationRule = computed ? { ...input, amount: 0, id: newId(), deleted: false } : { ...input, id: newId(), deleted: false };
       await insertRows('rules', [row], '매달 배분을 추가하지 못했어요');
       await syncAutoNow();
       return row;

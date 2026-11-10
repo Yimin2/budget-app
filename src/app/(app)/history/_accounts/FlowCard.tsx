@@ -1,4 +1,4 @@
-import { formatMonthKo, formatWon } from '@/domain';
+import { formatMonthKo, formatWon, type RemainderView } from '@/domain';
 import { Banner, Button, Card, EmptyState, Icon, Money, cx } from '@/ui';
 import type { FlowSummary } from './selectors';
 import styles from './accounts.module.css';
@@ -12,7 +12,7 @@ function pct(part: number, whole: number): string {
 }
 
 /** 월급 → 수입통장 → 각 통장. 매달 배분을 가로 막대 + 목록으로, 배분이 수입보다 많으면 경고 */
-export function FlowCard({ flow, thisYear }: { flow: FlowSummary; thisYear: number }) {
+export function FlowCard({ flow, thisYear, remainders = [] }: { flow: FlowSummary; thisYear: number; remainders?: RemainderView[] }) {
   const settingsLink = (
     <Button href="/budget#st-rules" variant="ghost" iconRight="chevron-right" className={styles.cardLink}>
       바꾸기
@@ -93,6 +93,19 @@ export function FlowCard({ flow, thisYear }: { flow: FlowSummary; thisYear: numb
           </li>
         ) : null}
       </ul>
+
+      {remainders.length > 0 ? (
+        <ul className={styles.sources} aria-label="나머지 전부 보내기 예상">
+          {remainders.map((v) => (
+            <li key={v.rule.id}>
+              <span className={styles.legendName} style={v.empty ? { color: 'var(--danger-text)', fontWeight: 500 } : undefined}>
+                {v.text}
+              </span>
+              {v.monthlyText ? <span className={styles.sourceNums}>{v.monthlyText}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <dl className={styles.flowTotals}>
         <div>
