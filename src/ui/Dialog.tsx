@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Button } from './Button';
 import { cx } from './cx';
 import { MOTION_MS, motionAllowed } from './motion';
+import { holdRefresh } from './refreshGate';
 
 export interface DialogProps {
   open: boolean;
@@ -95,6 +96,8 @@ export function Dialog({
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
     openCount += 1;
+    // 창이 열려 있는 동안 자동 새로고침을 멈춰요 (닫히면 미뤄 둔 새로고침을 해요)
+    const releaseRefresh = holdRefresh();
     document.body.setAttribute('data-scroll-lock', '');
 
     const panel = panelRef.current;
@@ -132,6 +135,7 @@ export function Dialog({
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      releaseRefresh();
       openCount -= 1;
       if (openCount <= 0) {
         openCount = 0;

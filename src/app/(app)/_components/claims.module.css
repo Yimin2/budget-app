@@ -439,17 +439,20 @@
   }
 }
 
-/* 한 줄 요약 카드 (이번 달 정산 · 저수지에 갚을 돈) */
-.lineCard {
-  display: flex;
+/* 한 줄 요약 카드 (이번 달 정산 · 저수지에 갚을 돈)
+ * 전역 .card 는 flex-direction: column 이에요. 방향을 row 로 확실히 덮어쓰고(:global(.card) 로 우선순위를 올려
+ * CSS 불러오는 순서와 상관없게), 글 칸도 flex-basis 를 너비로 쓰지 않아 세로로 늘어나지 않게 해요 */
+:global(.card).lineCard {
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-4) var(--space-5);
 }
 .oneLine {
-  flex: 1 1 220px;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: min(12em, 100%);
   margin: 0;
   font-size: 16px;
   line-height: 26px;
@@ -466,24 +469,61 @@
 .lineBtn {
   flex: none;
 }
-.lineDetails {
-  flex: 1 1 100%;
+
+/* 저수지에 갚을 돈: 펼치기 없이 한 카드에 줄 몇 개 */
+:global(.card).loanCard {
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+}
+.lineRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
   min-width: 0;
 }
-.lineDetails > summary {
+.rowText {
+  flex: 1 1 0;
+  min-width: min(10em, 100%);
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+/* 긴 문구라 줄바꿈을 허용해요 (.btn 은 nowrap · 높이 44px 고정) */
+:global(.btn).convertBtn {
+  align-self: stretch;
+  height: auto;
   min-height: 44px;
-  display: flex;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  white-space: normal;
+  line-height: 22px;
+  text-align: left;
+  justify-content: flex-start;
+}
+.lineLink {
+  align-self: flex-start;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  min-height: 44px;
   font-size: 15px;
   font-weight: 500;
   color: var(--primary);
-  cursor: pointer;
-  list-style: none;
+  text-decoration: none;
 }
-.lineDetails > summary::-webkit-details-marker {
-  display: none;
+.lineLink:hover {
+  text-decoration: underline;
 }
-.lineDetails[open] .moreChev {
-  transform: rotate(180deg);
+
+/* 정산 화면 저수지 칸의 작은 제목 */
+.sectionHead {
+  margin: var(--space-3) 0 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 700;
 }

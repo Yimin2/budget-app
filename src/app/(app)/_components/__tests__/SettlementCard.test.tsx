@@ -47,7 +47,7 @@ describe('이번 달 정산 한 줄 요약', () => {
     });
     const upcoming = L(h).settlement!.upcoming[0]!;
     await waitFor(() => expect(within(card).getByTestId('settlement-line').textContent).toContain('이번 달 줄 돈이 없어요'));
-    expect(card.textContent).toContain(`다음 ${formatShortDate(upcoming.due)} 2.4만`);
+    expect(card.textContent).toContain(`다음 정산 ${formatShortDate(upcoming.due)} 2.4만`);
     expect(within(card).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
 
     const rest = L(h).settlement!.upcoming.flatMap((g) => g.claims.map((c) => c.expense.id));

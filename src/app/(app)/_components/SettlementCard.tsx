@@ -46,9 +46,9 @@ export function peopleManText(people: { name: string; amount: number }[]): strin
   return people.map((p) => `${p.name} ${formatMan(p.amount)}`).join(' · ');
 }
 
-/** 줄 돈이 없을 때 덧붙일 다음 정보: '다음 12/1 2.4만' · '넘어간 돈 35만 · 12월쯤' */
+/** 줄 돈이 없을 때 덧붙일 다음 정보: '다음 정산 12/1 2.4만' · '넘어간 돈 35만 · 12월쯤' */
 function nextText(sum: SettlementSummary, baseYear: number): string | null {
-  if (sum.next) return `다음 ${formatShortDate(sum.next.date)} ${formatMan(sum.next.amount)}`;
+  if (sum.next) return `다음 정산 ${formatShortDate(sum.next.date)} ${formatMan(sum.next.amount)}`;
   if (sum.carry) {
     const when = sum.carry.estimate ? `${formatMonthKo(sum.carry.estimate, baseYear)}쯤` : '12개월 안에는 어려워요';
     return `넘어간 돈 ${formatMan(sum.carry.amount)} · ${when}`;

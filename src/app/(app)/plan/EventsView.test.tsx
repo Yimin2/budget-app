@@ -47,7 +47,7 @@ describe('EventsView — 체험 가계부', () => {
     expect(thisMonth.claims).toBe(300_000);
   });
 
-  it('저수지에 갚을 돈 카드: 한 줄(갚을 돈 · 갚기 제안 · [갚았어요]) + 자세히, 저수지에서 쓴 이벤트 지출은 갚을 돈으로 바꿀 수 있어요', async () => {
+  it('저수지에 갚을 돈 카드: 펼치기 없이 갚을 돈 · 이번 달 갚기 [갚았어요] · 기록은 정산 화면 링크', async () => {
     const h = await renderEvents();
     expect(screen.queryByRole('region', { name: '저수지에 갚을 돈' })).toBeNull();
     await act(async () => {
@@ -56,42 +56,38 @@ describe('EventsView — 체험 가계부', () => {
     const card = await screen.findByRole('region', { name: '저수지에 갚을 돈' });
     const s = h.probe.ledger!.settlement!;
     expect(s.loan.balance).toBe(300_000);
-    const line = card.querySelector('p')!.textContent!;
-    expect(line).toMatch(/^저수지에 갚을 돈 30만/);
+    expect(within(card).getByTestId('loan-line').textContent).toBe('저수지에 갚을 돈 30만');
     if (s.repay) {
-      expect(line).toContain(`이번 달 갚기 제안 ${formatMan(s.repay.amount)}`);
+      expect(card.textContent).toContain(`이번 달 ${formatMan(s.repay.amount)} 갚기`);
       expect(within(card).getByRole('button', { name: `저수지에 ${formatWon(s.repay.amount)} 갚았어요` })).toBeTruthy();
     }
-    expect(within(card).getByText(/저수지에 줘야 할 돈은 없고/)).toBeTruthy();
-    expect(card.textContent).toContain('민지에게 지급 · 제주 항공권');
-    expect(card.textContent).toContain('저수지에서 지급');
+    // 펼치기 · 창 없이: 기록과 하나씩 바꾸기는 정산 화면 저수지 칸으로
+    expect(card.querySelector('details')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(within(card).getByRole('link', { name: /빌리고 갚은 기록 1건/ }).getAttribute('href')).toBe('/plan/settle#loan');
+    expect(card.textContent).not.toContain('민지에게 지급 · 제주 항공권');
     // 정산 요약 카드에는 갚을 돈이 없어요
     expect(screen.getByRole('region', { name: '이번 달 정산' }).textContent).not.toContain('갚을 돈');
-
-    const cat = h.probe.ledger!.data!.categories.find((c) => !c.deleted && c.defaultAccountRole === 'event')!;
-    await act(async () => {
-      await h.probe.ledger!.addExpense({ date: '2026-10-05', amount: 200_000, accountId: 'demo-acc-reservoir', categoryId: cat.id, memo: '돌잔치' });
-    });
-    await act(async () => {
-      fireEvent.click(within(card).getByRole('button', { name: '돌잔치 200,000원 이벤트통장이 갚을 돈으로 바꾸기' }));
-    });
-    await screen.findByText('200,000원을 이벤트통장이 갚을 돈으로 바꿨어요');
-    expect(h.probe.ledger!.settlement!.loan.balance).toBe(500_000);
   });
 
-  it('[갚았어요]는 이번 달 갚은 이체를 남기고 한 줄이 갚은 금액으로 바뀌어요', async () => {
+  it('[갚았어요]는 이번 달 갚은 이체를 남기고 "이번 달 10만 갚았어요 · [되돌리기]"가 바로 보여요', async () => {
     const h = await renderEvents();
     await act(async () => {
       await h.probe.ledger!.borrowAndSettleClaims(['demo-claim-jeju']);
       await h.probe.ledger!.repayLoan(100_000);
     });
     const card = await screen.findByRole('region', { name: '저수지에 갚을 돈' });
-    expect(card.querySelector('p')!.textContent).toBe('저수지에 갚을 돈 20만 · 이번 달 10만 갚았어요');
+    expect(within(card).getByTestId('loan-line').textContent).toBe('저수지에 갚을 돈 20만');
+    expect(card.textContent).toContain('이번 달 10만 갚았어요');
     expect(within(card).queryByRole('button', { name: /갚았어요$/ })).toBeNull();
-    expect(within(card).getByRole('button', { name: '되돌리기' })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '이번 달 100,000원 갚은 기록 되돌리기' }));
+    });
+    await screen.findByText('갚은 기록을 되돌렸어요');
+    expect(h.probe.ledger!.settlement!.loan.balance).toBe(300_000);
   });
 
-  it('저수지에서 이미 지급한 이벤트 청구는 이 카드에서 한 번에 갚을 돈으로 바꿔요 (잔액 그대로)', async () => {
+  it('저수지에서 이미 지급한 이벤트 청구는 이 카드의 버튼 하나로 갚을 돈으로 바꿔요 (잔액 그대로)', async () => {
     const h = await renderEvents();
     const L = h.probe.ledger!;
     const cat = L.data!.categories.find((c) => !c.deleted && c.defaultAccountRole === 'event')!;
@@ -105,16 +101,15 @@ describe('EventsView — 체험 가계부', () => {
     });
     const before = { ...h.probe.ledger!.balances };
     const card = await screen.findByRole('region', { name: '저수지에 갚을 돈' });
-    expect(card.textContent).toContain('바꿀 수 있는 기록 2건');
+    const name = '저수지에서 이미 지급한 이벤트 청구 2건 100,000원을 갚을 돈으로 바꾸기';
     await act(async () => {
-      fireEvent.click(within(card).getByRole('button', { name: '2건 100,000원을 저수지에 갚을 돈으로 바꿔요' }));
+      fireEvent.click(within(card).getByRole('button', { name }));
     });
     await screen.findByText('2건 100,000원을 저수지에 갚을 돈으로 바꿨어요');
     expect(h.probe.ledger!.settlement!.loan.balance).toBe(100_000);
     expect(h.probe.ledger!.balances).toEqual(before);
-    expect(within(card).queryByRole('button', { name: /저수지에 갚을 돈으로 바꿔요/ })).toBeNull();
+    expect(within(card).queryByRole('button', { name })).toBeNull();
   });
-
 
   it('불러오는 동안 뼈대, 다 불러오면 잔액 · 매달 적립 · 12개월 막대 · 부족 알림', async () => {
     const h = makeHarness();

@@ -100,6 +100,7 @@ import type {
 import { isGoogleError } from '@/google/errors';
 import { StorageError } from '@/storage/sheets';
 import type { LedgerRef, LedgerRepository, TableName, TableRows } from '@/storage/types';
+import { isRefreshHeld, onRefreshGateChange } from '@/ui/refreshGate';
 import { useSession, useSessionInternals } from './session';
 import type { ImportFile } from '@/domain/importFile';
 import type { LedgerApi, NewEvent, NewExpense, NewInstallment, NewTrip } from './types';
@@ -120,6 +121,19 @@ function isReconnectError(e: unknown): boolean {
 }
 
 const RECONNECT_MESSAGE = '구글 연결이 끊겼어요. 아래 버튼으로 다시 연결해 주세요';
+/** 시트를 못 읽어 보관한 내용을 보여 줄 때 (읽기 전용) */
+export const OFFLINE_MESSAGE = '연결이 안 돼서 마지막으로 맞춘 내용을 보여 줘요';
+/** 연결이 안 된 동안 쓰기를 막을 때 */
+export const OFFLINE_WRITE_MESSAGE = '연결되면 다시 시도해 주세요';
+/** 다시 보거나 창으로 돌아왔을 때 자동 새로고침 간격 (최소) */
+export const AUTO_REFRESH_MS = 60_000;
+
+/** 연결 자체가 안 된 실패 (인터넷 끊김) */
+function isNetworkFailure(e: unknown): boolean {
+  if (e instanceof StorageError) return e.status === 0;
+  if (e instanceof TypeError) return true;
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
 
 type Keyed = { id: string } | { month: string } | { email: string };
 function keyOfRow(row: Keyed): string {
@@ -203,13 +217,24 @@ function msUntilNextMidnight(now: Date): number {
 
 /* ---------- 컨텍스트 ---------- */
 
-interface LoadedState {
+interface SyncMeta {
+  /** 시트와 마지막으로 맞춘 시각 (ISO). 보관한 내용이면 보관할 때 시각 */
+  syncedAt: string | null;
+  /** 지금 보이는 데이터가 보관한 내용(아직 시트에서 못 읽음)인지 */
+  fromCache: boolean;
+  /** 시트를 못 읽어 보관한 내용을 읽기 전용으로 보여 주는 중 */
+  offline: boolean;
+}
+
+interface LoadedState extends SyncMeta {
   repo: LedgerRepository;
   status: 'ready' | 'error';
   error: string | null;
   data: LedgerData | null;
   needsReconnect?: boolean;
 }
+
+const NO_SYNC: SyncMeta = { syncedAt: null, fromCache: false, offline: false };
 
 const LedgerContext = createContext<LedgerApi | null>(null);
 
@@ -224,6 +249,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
 
   const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [savingCount, setSavingCount] = useState(0);
+  const [loadingCount, setLoadingCount] = useState(0);
   const [today, setToday] = useState<ISODate>(() => toISODate(deps.now()));
 
   const refKey = ref ? `${ref.source}:${ref.id}` : null;
@@ -237,6 +263,15 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const todayRef = useRef(today);
   const authorRef = useRef(author);
   const selfRef = useRef(self);
+  /** 보관(캐시)할 계정: 구글 로그인일 때만. 체험 · 브라우저 저장 가계부는 보관하지 않아요 */
+  const cacheEmail = session.mode === 'google' ? (session.user?.email ?? null) : null;
+  const cacheEmailRef = useRef(cacheEmail);
+  /** 지금 가계부의 동기화 상태 (핸들러용) */
+  const syncRef = useRef<SyncMeta>(NO_SYNC);
+  /** 마지막 불러오기 실패 (아직 보이는 데이터가 없을 때 보관한 내용이 늦게 오면 씀) */
+  const lastFailure = useRef<{ reconnect: boolean; network: boolean } | null>(null);
+  /** 마지막 불러오기를 시작한 시각 (ms, 자동 새로고침 간격) */
+  const lastLoadAt = useRef(0);
   /** 마지막 불러오기에서 공유 목록을 읽었는지 (공유 목록 새로고침 결과) */
   const sharingRef = useRef<'synced' | 'unavailable'>('unavailable');
   const dataRef = useRef<{ repo: LedgerRepository; data: LedgerData } | null>(null);
@@ -250,6 +285,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     todayRef.current = today;
     authorRef.current = author;
     selfRef.current = self;
+    cacheEmailRef.current = cacheEmail;
   });
 
   const current = repository && loaded && loaded.repo === repository ? loaded : null;
@@ -257,16 +293,36 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const data = current?.data ?? null;
   const error = current?.error ?? null;
   const needsReconnect = current?.needsReconnect ?? false;
+  const syncedAt = current?.syncedAt ?? null;
+  const fromCache = current?.fromCache ?? false;
+  const offline = current?.offline ?? false;
 
-  /** 현재 가계부의 데이터 교체 (화면 + 핸들러용 ref) */
-  const setDataBoth = useCallback((d: LedgerData) => {
+  /** 현재 가계부의 데이터 교체 (화면 + 핸들러용 ref). meta 를 주지 않으면 동기화 상태는 그대로 */
+  const setDataBoth = useCallback((d: LedgerData, meta?: SyncMeta) => {
     const repo = repoRef.current;
     if (!repo) return;
     dataRef.current = { repo, data: d };
-    setLoaded({ repo, status: 'ready', error: null, data: d });
+    const next = meta ?? syncRef.current;
+    syncRef.current = next;
+    setLoaded({ repo, status: 'ready', error: next.offline ? OFFLINE_MESSAGE : null, data: d, ...next });
   }, []);
 
   const nowIso = useCallback(() => deps.now().toISOString(), [deps]);
+
+  /**
+   * 시트와 맞춘 데이터를 보관해요 (구글 시트 가계부만). 아직 저장 중인 쓰기가 있으면 건너뛰어요
+   * (그 쓰기가 끝날 때 보관해요. 실패할 수 있는 쓰기가 보관되지 않게)
+   */
+  const saveCache = useCallback(
+    (repo: LedgerRepository, d: LedgerData, at: string | null) => {
+      const cache = deps.cache;
+      const email = cacheEmailRef.current;
+      if (!cache || !email || !at || repo.ref.source !== 'sheets') return;
+      if (writes.current.some((w) => w.doneAt === null)) return;
+      void cache.write(email, repo.ref.id, d, at);
+    },
+    [deps],
+  );
 
   /**
    * loadStart 시점에 시작한 불러오기 결과 위에, 그 뒤에 끝났거나 아직 저장 중인 쓰기를 다시 얹는다.
@@ -384,43 +440,116 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     if (!repo) return;
     const token = ++loadToken.current;
     const loadStart = ++clock.current;
+    lastLoadAt.current = deps.now().getTime();
+    setLoadingCount((n) => n + 1);
     try {
       const fresh = await syncMembers(repo, await repo.load());
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
-      setDataBoth(withPendingWrites(synced, loadStart));
+      const merged = withPendingWrites(synced, loadStart);
+      const at = nowIso();
+      lastFailure.current = null;
+      setDataBoth(merged, { syncedAt: at, fromCache: false, offline: false });
+      saveCache(repo, merged, at);
     } catch (e) {
       if (token !== loadToken.current || repo !== repoRef.current) return;
       const reconnect = isReconnectError(e);
-      const message = reconnect ? RECONNECT_MESSAGE : koreanMessage(e, '가계부를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      const network = isNetworkFailure(e);
+      lastFailure.current = { reconnect, network };
       const prev = dataRef.current?.repo === repo ? dataRef.current.data : null;
+      // 보관한 내용만 보이는 채로 시트를 못 읽었거나 인터넷이 끊겼으면 읽기 전용으로 보여 줘요
+      const isOffline = !!prev && ((!reconnect && syncRef.current.fromCache) || network);
+      const meta: SyncMeta = { ...syncRef.current, offline: isOffline };
+      syncRef.current = meta;
+      const message = isOffline
+        ? OFFLINE_MESSAGE
+        : reconnect
+          ? RECONNECT_MESSAGE
+          : koreanMessage(e, '가계부를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요');
       // 이미 보이는 데이터가 있으면 그대로 두고 오류만 알린다
-      setLoaded({ repo, status: prev ? 'ready' : 'error', error: message, data: prev, needsReconnect: reconnect });
+      setLoaded({ repo, status: prev ? 'ready' : 'error', error: message, data: prev, needsReconnect: reconnect, ...meta });
+    } finally {
+      setLoadingCount((n) => n - 1);
     }
-  }, [setDataBoth, syncMembers, syncAutoRecords, withPendingWrites]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, syncAutoRecords, withPendingWrites]);
+  const loadAllRef = useRef(loadAll);
+  useEffect(() => {
+    loadAllRef.current = loadAll;
+  });
 
   // 가계부가 바뀌면 다시 읽기
   useEffect(() => {
     dataRef.current = null;
     writes.current = [];
+    syncRef.current = NO_SYNC;
+    lastFailure.current = null;
     if (!repository) {
       loadToken.current++;
       return;
     }
+    // 보관한 내용이 있으면 먼저 그려요 (맞추는 중). 시트에서 먼저 읽혔으면 쓰지 않아요
+    const cache = deps.cache;
+    const email = cacheEmailRef.current;
+    if (cache && email && repository.ref.source === 'sheets') {
+      const repo = repository;
+      void cache.read(email, repo.ref.id).then((hit) => {
+        if (!hit || repoRef.current !== repo || dataRef.current !== null) return;
+        const failed = lastFailure.current;
+        const isOffline = !!failed && (!failed.reconnect || failed.network);
+        setDataBoth(hit.data, { syncedAt: hit.savedAt, fromCache: true, offline: isOffline });
+        if (failed && !isOffline) {
+          // 구글 다시 연결이 필요해요: 보관한 내용은 보여 주고 연결 안내는 그대로
+          setLoaded((prev) => (prev && prev.repo === repo ? { ...prev, error: RECONNECT_MESSAGE, needsReconnect: true } : prev));
+        }
+      });
+    }
     void loadAll();
-  }, [repository, loadAll]);
+  }, [repository, loadAll, deps, setDataBoth]);
 
-  // 날짜 바뀜: 자정 / 창 포커스
+  /**
+   * 다시 보거나 창으로 돌아왔을 때 자동 새로고침: 1분에 한 번까지. 창 · 시트가 열려 있거나 입력 중이면
+   * 미뤄 두고, 닫히면 해요
+   */
+  const deferredRefresh = useRef(false);
+  const autoRefresh = useCallback(
+    (opts?: { ignoreInterval?: boolean }) => {
+      if (!repoRef.current || dataRef.current?.repo !== repoRef.current) return;
+      if (!opts?.ignoreInterval && deps.now().getTime() - lastLoadAt.current < AUTO_REFRESH_MS) return;
+      if (isRefreshHeld()) {
+        deferredRefresh.current = true;
+        return;
+      }
+      deferredRefresh.current = false;
+      void loadAllRef.current();
+    },
+    [deps],
+  );
+  useEffect(
+    () =>
+      onRefreshGateChange(() => {
+        if (deferredRefresh.current && !isRefreshHeld()) autoRefresh({ ignoreInterval: true });
+      }),
+    [autoRefresh],
+  );
+
+  // 날짜 바뀜: 자정 / 창 포커스 (날짜가 그대로면 자동 새로고침)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const refresh = () => {
+    const updateDay = () => {
       const d = toISODate(deps.now());
       setToday((prev) => (prev === d ? prev : d));
     };
+    const refresh = () => {
+      const d = toISODate(deps.now());
+      // 날짜가 바뀌었으면 아래 '날짜가 바뀌면' 효과가 다시 읽어요
+      if (d !== todayRef.current) updateDay();
+      else autoRefresh();
+    };
+    const onOnline = () => autoRefresh({ ignoreInterval: true });
     const schedule = () => {
       timer = setTimeout(() => {
-        refresh();
+        updateDay();
         schedule();
       }, msUntilNextMidnight(deps.now()));
     };
@@ -429,13 +558,15 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState === 'visible') refresh();
     };
     window.addEventListener('focus', refresh);
+    window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [deps]);
+  }, [deps, autoRefresh]);
 
   // 날짜가 바뀌면 새 자동 기록 확인 (화면은 그대로)
   const lastSyncedDay = useRef(today);
@@ -454,6 +585,11 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     return { repo, data: d.data };
   }, []);
 
+  /** 연결이 안 돼 보관한 내용을 보여 주는 중이면 쓰기를 막아요 */
+  const requireOnline = useCallback(() => {
+    if (syncRef.current.offline) throw new Error(OFFLINE_WRITE_MESSAGE);
+  }, []);
+
   /**
    * 화면에 먼저 반영하고 저장한다. 실패하면 되돌리고 한국어 오류를 던진다.
    * multiStep: 저장이 여러 번의 쓰기라 일부만 저장됐을 수 있으면 true → 실패 때 저장본을 다시 읽어 화면을 맞춘다
@@ -465,6 +601,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       failMessage: string,
       opts?: { multiStep?: boolean },
     ): Promise<void> => {
+      requireOnline();
       const { repo, data: before } = requireData();
       const optimistic = apply(before);
       const entry: PendingWrite = { apply, doneAt: null };
@@ -474,6 +611,9 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       try {
         await persist(repo);
         entry.doneAt = ++clock.current;
+        // 시트에 저장됐으면 보관한 내용도 바꿔요 (맞춘 시각은 마지막 불러오기 그대로)
+        const shown = dataRef.current;
+        if (shown && shown.repo === repo && repoRef.current === repo) saveCache(repo, shown.data, syncRef.current.syncedAt);
       } catch (e) {
         writes.current = writes.current.filter((w) => w !== entry);
         const untouched = dataRef.current?.data === optimistic;
@@ -485,7 +625,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         setSavingCount((n) => n - 1);
       }
     },
-    [requireData, setDataBoth, loadAll],
+    [requireOnline, requireData, setDataBoth, loadAll, saveCache],
   );
 
   const upsertRow = useCallback(
@@ -1903,6 +2043,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
 
   const decideMonthEnd = useCallback(
     async (choice: 'reservoir' | 'carryover') => {
+      requireOnline();
       const { repo, data: d } = requireData();
       const day = todayRef.current;
       // 공용 가계부: 먼저 고른 사람의 선택을 따른다
@@ -1941,7 +2082,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         { multiStep: true },
       );
     },
-    [requireData, setDataBoth, mutate, nowIso, withPendingWrites],
+    [requireOnline, requireData, setDataBoth, mutate, nowIso, withPendingWrites],
   );
 
   /* ---------- 멤버·이름 ---------- */
@@ -1970,6 +2111,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     async (email: string, name: string, incomeAccountId?: Id | null) => {
       const clean = email.trim();
       if (!/^[^\s@]+@[^\s@]+$/.test(clean)) throw new Error('이메일 주소를 확인해 주세요');
+      requireOnline();
       const { repo } = requireData();
       const backend = backendFor(repo.ref);
       try {
@@ -1988,7 +2130,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       await upsertRow('members', member, '멤버를 저장하지 못했어요');
       if (incomeAccountId) await linkMemberAccount(clean, incomeAccountId);
     },
-    [requireData, backendFor, upsertRow, linkMemberAccount],
+    [requireOnline, requireData, backendFor, upsertRow, linkMemberAccount],
   );
 
   const renameLedger = useCallback(
@@ -2041,6 +2183,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   );
 
   const reload = useCallback(() => loadAll(), [loadAll]);
+  const sync = useMemo<LedgerApi['sync']>(
+    () => ({ syncing: loadingCount > 0, syncedAt, fromCache, offline }),
+    [loadingCount, syncedAt, fromCache, offline],
+  );
   const refreshSharing = useCallback(async () => {
     await loadAll();
     return sharingRef.current;
@@ -2056,6 +2202,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       today,
       saving: savingCount > 0,
       reload,
+      sync,
+      now: deps.now,
       living,
       livingViews,
       myLivingAccountId: myLivingId,
@@ -2142,7 +2290,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       displayName,
     }),
     [
-      status, error, needsReconnect, ref, data, today, savingCount, reload, living, livingViews, myLivingId, livingFor, spenders,
+      status, error, needsReconnect, ref, data, today, savingCount, reload, sync, deps.now, living, livingViews, myLivingId, livingFor, spenders,
       mySpender, addIncomePlan, saveIncomePlan, balances, eventProjection, shortageFix,
       pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
       previewClaimDue, settleClaims, unsettleClaims, settlement, loanCandidates, borrowAndSettleClaims, repayLoan,

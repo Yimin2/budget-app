@@ -106,7 +106,15 @@ export interface LedgerApi {
   data: LedgerData | null;
   today: ISODate;
   saving: boolean;
+  /** 시트에서 다시 읽기 (새로고침 버튼 · 당겨서 새로고침도 이걸 불러요). 저장 중인 쓰기와 합쳐요 */
   reload(): Promise<void>;
+  /**
+   * 시트와 맞춘 상태 (PLAN 7). syncing: 읽는 중 · syncedAt: 마지막으로 맞춘 시각(ISO) ·
+   * fromCache: 보관한 내용을 보여 주는 중(아직 시트에서 못 읽음) · offline: 시트를 못 읽어 읽기 전용(쓰기는 막혀요)
+   */
+  sync: { syncing: boolean; syncedAt: string | null; fromCache: boolean; offline: boolean };
+  /** 지금 시각 (테스트에서 고정한 시계를 따라가요) */
+  now(): Date;
 
   // 계산값 (data 가 있을 때)
   /** 생활비 (사람별 생활비 통장이 여럿이면 모두 합친 것) */
