@@ -5,7 +5,6 @@ import { PageHeader } from '@/ui';
 import { HashTarget } from '../_components/HashTarget';
 import { PageSkeleton } from '../_components/PageSkeleton';
 import { RequireLedger } from '../_components/RequireLedger';
-import { AllocationNeedsCard } from '../settings/sections/AllocationNeedsCard';
 import { FixedCard } from '../settings/sections/FixedCard';
 import { IncomePlansCard } from '../settings/sections/IncomePlansCard';
 import { InstallmentCard } from '../settings/sections/InstallmentCard';
@@ -50,7 +49,6 @@ export default function BudgetPage() {
                 <IncomePlansCard ledger={ledger} />
                 <RulesCard ledger={ledger} />
               </div>
-              <AllocationNeedsCard ledger={ledger} />
             </BudgetSection>
             <BudgetSection index={1}>
               <LivingCard ledger={ledger} />

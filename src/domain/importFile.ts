@@ -828,7 +828,7 @@ export function planImport(
       continue;
     }
     if (r.kind === 'auto' && !canAutoFill(accountRow(to))) {
-      errors.push(`매달 배분 '${r.key}': 필요한 만큼(auto)은 생활비 · 용돈 통장으로 보내는 배분에서만 써요`);
+      errors.push(`매달 배분 '${r.key}': 알아서 맞추기(auto)는 생활비 · 용돈 통장으로 보내는 배분에서만 써요`);
       continue;
     }
     const row: AllocationRule = {
@@ -836,7 +836,7 @@ export function planImport(
       startMonth: r.startMonth, endMonth: r.endMonth, kind: r.kind, deleted: false,
     };
     if (r.kind === 'remainder' && conflictingRemainderRule(work, row)) {
-      errors.push(`매달 배분 '${r.key}': 같은 통장 · 같은 날에 나머지 전부 보내기가 이미 있어요. 하나만 둘 수 있어요`);
+      errors.push(`매달 배분 '${r.key}': 같은 통장 · 같은 날에 남는 돈 전부가 이미 있어요. 하나만 둘 수 있어요`);
       continue;
     }
     rows.rules.push(row);
@@ -1031,7 +1031,7 @@ export function planImport(
   const activeRules = data.rules.filter((r) => !r.deleted).length;
   if (rows.rules.length > 0 && activeRules > 0) warnings.push(`가계부에 매달 배분이 이미 ${activeRules}개 있어요. 가져오면 함께 더해져요`);
   const remainderCount = rows.rules.filter((r) => r.kind === 'remainder').length;
-  if (remainderCount > 0) warnings.push(`나머지 전부 보내기 ${remainderCount}개는 그날 남은 돈을 모두 보내요. 금액은 그날 기록될 때 정해져요`);
+  if (remainderCount > 0) warnings.push(`남는 돈 전부 ${remainderCount}개는 그날 남은 돈을 모두 보내요. 금액은 그날 기록될 때 정해져요`);
   const activePlans = (data.incomePlans ?? []).filter((p) => !p.deleted).length;
   if (rows.incomePlans.length > 0 && activePlans > 0) warnings.push(`가계부에 수입 계획이 이미 ${activePlans}개 있어요. 가져오면 함께 더해져요`);
   if (rows.incomePlans.length > 0) warnings.push('수입 계획은 받는 날마다 수입을 자동으로 기록해요. 같은 월급을 손으로 또 기록하지 마세요');

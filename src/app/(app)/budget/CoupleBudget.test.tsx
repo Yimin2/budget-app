@@ -9,6 +9,7 @@ const nav = vi.hoisted(() => ({
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => nav.router, usePathname: () => '/budget' }));
 
+import { formatMan, ruleNext } from '@/domain';
 import BudgetPage from './page';
 
 afterEach(cleanup);
@@ -28,21 +29,52 @@ describe('예산 — 부부 예시', () => {
     const rules = card('매달 배분');
     const preview = within(rules).getByRole('list', { name: '월급날마다 보내는 돈' });
     expect(within(preview).getAllByRole('listitem').map((li) => li.firstChild?.textContent)).toEqual([
-      '21일: 320만 → 생활비(민지) 90만 · 생활비(준호) 110만 · 이벤트 30만 · 나머지 90만 → 저수지',
-      '25일: 280만 → 용돈(민지) 40만 · 용돈(준호) 35만 · 저축투자 100만 · 나머지 105만 → 저수지',
+      '21일: 320만 → 생활비(민지) 90만 · 생활비(준호) 110만 · 이벤트 30만 · 남는 돈 전부 90만 → 저수지',
+      '25일: 280만 → 용돈(민지) 40만 · 용돈(준호) 35만 · 저축투자 100만 · 남는 돈 전부 105만 → 저수지',
     ]);
     // 나머지 예상 (PLAN 4-15): 다음 회차 예상과 매달 약
-    expect(within(preview).getByText('나머지 전부 → 저수지 · 다음 21일 예상 900,000원')).toBeTruthy();
+    expect(within(preview).getByText('남는 돈 전부 → 저수지 · 다음 21일 예상 900,000원')).toBeTruthy();
     expect(within(preview).getByText('저수지로 매달 약 105만원')).toBeTruthy();
-    // 다음 배분에 필요한 금액: 생활비 · 용돈 통장마다 한 줄
-    const needs = card('다음 배분에 필요한 금액');
-    expect(within(needs).getByText(/^생활비\(민지\)/)).toBeTruthy();
-    expect(within(rules).getByText('나머지 → 저수지통장').nextSibling?.textContent).toBe('1,950,000원');
+    // '다음 배분에 필요한 금액' 카드와 [배분 금액 맞추기]는 없어요 (8-1)
+    expect(screen.queryByRole('heading', { name: '다음 배분에 필요한 금액' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '배분 금액 맞추기' })).toBeNull();
+    // 줄마다 다음 배분 금액을 바로: '21일 · 월급통장 → 생활비(민지) · 90만' + 방식 이름
+    expect(within(rules).getByRole('button', { name: /^21일 · 월급통장.* → 생활비\(민지\).* · 90만/ })).toBeTruthy();
+    expect(within(rules).getAllByText('매달 같은 금액').length).toBeGreaterThan(0);
+    expect(within(rules).getByText('남는 돈 전부 → 저수지통장').nextSibling?.textContent).toBe('1,950,000원');
     expect(within(rules).queryByText(/수입보다/)).toBeNull();
-    expect(within(rules).getAllByText('나머지 전부')).toHaveLength(2);
+    expect(within(rules).getAllByText('남는 돈 전부')).toHaveLength(2);
   });
 
-  it('수입 계획 금액을 고치고, 나머지 규칙을 정한 금액으로 바꾸거나 같은 날 하나 더 만들지 못하게 해요', async () => {
+  it("알아서 맞추기 배분은 줄에 다음 배분 금액 (자동)과 지난달과 달라진 까닭을 보여요", async () => {
+    const h = renderApp(<BudgetPage />, { couple: true });
+    await startDemo(h);
+    const ledger = current(h).ledger;
+    const rule = ledger.data!.rules.find((r) => r.toAccountId === 'demo-acc-living-minji')!;
+    await act(async () => {
+      await ledger.saveRule({ ...rule, kind: 'auto', amount: 0 });
+    });
+    // 다음 배분 기간에 새 구독이 시작하면 '지난달보다 +1.5만 · 넷플릭스 시작'
+    const next = ruleNext(current(h).ledger.data!, { ...rule, kind: 'auto', amount: 0 }, current(h).ledger.today)!;
+    await act(async () => {
+      await current(h).ledger.addFixed({
+        name: '넷플릭스', amount: 15_000, accountId: 'demo-acc-living-minji', categoryId: null, dayOfMonth: Number(next.date.slice(8, 10)),
+        kind: 'bill', targetEmail: null, spread: 'monthly', startMonth: next.date.slice(0, 7), endMonth: null, startDate: next.date,
+      });
+    });
+    const after = ruleNext(current(h).ledger.data!, current(h).ledger.data!.rules.find((r) => r.id === rule.id)!, current(h).ledger.today)!;
+    expect(after.amount - next.amount).toBe(15_000);
+    const rules = card('매달 배분');
+    const row = within(rules).getByRole('button', { name: new RegExp(`→ 생활비\\(민지\\).* · ${formatMan(after.amount).replace('.', '\\.')} \\(자동\\)`) });
+    expect(within(row).getByText('알아서 맞추기')).toBeTruthy();
+    expect(within(row).getByText(/^지난달보다 \+[\d.]+만 · 넷플릭스 시작$/)).toBeTruthy();
+    // 미리보기도 새 이름
+    const preview = within(rules).getByRole('list', { name: '월급날마다 보내는 돈' });
+    expect(within(preview).getByText(/생활비\(민지\) [\d.]+만\(자동\)/)).toBeTruthy();
+    expect(within(preview).getByText(/^생활비\(민지\) 알아서 맞추기 /)).toBeTruthy();
+  });
+
+  it('수입 계획 금액을 고치고, 남는 돈 전부 규칙을 매달 같은 금액으로 바꾸거나 같은 날 하나 더 만들지 못하게 해요', async () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
 
@@ -60,20 +92,24 @@ describe('예산 — 부부 예시', () => {
     // 같은 날(21일) 나머지 배분을 하나 더 만들면 막아요
     fireEvent.click(within(card('매달 배분')).getByRole('button', { name: '배분 추가' }));
     dialog = screen.getByRole('dialog', { name: '매달 배분 추가' });
+    // 생활비 · 용돈 통장으로 보내는 새 배분은 '알아서 맞추기'가 기본, 이벤트통장 등은 '매달 같은 금액'
+    fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-allowance-junho' } });
+    expect(within(dialog).getByRole('radio', { name: '알아서 맞추기' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-event' } });
-    fireEvent.click(within(dialog).getByRole('radio', { name: '나머지 전부' }));
+    expect(within(dialog).getByRole('radio', { name: '매달 같은 금액' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(within(dialog).getByRole('radio', { name: '남는 돈 전부' }));
     expect(within(dialog).queryByLabelText('금액')).toBeNull();
     fireEvent.change(within(dialog).getByLabelText('이체일'), { target: { value: '21' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
     expect(await within(dialog).findByText('이 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요')).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: '취소' }));
 
-    // 25일 나머지 → 정한 금액 500,000
+    // 25일 남는 돈 전부 → 매달 같은 금액 500,000
     const rows = within(card('매달 배분')).getAllByRole('button', { name: /월급통장 → 저수지통장/ });
     fireEvent.click(rows[1]!);
     dialog = screen.getByRole('dialog', { name: '매달 배분 고치기' });
-    expect(within(dialog).getByRole('radio', { name: '나머지 전부' }).getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(within(dialog).getByRole('radio', { name: '정한 금액' }));
+    expect(within(dialog).getByRole('radio', { name: '남는 돈 전부' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(within(dialog).getByRole('radio', { name: '매달 같은 금액' }));
     fireEvent.change(within(dialog).getByLabelText('금액'), { target: { value: '500000' } });
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));

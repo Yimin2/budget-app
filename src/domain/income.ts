@@ -402,7 +402,7 @@ export interface RemainderView {
   rule: AllocationRule;
   /** 받는 통장 짧은 이름 ('저수지') */
   toName: string;
-  /** '나머지 전부 → 저수지 · 다음 21일 예상 369,400원' */
+  /** '남는 돈 전부 → 저수지 · 다음 21일 예상 369,400원' */
   text: string;
   /** '다음 21일 예상 369,400원' 또는 '남는 돈이 없어요' (예상할 수 없으면 null) */
   nextText: string | null;
@@ -429,7 +429,7 @@ export function remainderViews(data: LedgerData, today: ISODate): RemainderView[
     return {
       rule: e.rule,
       toName,
-      text: nextText ? `나머지 전부 → ${toName} · ${nextText}` : `나머지 전부 → ${toName}`,
+      text: nextText ? `남는 돈 전부 → ${toName} · ${nextText}` : `남는 돈 전부 → ${toName}`,
       nextText,
       empty,
       monthlyText,

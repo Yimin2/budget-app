@@ -88,7 +88,7 @@ export function referenceIncome(
 
 export interface IncomeSummary {
   account: Account;
-  /** 이번 달 이 통장에서 나가는 정한 금액 · 필요한 만큼(자동) 배분 합 */
+  /** 이번 달 이 통장에서 나가는 매달 같은 금액 · 알아서 맞추기 배분 합 */
   total: Won;
   /**
    * 비교할 수입: 이번 달 수입 계획 합(planned=true), 계획이 없으면 이번 달(없으면 지난달) 수입 기록
@@ -96,7 +96,7 @@ export interface IncomeSummary {
   income: { month: YearMonth; amount: Won; planned?: boolean } | null;
   /** 배분이 수입보다 많은 금액 (아니면 0) */
   over: Won;
-  /** 이 통장에서 나가는 '나머지 전부 보내기' 규칙 (있으면 남는 돈을 경고하지 않아요) */
+  /** 이 통장에서 나가는 '남는 돈 전부' 규칙 (있으면 남는 돈을 경고하지 않아요) */
   remainder: AllocationRule | null;
   /** 정한 금액을 보내고 남는 돈 (수입을 알 때만, 나머지 규칙이 있으면 그 규칙이 보낼 돈) */
   left: Won | null;
@@ -127,7 +127,7 @@ export function incomeSummaries(data: LedgerData, month: YearMonth): IncomeSumma
 }
 
 /**
- * 월급날 배분 미리보기 한 줄: '21일: 297만 → 생활비(가람) 82.8만 · 이벤트 50만 · 나머지 36.94만 → 저수지'.
+ * 월급날 배분 미리보기 한 줄: '21일: 297만 → 생활비(가람) 82.8만 · 이벤트 50만 · 남는 돈 전부 36.94만 → 저수지'.
  * 받는 통장 이름은 짧게 (통장 이름 끝의 '통장'을 뺀다)
  */
 export function paydayPreviewLines(data: LedgerData, month: YearMonth, sourceAccountId: string): { day: number; text: string; short: Won }[] {
@@ -140,7 +140,7 @@ export function paydayPreviewLines(data: LedgerData, month: YearMonth, sourceAcc
   return paydayPlans(data, month, sourceAccountId).map((p) => {
     const parts = p.fixed.map((l) => `${short(l.rule.toAccountId)} ${formatMan(l.amount)}`);
     for (const l of p.auto) parts.push(`${short(l.rule.toAccountId)} ${formatMan(l.amount)}(자동)`);
-    if (p.remainder) parts.push(`나머지 ${formatMan(p.remainder.amount)} → ${short(p.remainder.rule.toAccountId)}`);
+    if (p.remainder) parts.push(`남는 돈 전부 ${formatMan(p.remainder.amount)} → ${short(p.remainder.rule.toAccountId)}`);
     else if (p.left > 0 && p.income > 0) parts.push(`남는 돈 ${formatMan(p.left)}`);
     const head = p.income > 0 ? `${p.day}일: ${formatMan(p.income)}` : `${p.day}일`;
     return { day: p.day, text: parts.length > 0 ? `${head} → ${parts.join(' · ')}` : head, short: p.short };

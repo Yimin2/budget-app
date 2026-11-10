@@ -95,7 +95,7 @@ export function FlowCard({ flow, thisYear, remainders = [] }: { flow: FlowSummar
       </ul>
 
       {remainders.length > 0 ? (
-        <ul className={styles.sources} aria-label="나머지 전부 보내기 예상">
+        <ul className={styles.sources} aria-label="남는 돈 전부 예상">
           {remainders.map((v) => (
             <li key={v.rule.id}>
               <span className={styles.legendName} style={v.empty ? { color: 'var(--danger-text)', fontWeight: 500 } : undefined}>

@@ -29,6 +29,8 @@ import {
   claimAccountFor,
   linkAccountsToEmail,
   autoLinkOwnerEmails,
+  AUTO_KIND_NOTICE,
+  rulesToAutoKind,
   claimOwnerAccounts,
   unlinkedOwnerNames,
   memberName,
@@ -268,8 +270,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [savingCount, setSavingCount] = useState(0);
   const [loadingCount, setLoadingCount] = useState(0);
-  /** 열 때 시트를 고쳤으면 한 번 보여 줄 알림 ('통장 주인을 멤버와 이었어요') */
-  const [notice, setNotice] = useState<string | null>(null);
+  /** 열 때 시트를 고쳤으면 한 번씩 보여 줄 알림들 ('통장 주인을 멤버와 이었어요'). 앞에서부터 하나씩 */
+  const [notices, setNotices] = useState<string[]>([]);
+  const notice = notices[0] ?? null;
+  const setNotice = useCallback((text: string) => setNotices((list) => (list.includes(text) ? list : [...list, text])), []);
   const [today, setToday] = useState<ISODate>(() => toISODate(deps.now()));
 
   const refKey = ref ? `${ref.source}:${ref.id}` : null;
@@ -467,7 +471,29 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       }
       return next;
     },
-    [backendFor],
+    [backendFor, setNotice],
+  );
+
+  /**
+   * 기존 시트 자동 고치기 (PLAN 4-15): 생활비 · 용돈 통장으로 가는 '매달 같은 금액' 배분을 '알아서 맞추기'로 한 번에 써요.
+   * 구글 시트 가계부만. 다시 해도 같고(바꿀 게 없으면 쓰지 않음), 쓰기에 성공했을 때만 한 번 알려요
+   */
+  const migrateRuleKinds = useCallback(
+    async (repo: LedgerRepository, loaded: LedgerData, today: ISODate): Promise<LedgerData> => {
+      if (repo.ref.source !== 'sheets') return loaded;
+      const changed = rulesToAutoKind(loaded, today);
+      if (changed.length === 0) return loaded;
+      try {
+        await repo.upsertMany('rules', changed);
+      } catch {
+        // 보기 권한 등: 그대로 두고 다음에 열 때 다시 써 봐요
+        return loaded;
+      }
+      setNotice(AUTO_KIND_NOTICE);
+      const byId = new Map(changed.map((r) => [r.id, r]));
+      return { ...loaded, rules: loaded.rules.map((r) => byId.get(r.id) ?? r) };
+    },
+    [setNotice],
   );
 
   const loadAll = useCallback(async () => {
@@ -478,7 +504,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     lastLoadAt.current = deps.now().getTime();
     setLoadingCount((n) => n + 1);
     try {
-      const fresh = await syncMembers(repo, await repo.load());
+      const members = await syncMembers(repo, await repo.load());
+      const fresh = await migrateRuleKinds(repo, members, todayRef.current);
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
       const merged = withPendingWrites(synced, loadStart);
@@ -506,7 +533,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingCount((n) => n - 1);
     }
-  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, syncAutoRecords, withPendingWrites]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateRuleKinds, syncAutoRecords, withPendingWrites]);
   const loadAllRef = useRef(loadAll);
   useEffect(() => {
     loadAllRef.current = loadAll;
@@ -1754,7 +1781,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         throw new Error('같은 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요');
       }
       if (input.kind === 'auto' && !canAutoFill(requireData().data.accounts.find((a) => a.id === input.toAccountId))) {
-        throw new Error('필요한 만큼은 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요');
+        throw new Error('알아서 맞추기는 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요');
       }
       const computed = isRemainderRule(input) || input.kind === 'auto';
       const row: AllocationRule = computed ? { ...input, amount: 0, id: newId(), deleted: false } : { ...input, id: newId(), deleted: false };
@@ -2457,7 +2484,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     },
     [requireData, mutate, demo],
   );
-  const dismissNotice = useCallback(() => setNotice(null), []);
+  const dismissNotice = useCallback(() => setNotices((list) => list.slice(1)), []);
 
   const inviteMember = useCallback(
     async (email: string, name: string, incomeAccountId?: Id | null) => {
