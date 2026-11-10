@@ -215,7 +215,7 @@ export function ImportPreview({ plan }: { plan: ImportPlan }) {
             {plan.claims.reservoirLoanSettled.count > 0 ? (
               <li>
                 저수지에서 돌려준 이벤트 지출 {plan.claims.reservoirLoanSettled.count}건 ·{' '}
-                {formatWon(plan.claims.reservoirLoanSettled.amount)} · 가져온 뒤 이벤트 화면의 '저수지에 갚을 돈'에서 갚을 돈으로 바꿀 수 있어요
+                {formatWon(plan.claims.reservoirLoanSettled.amount)} · 가져온 뒤 이벤트 화면의 ‘저수지에 갚을 돈’에서 갚을 돈으로 바꿀 수 있어요
               </li>
             ) : null}
             {plan.claims.settledCount > 0 ? (

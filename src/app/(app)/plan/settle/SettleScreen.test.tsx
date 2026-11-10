@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { claimLoanTransferId, claimTransferId } from '@/domain';
 import { makeHarness } from '../testHarness';
+import SettlePage, { metadata } from './page';
 import { SettleScreen } from './SettleScreen';
 
 vi.mock('next/navigation', () => ({
@@ -29,6 +30,14 @@ async function renderScreen() {
 const box = (scope: HTMLElement, name: string | RegExp) => within(scope).getByRole('checkbox', { name }) as HTMLInputElement;
 
 describe('정산 화면', () => {
+  it("'/plan/settle' 페이지가 정산 화면을 그려요 (제목 '이번 달 정산')", async () => {
+    const h = makeHarness();
+    render(<SettlePage />, { wrapper: h.Wrapper });
+    expect(metadata.title).toBe('이번 달 정산');
+    expect(await screen.findByRole('region', { name: '사람별 항목' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '이번 달 정산', level: 1 })).toBeTruthy();
+  });
+
   it('뒤로 가기 · 지급할 수 있는 돈과 셈 · 사람별 항목, 처음엔 오래된 순으로 나눠 둔 것만 골라 둬요', async () => {
     const { list, bar } = await renderScreen();
     expect(screen.getByRole('heading', { name: '이번 달 정산', level: 1 })).toBeTruthy();

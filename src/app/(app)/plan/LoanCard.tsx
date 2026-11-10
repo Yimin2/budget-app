@@ -144,94 +144,94 @@ export function LoanCard() {
           </div>
         ) : null}
 
-      {candidates.length > 0 ? (
-        <details className={styles.more}>
-          <summary>
-            <span>저수지에서 쓴 이벤트 지출 {candidates.length}건</span>
-            <Icon name="chevron-down" size={20} className={styles.moreChev} />
-          </summary>
-          <p className={styles.note}>
-            이벤트통장에 돈이 없어 저수지에서 냈다면 바꿔 주세요. 잔액은 그대로이고, 그만큼 저수지에 갚을 돈이 돼요
-          </p>
-          <ul className={styles.moreList}>
-            {candidates.map((e) => (
-              <li key={e.id}>
-                <span className={styles.moreTitle}>
-                  {expenseTitle(data, e)}
-                  <span className={styles.moreMeta}>
-                    {formatShortDate(e.date)} · {formatWon(e.amount)}
+        {candidates.length > 0 ? (
+          <details className={styles.more}>
+            <summary>
+              <span>저수지에서 쓴 이벤트 지출 {candidates.length}건</span>
+              <Icon name="chevron-down" size={20} className={styles.moreChev} />
+            </summary>
+            <p className={styles.note}>
+              이벤트통장에 돈이 없어 저수지에서 냈다면 바꿔 주세요. 잔액은 그대로이고, 그만큼 저수지에 갚을 돈이 돼요
+            </p>
+            <ul className={styles.moreList}>
+              {candidates.map((e) => (
+                <li key={e.id}>
+                  <span className={styles.moreTitle}>
+                    {expenseTitle(data, e)}
+                    <span className={styles.moreMeta}>
+                      {formatShortDate(e.date)} · {formatWon(e.amount)}
+                    </span>
                   </span>
-                </span>
-                <Button
-                  variant="outline"
-                  className={styles.moreBtn}
-                  loading={busy === `conv:${e.id}`}
-                  disabled={busy !== null && busy !== `conv:${e.id}`}
-                  onClick={() =>
-                    void act(
-                      `conv:${e.id}`,
-                      () => ledger.convertToLoan([e.id]),
-                      `${formatWon(e.amount)}을 이벤트통장이 갚을 돈으로 바꿨어요`,
-                      () => ledger.unconvertLoan([e.id]),
-                    )
-                  }
-                  aria-label={`${expenseTitle(data, e)} ${formatWon(e.amount)} 이벤트통장이 갚을 돈으로 바꾸기`}
-                >
-                  이벤트통장이 갚을 돈으로 바꾸기
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+                  <Button
+                    variant="outline"
+                    className={styles.moreBtn}
+                    loading={busy === `conv:${e.id}`}
+                    disabled={busy !== null && busy !== `conv:${e.id}`}
+                    onClick={() =>
+                      void act(
+                        `conv:${e.id}`,
+                        () => ledger.convertToLoan([e.id]),
+                        `${formatWon(e.amount)}을 이벤트통장이 갚을 돈으로 바꿨어요`,
+                        () => ledger.unconvertLoan([e.id]),
+                      )
+                    }
+                    aria-label={`${expenseTitle(data, e)} ${formatWon(e.amount)} 이벤트통장이 갚을 돈으로 바꾸기`}
+                  >
+                    이벤트통장이 갚을 돈으로 바꾸기
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
 
-      {loan.entries.length > 0 || loan.repayments.length > 0 ? (
-        <details className={styles.more}>
-          <summary>
-            <span>빌리고 갚은 기록 {loan.entries.length + loan.repayments.length}건</span>
-            <Icon name="chevron-down" size={20} className={styles.moreChev} />
-          </summary>
-          <ul className={styles.moreList}>
-            {loan.entries.map(({ transfer: t, kind, expenseId }) => {
-              const e = expenseById.get(expenseId);
-              const name = e ? expenseTitle(data, e) : t.memo;
-              return (
+        {loan.entries.length > 0 || loan.repayments.length > 0 ? (
+          <details className={styles.more}>
+            <summary>
+              <span>빌리고 갚은 기록 {loan.entries.length + loan.repayments.length}건</span>
+              <Icon name="chevron-down" size={20} className={styles.moreChev} />
+            </summary>
+            <ul className={styles.moreList}>
+              {loan.entries.map(({ transfer: t, kind, expenseId }) => {
+                const e = expenseById.get(expenseId);
+                const name = e ? expenseTitle(data, e) : t.memo;
+                return (
+                  <li key={t.id}>
+                    <span className={styles.moreTitle}>
+                      {kind === 'claim' && e?.paidBy ? `${e.paidBy}에게 지급 · ${name}` : name}{' '}
+                      <Badge tone="info" size="sm" dot={false}>
+                        저수지에서 지급
+                      </Badge>
+                      <span className={styles.moreMeta}>{formatShortDate(t.date)} · 빌림</span>
+                    </span>
+                    <span className={styles.moreAmount}>{formatWon(t.amount)}</span>
+                    {kind === 'expense' ? (
+                      <Button
+                        variant="ghost"
+                        className={styles.moreBtn}
+                        loading={busy === `unconv:${expenseId}`}
+                        disabled={busy !== null && busy !== `unconv:${expenseId}`}
+                        onClick={() => void act(`unconv:${expenseId}`, () => ledger.unconvertLoan([expenseId]), '저수지 지출로 되돌렸어요')}
+                        aria-label={`${name} 저수지 지출로 되돌리기`}
+                      >
+                        되돌리기
+                      </Button>
+                    ) : null}
+                  </li>
+                );
+              })}
+              {loan.repayments.map((t) => (
                 <li key={t.id}>
                   <span className={styles.moreTitle}>
-                    {kind === 'claim' && e?.paidBy ? `${e.paidBy}에게 지급 · ${name}` : name}{' '}
-                    <Badge tone="info" size="sm" dot={false}>
-                      저수지에서 지급
-                    </Badge>
-                    <span className={styles.moreMeta}>{formatShortDate(t.date)} · 빌림</span>
+                    저수지에 갚음
+                    <span className={styles.moreMeta}>{formatShortDate(t.date)}</span>
                   </span>
-                  <span className={styles.moreAmount}>{formatWon(t.amount)}</span>
-                  {kind === 'expense' ? (
-                    <Button
-                      variant="ghost"
-                      className={styles.moreBtn}
-                      loading={busy === `unconv:${expenseId}`}
-                      disabled={busy !== null && busy !== `unconv:${expenseId}`}
-                      onClick={() => void act(`unconv:${expenseId}`, () => ledger.unconvertLoan([expenseId]), '저수지 지출로 되돌렸어요')}
-                      aria-label={`${name} 저수지 지출로 되돌리기`}
-                    >
-                      되돌리기
-                    </Button>
-                  ) : null}
+                  <span className={styles.moreAmount}>−{formatWon(t.amount)}</span>
                 </li>
-              );
-            })}
-            {loan.repayments.map((t) => (
-              <li key={t.id}>
-                <span className={styles.moreTitle}>
-                  저수지에 갚음
-                  <span className={styles.moreMeta}>{formatShortDate(t.date)}</span>
-                </span>
-                <span className={styles.moreAmount}>−{formatWon(t.amount)}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </details>
     </Card>
   );
