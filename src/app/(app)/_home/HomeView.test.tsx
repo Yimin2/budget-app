@@ -154,10 +154,10 @@ describe('HomeView — 새 가계부', () => {
     expect(screen.queryByText(/이벤트통장이 .*모자라요/)).toBeNull();
   });
 
-  it('이번 달 정산: 돌려줄 날이 된 청구가 있으면 홈에 한 줄 요약 → /plan/settle, 없으면 "이번 달 정산할 돈은 없어요" 한 줄, 청구가 없으면 숨겨요', async () => {
+  it('이번 달 정산: 돌려줄 날이 된 청구가 있으면 홈에 홈 한 줄은 이번 달 이벤트통장 쓴 돈(지금까지 + 예정)만 → /plan/settle', async () => {
     const h = await renderHome();
     const card = await screen.findByRole('region', { name: '이번 달 정산' });
-    expect(within(card).getByTestId('settlement-line').textContent).toMatch(/^이번 달 이벤트통장 쓴 돈 15만 \+ 예정 30만 · 들어올 돈 30만 · \d+\/\d+ 정산 30만$/);
+    expect(within(card).getByTestId('settlement-line').textContent).toBe('이번 달 이벤트통장 쓴 돈 45만 (지금까지 15만 + 예정 30만)');
     expect(screen.queryByRole('region', { name: '사람별 돌려받을 돈' })).toBeNull();
     expect(within(card).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
 
@@ -169,7 +169,7 @@ describe('HomeView — 새 가계부', () => {
     // 남은 청구는 아직 정산일 전 → 사람별 목록 카드 대신 같은 한 줄 카드
     await waitFor(() =>
       expect(within(screen.getByRole('region', { name: '이번 달 정산' })).getByTestId('settlement-line').textContent).toBe(
-        '이번 달 이벤트통장 쓴 돈 45만 · 들어올 돈 30만 · 이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만',
+        '이번 달 이벤트통장 쓴 돈 45만',
       ),
     );
     const line = screen.getByRole('region', { name: '이번 달 정산' });
@@ -178,12 +178,12 @@ describe('HomeView — 새 가계부', () => {
     expect(within(line).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
     expect(screen.queryByText(/저수지에 (쓸|줄) 돈|저수지에서 돌려받을|빌려 줄 돈/)).toBeNull();
 
-    // 아직 안 돌려준 청구가 하나도 없으면 숨겨요
+    // 홈 카드는 청구가 없어도 이번 달 이벤트통장 쓴 돈을 보여요
     const rest = h.probe.ledger!.claims!.pending.map((c) => c.expense.id);
     await act(async () => {
       await h.probe.ledger!.settleClaims(rest);
     });
-    await waitFor(() => expect(screen.queryByRole('region', { name: '이번 달 정산' })).toBeNull());
+    await waitFor(() => expect(screen.getByRole('region', { name: '이번 달 정산' })).toBeTruthy());
     expect(screen.queryByRole('region', { name: '사람별 돌려받을 돈' })).toBeNull();
   });
 

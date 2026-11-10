@@ -64,7 +64,7 @@ function nextText(sum: SettlementSummary, baseYear: number): string | null {
  * 예정이 0이면 '+ 예정'은 빼요. 줄 돈이 없으면 '… · 이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만'.
  * 이벤트통장이 음수면 '이벤트통장이 ○원 모자라요'를 함께 보여요.
  * 항목 고르기 · 지급은 정산 화면(/plan/settle)에서 해요. 아직 안 돌려준 청구가 하나도 없으면 그리지 않아요.
- * compact: 지금 돌려줄 돈이 있을 때만. home: 홈 (늘 같은 한 줄, 사람별 목록 카드 대신)
+ * compact: 지금 돌려줄 돈이 있을 때만. home: 홈은 이번 달 이벤트통장 쓴 돈(지금까지 + 예정)만 보여요
  */
 export function SettlementCard({ compact = false, home = false, className }: { compact?: boolean; home?: boolean; className?: string }) {
   const ledger = useLedger();
@@ -73,7 +73,29 @@ export function SettlementCard({ compact = false, home = false, className }: { c
   if (compact && !s.dueNow) return null;
   const id = compact || home ? undefined : 'settlement';
   const usage = eventMonthUsage(ledger.data, s, ledger.today);
+  if (home) return <HomeEventLine usage={usage} className={className} />;
   return <SettlementLine s={s} usage={usage} baseYear={Number(ledger.today.slice(0, 4))} className={className} id={id} />;
+}
+
+/** 홈: 이번 달 이벤트통장 쓴 돈만 — '이번 달 이벤트통장 쓴 돈 45만 (지금까지 15만 + 예정 30만)' */
+function HomeEventLine({ usage, className }: { usage: EventMonthUsage; className?: string }) {
+  const total = usage.spent + usage.planned;
+  return (
+    <Card as="section" aria-label="이번 달 정산" className={cx(styles.lineCard, className)}>
+      <p className={styles.oneLine} data-testid="settlement-line">
+        이번 달 이벤트통장 쓴 돈 <strong>{formatMan(total)}</strong>
+        {usage.planned > 0 ? (
+          <span className={styles.oneLineSub}>
+            {' '}
+            (지금까지 {formatMan(usage.spent)} + 예정 {formatMan(usage.planned)})
+          </span>
+        ) : null}
+      </p>
+      <Button href={SETTLE_HREF} variant="outline" iconRight="chevron-right" className={styles.lineBtn}>
+        정산하기
+      </Button>
+    </Card>
+  );
 }
 
 function SettlementLine({ s, usage, baseYear, className, id }: { s: Settlement; usage: EventMonthUsage; baseYear: number; className?: string; id?: string }) {
