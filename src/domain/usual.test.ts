@@ -23,20 +23,40 @@ const total = (m: Map<string | null, number>) => [...m.values()].reduce((a, v) =
 const monthOfP = (data: LedgerData, m: string) => projectEventAccount(data, TODAY).months.find((x) => x.month === m)!;
 
 describe('평소 쓰는 돈 추정', () => {
-  it('작년 같은 달 기록이 있으면 그 달 기록을 쓴다 (최근 평균보다 먼저)', () => {
+  it('작년 같은 달 기록이 있으면 카테고리마다 작년 같은 달 30% + 최근 12개월 평균 70% 로 섞는다', () => {
     const data = ledger({
       expenses: [
         spend('2025-12-03', 300_000, { categoryId: 'c-fam' }),
         ...['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((m) => spend(`${m}-15`, 100_000, { categoryId: 'c-gift' })),
       ],
     });
+    // 기록 시작 2025-12 → 최근 평균은 2025-12 ~ 2026-10 의 11개월: 경조사 300,000/11 → 27,273 · 선물 600,000/11 → 54,545
+    const history = usualHistory(data, eventAcc.id);
+    expect(Object.fromEntries(recentUsualAverage(history, '2026-11'))).toEqual({ 'c-fam': 27_273, 'c-gift': 54_545 });
+    // 12월: 경조사 300,000×0.3 + 27,273×0.7 → 109,091 · 선물 0×0.3 + 54,545×0.7 → 38,182
+    const est = estimateUsual(history, '2026-12', '2026-11');
+    expect(est).toMatchObject({ basis: 'lastYear', total: 147_273 });
+    expect(Object.fromEntries(est.byCategory)).toEqual({ 'c-fam': 109_091, 'c-gift': 38_182 });
     const dec = monthOfP(data, '2026-12');
-    expect(dec.usual).toBe(300_000);
+    expect(dec.usual).toBe(147_273);
     expect(dec.usualBasis).toBe('lastYear');
-    // 2026-01 도 기록 안의 달이라(2025-12 부터) 작년 기록 0원 그대로
-    expect(monthOfP(data, '2027-01').usual).toBe(0);
-    // 작년 5월 기록 100,000
-    expect(monthOfP(data, '2027-05').usual).toBe(100_000);
+    // 2026-01 은 기록 안의 달이라(2025-12 부터) 작년 기록 0원 + 평균의 70%: 경조사 19,091 + 선물 38,182
+    expect(monthOfP(data, '2027-01')).toMatchObject({ usual: 57_273, usualBasis: 'lastYear' });
+    // 작년 5월 선물 100,000: 선물 100,000×0.3 + 54,545×0.7 → 68,182 + 경조사 19,091
+    expect(monthOfP(data, '2027-05').usual).toBe(87_273);
+  });
+
+  it('작년 같은 달에 크게 쓴 달은 최근 평균과 섞여 누그러진다 (그대로 베끼지 않는다)', () => {
+    const last12 = ['2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
+    // 작년 12월만 1,300,000, 나머지 달은 100,000 → 최근 12개월 평균 2,400,000/12 = 200,000
+    const data = ledger({ expenses: last12.map((m) => spend(`${m}-10`, m === '2025-12' ? 1_300_000 : 100_000)) });
+    const history = usualHistory(data, eventAcc.id);
+    expect(total(recentUsualAverage(history, '2026-11'))).toBe(200_000);
+    // 12월: 1,300,000×0.3 + 200,000×0.7 = 530,000 — 작년 그대로(1,300,000)보다 훨씬 적고 평균보다는 많다
+    const dec = monthOfP(data, '2026-12');
+    expect(dec).toMatchObject({ usual: 530_000, usualBasis: 'lastYear' });
+    // 평소 달: 100,000×0.3 + 200,000×0.7 = 170,000
+    expect(monthOfP(data, '2027-01').usual).toBe(170_000);
   });
 
   it('작년 같은 달이 기록 밖이면 최근 12개월 평균 (12개월이 안 되면 있는 만큼)', () => {
@@ -61,7 +81,7 @@ describe('평소 쓰는 돈 추정', () => {
     const history = usualHistory(data, eventAcc.id);
     expect(history.start).toBe('2025-10');
     expect(total(recentUsualAverage(history, '2026-11'))).toBe(60_000);
-    // 기록이 12개월을 넘으면 앞으로의 달은 늘 작년 같은 달 기록을 쓴다
+    // 기록이 12개월을 넘으면 앞으로의 달은 늘 작년 같은 달 기록과 섞는다 60,000×0.3 + 60,000×0.7
     expect(estimateUsual(history, '2026-12', '2026-11')).toMatchObject({ basis: 'lastYear', total: 60_000 });
   });
 
@@ -100,8 +120,11 @@ describe('평소 쓰는 돈 추정', () => {
     const data = ledger({ expenses: [spend('2025-11-20', 250_000, { categoryId: 'c-gift' }), spend('2025-12-24', 150_000)] });
     const p = projectEventAccount(data, TODAY);
     expect(p.currentBalance).toBe(1_000_000);
-    expect(p.months[0]).toMatchObject({ month: '2026-11', usual: 250_000, usualBasis: 'lastYear' });
-    expect(p.months[1]).toMatchObject({ month: '2026-12', usual: 150_000 });
+    // 기록 시작 2025-11 → 최근 12개월 평균: 선물 250,000/12 → 20,833 · 미분류 150,000/12 = 12,500
+    // 11월: 선물 250,000×0.3 + 20,833×0.7 → 89,583 + 미분류 12,500×0.7 = 8,750
+    expect(p.months[0]).toMatchObject({ month: '2026-11', usual: 98_333, usualBasis: 'lastYear' });
+    // 12월: 선물 20,833×0.7 → 14,583 + 미분류 150,000×0.3 + 12,500×0.7 = 53,750
+    expect(p.months[1]).toMatchObject({ month: '2026-12', usual: 68_333 });
   });
 
   it('그달 등록한 일정 · 이미 쓴 평소 지출은 같은 카테고리에서 먼저 뺀다', () => {
@@ -117,10 +140,12 @@ describe('평소 쓰는 돈 추정', () => {
         spend('2026-11-05', 50_000, { categoryId: 'c-gift' }), // 이번 달 이미 쓴 선물
       ],
     });
-    // 11월: 선물 200,000 − 이미 쓴 50,000
-    expect(monthOfP(data, '2026-11').usual).toBe(150_000);
-    // 12월: 경조사 300,000 − 결혼식 일정 200,000 + 선물 50,000 (여행 일정은 여행 기록이 없어 빼지 않음)
-    expect(monthOfP(data, '2026-12').usual).toBe(150_000);
+    // 최근 12개월(2025-11 ~ 2026-10) 평균: 선물 250,000/12 → 20,833 · 경조사 300,000/12 = 25,000
+    // 11월: 선물 200,000×0.3 + 20,833×0.7 → 74,583 − 이미 쓴 50,000 = 24,583 + 경조사 25,000×0.7 = 17,500
+    expect(monthOfP(data, '2026-11').usual).toBe(42_083);
+    // 12월: 경조사 300,000×0.3 + 25,000×0.7 = 107,500 − 결혼식 일정 200,000 → 0 (0 아래로 안 내려감)
+    //       + 선물 50,000×0.3 + 20,833×0.7 → 29,583 (여행 일정은 여행 기록이 없어 빼지 않음)
+    expect(monthOfP(data, '2026-12').usual).toBe(29_583);
   });
 });
 

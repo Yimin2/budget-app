@@ -133,18 +133,19 @@ describe('한 번에 등록', () => {
 
 describe('평소 쓰는 돈 · 기록에서 찾기와 함께', () => {
   it('등록한 음력 일정은 그해 양력 달의 같은 카테고리 평소 쓰는 돈에서 빠져요', () => {
-    // 작년 2월(2026-02) 명절 지출 40만 → 2027-02 평소 쓰는 돈 40만
+    // 작년 2월(2026-02) 명절 지출 40만, 최근 12개월 평균 40만/12 → 33,333
+    // → 2027-02 평소 쓰는 돈 400,000×0.3 + 33,333×0.7 → 143,333
     const base = ledger({ expenses: [expense({ date: '2026-02-16', amount: 400_000, accountId: eventAcc.id, categoryId: 'c-hol' })] });
     const before = projectEventAccount(base, TODAY).months.find((m) => m.month === '2027-02')!;
-    expect(before.usual).toBe(400_000);
+    expect(before.usual).toBe(143_333);
     const drafts = planAnnualRegistration(base, TODAY, [
-      sel('annual-seollal', { name: '설날', categoryName: '명절', month: 1, day: 1, calendar: 'lunar', amount: 300_000 }),
+      sel('annual-seollal', { name: '설날', categoryName: '명절', month: 1, day: 1, calendar: 'lunar', amount: 100_000 }),
     ]);
     const data = { ...base, events: toRows(drafts) };
     const feb = projectEventAccount(data, TODAY).months.find((m) => m.month === '2027-02')!;
     expect(feb.events.map((e) => e.date)).toEqual(['2027-02-07']);
-    expect(feb.planned).toBe(300_000);
-    expect(feb.usual).toBe(100_000);
+    expect(feb.planned).toBe(100_000);
+    expect(feb.usual).toBe(43_333); // 143,333 − 설날 100,000
   });
 
   it('체크 목록이 다루는 일은 기록에서 찾기 제안에서 빼고, 나머지만 남아요', () => {

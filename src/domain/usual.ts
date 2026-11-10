@@ -6,10 +6,10 @@
  *   통장 시작일 전 날짜로 가져온 지출도 기록으로 센다 (잔액에는 들어가지 않는다).
  *   '예외'(평소 지출 아님, excluded)로 표시한 지출도 뺀다 — 잔액에는 그대로 들어가고, 기록 시작 달을 정할 때는 센다
  * - 기록 시작 달 = 통장 시작일의 달과 가장 이른 이벤트통장 지출의 달 중 이른 쪽. 그 달부터 지난달까지가 '다 지난 기록 달'
- * - 앞으로의 달 M: 작년 같은 달(M − 12)이 다 지난 기록 달이면 그 달 기록 그대로, 아니면 최근 12개월(기록이 있는 다 지난 달,
+ * - 앞으로의 달 M: 작년 같은 달(M − 12)이 다 지난 기록 달이면 카테고리마다 작년 같은 달 30% + 최근 12개월 평균 70%, 아니면 최근 12개월(기록이 있는 다 지난 달,
  *   12개월이 안 되면 있는 만큼) 평균. 다 지난 기록 달이 하나도 없으면 0 (평소 쓰는 돈 줄을 보이지 않는다)
  * - 카테고리별로 따로 셈하고, 그달 등록한 일정 · 그달 이미 기록한(미리 기록한 포함) 평소 지출을 같은 카테고리에서 먼저 뺀다
- *   (예: 작년 5월 경조사 30만, 올해 5월 결혼식 일정 20만 등록 → 경조사 평소 쓰는 돈 10만). 0 아래로는 내려가지 않는다
+ *   (예: 5월 경조사 평소 쓰는 돈 추정 30만, 올해 5월 결혼식 일정 20만 등록 → 경조사 평소 쓰는 돈 10만). 0 아래로는 내려가지 않는다
  */
 import { isClaimExpense } from './balances';
 import { isReservoirEventExpense } from './claims';
@@ -18,6 +18,8 @@ import type { Expense, Id, LedgerData, ProjectionMonth, Won, YearMonth } from '.
 
 /** 최근 평균에 쓰는 달 수 */
 export const USUAL_RECENT_MONTHS = 12;
+/** 작년 같은 달 기록이 있을 때 그 달 기록의 몫 (나머지는 최근 12개월 평균) */
+export const USUAL_LAST_YEAR_WEIGHT = 0.3;
 
 type CategoryKey = Id | null;
 
@@ -29,7 +31,7 @@ export interface UsualHistory {
 }
 
 export interface UsualEstimate {
-  /** lastYear = 작년 같은 달 기록, recent = 최근 평균, none = 기록 없음 */
+  /** lastYear = 작년 같은 달 기록 30% + 최근 12개월 평균 70%, recent = 최근 평균, none = 기록 없음 */
   basis: 'lastYear' | 'recent' | 'none';
   byCategory: Map<CategoryKey, Won>;
   total: Won;
@@ -104,7 +106,14 @@ const total = (m: Map<CategoryKey, Won>) => [...m.values()].reduce((s, v) => s +
 export function estimateUsual(history: UsualHistory, month: YearMonth, thisMonth: YearMonth): UsualEstimate {
   const lastYear = addMonths(month, -12);
   if (inHistory(history, lastYear, thisMonth)) {
-    const byCategory = new Map(history.byMonth.get(lastYear) ?? []);
+    // 작년 같은 달 그대로 쓰면 작년에 많이 쓴 달이 올해도 적자로 나와요 → 최근 12개월 평균과 섞어요 (사용자 결정)
+    const last = history.byMonth.get(lastYear) ?? new Map<CategoryKey, Won>();
+    const avg = recentUsualAverage(history, thisMonth);
+    const byCategory = new Map<CategoryKey, Won>();
+    for (const c of new Set([...last.keys(), ...avg.keys()])) {
+      const v = Math.round(USUAL_LAST_YEAR_WEIGHT * (last.get(c) ?? 0) + (1 - USUAL_LAST_YEAR_WEIGHT) * (avg.get(c) ?? 0));
+      if (v > 0) byCategory.set(c, v);
+    }
     return { basis: 'lastYear', byCategory, total: total(byCategory) };
   }
   if (recentHistoryMonths(history, thisMonth).length === 0) return { basis: 'none', byCategory: new Map(), total: 0 };

@@ -241,7 +241,7 @@ export function ProjectionCard({ projection, today, badge }: ProjectionCardProps
           {banded ? <p className={styles.foot}>{rangeNote(projection)}</p> : null}
           {withUsual ? (
             <p className={styles.foot}>
-              등록한 일정 말고도 늘 나가는 ‘평소 쓰는 돈’을 빼고 계산했어요. 작년 같은 달 기록, 없으면 최근 12개월 평균이에요
+              등록한 일정 말고도 늘 나가는 ‘평소 쓰는 돈’을 빼고 계산했어요. 작년 같은 달 기록 30%와 최근 12개월 평균 70%를 섞어요 (작년 기록이 없으면 최근 12개월 평균)
             </p>
           ) : null}
           {transfersIn > 0 ? (

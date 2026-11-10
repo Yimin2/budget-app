@@ -116,7 +116,8 @@ describe('매년 돌아오는 일 찾기', () => {
     });
     const [c] = findRecurringCandidates(data, TODAY);
     const before = projectEventAccount(data, TODAY).months.find((m) => m.month === '2026-10')!;
-    expect(before.usual).toBe(100_000);
+    // 작년 10월 선물 100,000×0.3 + 최근 12개월(2025-09 ~ 2026-08) 평균 8,333×0.7 → 35,833
+    expect(before.usual).toBe(35_833);
     const added = {
       ...data,
       events: [event({ date: c!.suggestDate, amount: c!.amount, accountId: eventAcc.id, name: c!.name, categoryId: c!.categoryId, repeat: 'yearly' })],
@@ -124,7 +125,8 @@ describe('매년 돌아오는 일 찾기', () => {
     const after = projectEventAccount(added, TODAY).months.find((m) => m.month === '2026-10')!;
     expect(after.planned).toBe(100_000);
     expect(after.usual).toBe(0);
-    expect(after.endBalance).toBe(before.endBalance);
+    // 등록한 일정이 같은 카테고리 평소 쓰는 돈 추정을 대신해요 (추정 35,833 위에 100,000 을 또 얹지 않음)
+    expect(after.endBalance).toBe(before.endBalance - (100_000 - 35_833));
     expect(findRecurringCandidates(added, TODAY)).toEqual([]);
   });
 });

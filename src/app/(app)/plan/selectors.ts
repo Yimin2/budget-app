@@ -335,7 +335,7 @@ export function monthDetailRows(m: ProjectionMonth, isThisMonth: boolean): Detai
   if (m.transfersOut > 0) rows.push({ label: '옮겨 갈 돈', amount: m.transfersOut, sign: '-' });
   rows.push({ label: `예정 일정 ${m.events.length}건`, amount: m.planned, sign: m.planned > 0 ? '-' : '' });
   if (m.usual > 0) {
-    rows.push({ label: m.usualBasis === 'lastYear' ? '평소 쓰는 돈 (작년 같은 달)' : '평소 쓰는 돈 (최근 평균)', amount: m.usual, sign: '-', muted: true });
+    rows.push({ label: m.usualBasis === 'lastYear' ? '평소 쓰는 돈 (작년 같은 달 + 최근 평균)' : '평소 쓰는 돈 (최근 평균)', amount: m.usual, sign: '-', muted: true });
   }
   if (m.scheduledSpending && m.scheduledSpending > 0) {
     rows.push({ label: '미리 기록한 지출', amount: m.scheduledSpending, sign: '-' });

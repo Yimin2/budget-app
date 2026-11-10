@@ -105,8 +105,8 @@ describe('월별 이벤트 비용', () => {
         spend('2026-11-03', 50_000, { eventId: 'ev-p', categoryId: 'c-fam' }),
         spend('2026-11-05', 30_000, { categoryId: 'c-gift' }),
         spend('2026-11-28', 40_000, { categoryId: 'c-gift' }),
-        // 평소 쓰는 돈 기록 (최근 평균)
-        ...['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((m) => spend(`${m}-15`, 100_000, { categoryId: 'c-gift' })),
+        // 평소 쓰는 돈 기록: 기록 시작(1월)부터 10개월 평균 선물 120,000 → 이번 달 선물 70,000 을 빼고 50,000
+        ...['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((m) => spend(`${m}-15`, 200_000, { categoryId: 'c-gift' })),
       ],
     });
     const nov = monthOf(data, '2026-11');
@@ -115,6 +115,7 @@ describe('월별 이벤트 비용', () => {
     const byLabel = Object.fromEntries(nov.items.map((i) => [i.label, i]));
     expect(byLabel['돌잔치']).toMatchObject({ spent: 50_000, planned: 150_000, amount: 200_000 });
     expect(byLabel['선물']).toMatchObject({ spent: 30_000, planned: 40_000 });
+    expect(p.usual).toBe(50_000);
     expect(byLabel['평소 쓰는 돈']).toMatchObject({ planned: p.usual, shortLabel: '평소' });
     expect(nov.items[nov.items.length - 1]!.kind).toBe('usual');
     expect(nov.spent).toBe(80_000);
@@ -149,20 +150,25 @@ describe('월별 이벤트 비용', () => {
   });
 
   it('한 줄 요약: 큰 줄 2개 + 평소 (평소가 없으면 3개), 금액은 천 원 단위', () => {
-    const data = ledger({
+    const plan: Partial<LedgerData> = {
       fixedExpenses: [fixed({ id: 'tv', name: 'TV 할부', kind: 'installment', amount: 50_000, accountId: eventAcc.id, dayOfMonth: 5, startMonth: '2026-12', endMonth: '2027-05' })],
       events: [
         event({ name: '장모님 생신', date: '2026-12-12', amount: 300_000, accountId: eventAcc.id, categoryId: 'c-fam' }),
         event({ name: '조카 선물', date: '2026-12-20', amount: 20_000, accountId: eventAcc.id, categoryId: 'c-gift' }),
       ],
+    };
+    const data = ledger({
+      ...plan,
       expenses: ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((m) => spend(`${m}-15`, 500_000)),
     });
     const dec = monthOf(data, '2026-12');
     expect(eventMonthTopItems(dec).map((i) => i.shortLabel)).toEqual(['장모님 생신', 'TV 할부', '평소']);
-    expect(eventMonthSummaryText(dec, TODAY)).toBe('12월 87만 · 장모님 생신 30만 · TV 할부 5만 · 평소 50만');
-    // 작년 1월 기록이 0원이라 평소 쓰는 돈이 없는 달
-    const jan = monthOf(data, '2027-01');
-    expect(eventMonthSummaryText(jan, TODAY)).toBe('2027년 1월 5만 · TV 할부 5만');
+    // 평소 쓰는 돈: 기록 시작(1월)부터 10개월 평균 300만/10 = 30만
+    expect(eventMonthSummaryText(dec, TODAY)).toBe('12월 67만 · 장모님 생신 30만 · TV 할부 5만 · 평소 30만');
+    // 기록이 없으면 평소 쓰는 돈이 없어 큰 줄 3개
+    const bare = ledger(plan);
+    expect(eventMonthSummaryText(monthOf(bare, '2026-12'), TODAY)).toBe('12월 37만 · 장모님 생신 30만 · TV 할부 5만 · 조카 선물 2만');
+    expect(eventMonthSummaryText(monthOf(bare, '2027-01'), TODAY)).toBe('2027년 1월 5만 · TV 할부 5만');
     const empty = monthOf(ledger(), '2026-03');
     expect(eventMonthSummaryText(empty, TODAY)).toBe('3월 0원');
     expect(eventMonthTopItems({ items: [1, 2, 3, 4].map((n) => ({ ...dec.items[0]!, key: `k${n}`, kind: 'category' as const })) })).toHaveLength(3);
