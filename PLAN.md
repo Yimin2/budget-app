@@ -1055,6 +1055,7 @@ id, 이름, 금액, 카테고리, 통장, 순서, 삭제됨
 
 - **Next.js 16** (App Router) · React 19 · TypeScript strict. Vercel 배포 (`main` = Production, 다른 브랜치·PR = Preview)
 - 화면은 모두 정적 페이지이고, 브라우저에서 구글 API(Sheets · Drive · Picker)를 직접 부른다
+- **실서비스 주소 하나로**: Production 배포를 다른 주소(별칭 · 배포 주소)로 열면 같은 경로 · 쿼리로 실서비스 주소(`SITE_HOST`, 기본 `budget-app-mocha-pi.vercel.app`)에 308. `next.config.ts` redirects() 의 host `missing` 규칙(본체 `src/server/canonicalHost.ts`)이라 함수 실행 없이 Vercel 라우팅에서 처리. Production 빌드(`VERCEL_ENV=production`)에서만 규칙이 생기고, localhost · 실서비스 주소 자체는 맞지 않는다 → 미리보기 · 로컬 · 로그인 콜백은 그대로. 구글 OAuth 원본 · API 키 제한이 실서비스 주소만 허용하기 때문
 - **서버는 로그인 전용 작은 API 하나**: Next.js 라우트 핸들러 `/api/auth/{login,callback,token,logout,status}` (Vercel 무료 서버리스 함수, 동적). 가계부 데이터는 서버를 지나지 않고, 데이터베이스는 없다. 상태는 암호화 쿠키 하나뿐이다. 본체는 `src/server/auth`
 - 화면 경로: `/start`(로그인 전 · 가계부 고르기) · `/start/new`(새 가계부 마법사) · `/`(홈) · `/check`(사도 돼?) · `/events` · `/events/trips`(여행, `?id=` 여행 하나) · `/accounts` · `/expenses` · `/members` · `/settings`. 로그인하지 않았거나 가계부를 고르지 않았으면 `/start`로 보낸다
 
