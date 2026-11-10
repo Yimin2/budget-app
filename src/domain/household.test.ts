@@ -29,7 +29,7 @@ describe('부부 체험 예시 (월급통장 하나 · 수입 계획 · 나머�
     expect(accountBalance(d, 'demo-acc-income', '2026-11-26')).toBe(0);
   });
 
-  it('생활비 통장이 사람마다 있고, 나는 로그인한 사람의 통장 (모르면 첫 사람)', () => {
+  it('생활비 통장이 사람마다 있고, 나는 로그인한 사람의 통장 (모르면 고를 때까지 없음)', () => {
     const d = couple('2026-11-10');
     expect(livingAccountIds(d, '2026-11')).toEqual(['demo-acc-living-minji', 'demo-acc-living-junho']);
     expect(livingOwners(d, '2026-11').map((o) => [o.accountId, o.name, o.person?.email])).toEqual([
@@ -38,7 +38,9 @@ describe('부부 체험 예시 (월급통장 하나 · 수입 계획 · 나머�
     ]);
     expect(myLivingAccountId(d, '2026-11', 'minji@demo')).toBe('demo-acc-living-minji');
     expect(myLivingAccountId(d, '2026-11', 'JUNHO@demo')).toBe('demo-acc-living-junho');
-    expect(myLivingAccountId(d, '2026-11', 'someone@else')).toBe('demo-acc-living-minji');
+    // 어느 통장과도 이어지지 않은 계정은 첫 사람으로 짐작하지 않아요 (체험 모드만 첫 사람)
+    expect(myLivingAccountId(d, '2026-11', 'someone@else')).toBeNull();
+    expect(myLivingAccountId(d, '2026-11', 'someone@else', { fallbackFirst: true })).toBe('demo-acc-living-minji');
     const spenders = spenderOptions(d, '2026-11');
     expect(spenders.map((s) => [s.key, s.name, s.livingAccountId])).toEqual([
       ['minji@demo', '민지', 'demo-acc-living-minji'],

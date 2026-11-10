@@ -74,9 +74,16 @@ describe('AppShell', () => {
     plus.click();
     (document.querySelector('.side-create') as HTMLButtonElement).click();
     expect(opened).toBe(2);
+    // 모바일 머리 오른쪽은 설정 톱니바퀴만 (사진 없음), 사이드바 아래는 내 정보 버튼 그대로
     const profiles = screen.getAllByRole('link', { name: '내 정보와 설정' });
-    expect(profiles.map((p) => p.className)).toEqual(['top-profile on', 'side-profile on']);
+    expect(profiles.map((p) => p.className)).toEqual(['side-profile on']);
     expect(profiles[0]!.getAttribute('aria-current')).toBe('page');
+    const gear = screen.getByRole('link', { name: '설정' });
+    expect(gear.className).toBe('top-settings on');
+    expect(gear.getAttribute('href')).toBe('/settings');
+    expect(gear.closest('.shell-top')).not.toBeNull();
+    expect(gear.querySelector('.pf-av')).toBeNull();
+    expect(document.querySelector('.shell-top .pf-av')).toBeNull();
   });
 
   it('홈은 정확히 / 일 때만 켜져요', () => {

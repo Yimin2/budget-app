@@ -59,6 +59,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     toast.error(ledger.error);
   }, [ledger.error, hasData, offline, toast]);
 
+  // 열 때 시트를 자동으로 고쳤으면 한 번 알려요 (예: '통장 주인을 멤버와 이었어요')
+  const { notice, dismissNotice } = ledger;
+  useEffect(() => {
+    if (!notice) return;
+    toast.success(notice);
+    dismissNotice();
+  }, [notice, dismissNotice, toast]);
+
   // 마지막으로 맞춘 시각 글을 30초마다 다시 써요
   const [, setTick] = useState(0);
   useEffect(() => {

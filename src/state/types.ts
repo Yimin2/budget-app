@@ -129,8 +129,18 @@ export interface LedgerApi {
   living: LivingStatus | null;
   /** 생활비 통장마다의 생활비 (PLAN 4-14, 통장 순서). 통장이 하나면 한 줄 */
   livingViews: LivingView[];
-  /** 로그인한 사람의 생활비 통장 (멤버와 이어진 통장 → 첫 생활비 통장) */
+  /**
+   * 로그인한 사람의 생활비 통장 (멤버와 이어진 통장). 이어진 통장이 없고 생활비 통장이 여럿이면 null —
+   * 첫 통장을 짐작하지 않아요 (체험 모드는 첫 통장)
+   */
   myLivingAccountId: Id | null;
+  /** 내가 어느 생활비 통장과도 이어지지 않았을 때 고를 통장 주인 이름 (홈 '누가 나인지 골라 주세요'). 필요 없으면 빈 목록 */
+  meChoices: string[];
+  /** '이 사람이 나예요': 주인 이름이 ownerName 이고 주인 이메일이 빈 통장을 모두 내 이메일과 이어요 (한 번에 저장) */
+  claimOwner(ownerName: string): Promise<void>;
+  /** 열 때 시트를 자동으로 고쳤으면 한 번 보여 줄 알림 (예: '통장 주인을 멤버와 이었어요'). 보여 준 뒤 dismissNotice */
+  notice: string | null;
+  dismissNotice(): void;
   /** 이 생활비 통장의 생활비 (안 주면 나). 통장이 하나뿐이면 living 과 같다 */
   livingFor(accountId?: Id | null): LivingStatus | null;
   /** '누가 썼나요?'에서 고를 사람 (가계부의 사람, 그 사람의 생활비 통장과 함께) */

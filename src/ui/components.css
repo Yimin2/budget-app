@@ -1849,6 +1849,31 @@ button.lrow {
   width: 28px;
   height: 28px;
 }
+.top-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.top-settings.on {
+  color: var(--primary-text);
+}
+.top-settings:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .top-settings:hover {
+    background: var(--surface-subtle);
+    color: var(--text);
+  }
+}
 .top-profile {
   display: inline-flex;
   align-items: center;

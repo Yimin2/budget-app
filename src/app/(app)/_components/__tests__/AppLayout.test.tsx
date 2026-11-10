@@ -54,7 +54,8 @@ describe('앱 틀 (app)/layout', () => {
     expect(plus.nextElementSibling?.textContent).toBe('이벤트');
     // 설정은 메뉴가 아니라 내 정보 버튼 (모바일 머리 · 사이드바 아래)
     expect(within(dock).queryByRole('link', { current: 'page' })).toBeNull();
-    const profiles = screen.getAllByRole('link', { name: '내 정보와 설정' });
+    // 모바일 머리 오른쪽은 설정 톱니바퀴 하나, 사이드바 아래는 내 정보 버튼
+    const profiles = [screen.getByRole('link', { name: '설정' }), ...screen.getAllByRole('link', { name: '내 정보와 설정' })];
     expect(profiles).toHaveLength(2);
     for (const p of profiles) {
       expect(p.getAttribute('href')).toBe('/settings');

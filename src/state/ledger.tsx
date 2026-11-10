@@ -26,6 +26,9 @@ import {
   canClaimOnAccount,
   claimAccountFor,
   linkAccountsToEmail,
+  autoLinkOwnerEmails,
+  claimOwnerAccounts,
+  unlinkedOwnerNames,
   memberName,
   moveCategoryTo as moveCategoryToDomain,
   orderedCategories,
@@ -125,6 +128,8 @@ function isReconnectError(e: unknown): boolean {
 }
 
 const RECONNECT_MESSAGE = '구글 연결이 끊겼어요. 아래 버튼으로 다시 연결해 주세요';
+/** 열 때 통장 주인을 멤버와 이었을 때 한 번 보여 주는 알림 (PLAN 4-8) */
+const OWNER_LINK_NOTICE = '통장 주인을 멤버와 이었어요';
 /** 시트를 못 읽어 보관한 내용을 보여 줄 때 (읽기 전용) */
 export const OFFLINE_MESSAGE = '연결이 안 돼서 마지막으로 맞춘 내용을 보여 줘요';
 /** 연결이 안 된 동안 쓰기를 막을 때 */
@@ -254,6 +259,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [savingCount, setSavingCount] = useState(0);
   const [loadingCount, setLoadingCount] = useState(0);
+  /** 열 때 시트를 고쳤으면 한 번 보여 줄 알림 ('통장 주인을 멤버와 이었어요') */
+  const [notice, setNotice] = useState<string | null>(null);
   const [today, setToday] = useState<ISODate>(() => toISODate(deps.now()));
 
   const refKey = ref ? `${ref.source}:${ref.id}` : null;
@@ -428,13 +435,28 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         }
       }
       const merged = mergeMembers(loaded.members, sharing, me);
-      if (merged.changed.length === 0) return loaded;
-      try {
-        await repo.upsertMany('members', merged.changed);
-      } catch {
-        // 다음에 열 때 다시 맞춘다
+      let next = loaded;
+      if (merged.changed.length > 0) {
+        try {
+          await repo.upsertMany('members', merged.changed);
+        } catch {
+          // 다음에 열 때 다시 맞춘다
+        }
+        next = { ...next, members: merged.members };
       }
-      return { ...loaded, members: merged.members };
+      // 기존 시트 자동 고치기: 주인 이름만 있는 통장을 이름이 맞는 멤버의 이메일과 이어요 (다시 해도 같음, 행은 지우지 않음)
+      const linked = autoLinkOwnerEmails(next.accounts, next.members);
+      if (linked.length > 0) {
+        const byId = new Map(linked.map((a) => [a.id, a]));
+        next = { ...next, accounts: next.accounts.map((a) => byId.get(a.id) ?? a) };
+        try {
+          await repo.upsertMany('accounts', linked);
+          setNotice(OWNER_LINK_NOTICE);
+        } catch {
+          // 보기 권한 등: 화면에서만 잇고, 다음에 열 때 다시 써 봐요
+        }
+      }
+      return next;
     },
     [backendFor],
   );
@@ -668,7 +690,11 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income'), [activeAccounts]);
   const living = useMemo(() => (data ? computeLiving(data, today) : null), [data, today]);
   // 사람별 생활비 (PLAN 4-14): 생활비 통장마다, 로그인한 사람의 통장, '누가 썼나요?'에서 고를 사람
-  const myLivingId = useMemo(() => (data ? myLivingAccountId(data, monthOf(today), author) : null), [data, today, author]);
+  const demo = session.mode === 'demo';
+  const myLivingId = useMemo(
+    () => (data ? myLivingAccountId(data, monthOf(today), author, { fallbackFirst: demo }) : null),
+    [data, today, author, demo],
+  );
   // 로그인한 사람(나)을 맨 앞(왼쪽)에, 나머지는 원래 순서대로
   const livingViews = useMemo(() => {
     const views = data ? livingByAccount(data, today) : [];
@@ -692,6 +718,11 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       return id ? computeLiving(data, today, id) : living;
     },
     [data, today, living, livingViews, myLivingId],
+  );
+  // 로그인한 내가 어느 생활비 통장과도 이어지지 않았으면 고를 주인 이름 (홈 '누가 나인지 골라 주세요')
+  const meChoices = useMemo(
+    () => (data && !demo && !myLivingId && livingViews.length > 1 ? unlinkedOwnerNames(data) : []),
+    [data, demo, myLivingId, livingViews.length],
   );
   const balances = useMemo(() => (data ? allBalances(data, today) : {}), [data, today]);
   const eventProjection = useMemo(() => (data ? projectEventAccount(data, today) : null), [data, today]);
@@ -2274,6 +2305,23 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, mutate],
   );
 
+  const claimOwner = useCallback<LedgerApi['claimOwner']>(
+    async (ownerName) => {
+      const { data: d } = requireData();
+      if (demo) return;
+      const changed = claimOwnerAccounts(d.accounts, ownerName, authorRef.current);
+      if (changed.length === 0) return;
+      const byId = new Map(changed.map((a) => [a.id, a]));
+      await mutate(
+        (cur) => ({ ...cur, accounts: cur.accounts.map((a) => byId.get(a.id) ?? a) }),
+        (repo) => repo.upsertMany('accounts', changed),
+        '나를 정하지 못했어요',
+      );
+    },
+    [requireData, mutate, demo],
+  );
+  const dismissNotice = useCallback(() => setNotice(null), []);
+
   const inviteMember = useCallback(
     async (email: string, name: string, incomeAccountId?: Id | null) => {
       const clean = email.trim();
@@ -2374,6 +2422,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       living,
       livingViews,
       myLivingAccountId: myLivingId,
+      meChoices,
+      claimOwner,
+      notice,
+      dismissNotice,
       livingFor,
       spenders,
       mySpenderKey: mySpender,
@@ -2463,7 +2515,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       displayName,
     }),
     [
-      status, error, needsReconnect, ref, data, today, savingCount, reload, sync, deps.now, living, livingViews, myLivingId, livingFor, spenders,
+      status, error, needsReconnect, ref, data, today, savingCount, reload, sync, deps.now, living, livingViews, myLivingId, meChoices, claimOwner, notice, dismissNotice, livingFor, spenders,
       mySpender, addIncomePlan, saveIncomePlan, balances, eventProjection, shortageFix,
       pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
       previewClaimDue, settleClaims, unsettleClaims, settlement, loanCandidates, borrowAndSettleClaims, repayLoan,
