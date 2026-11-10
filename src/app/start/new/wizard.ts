@@ -1,5 +1,5 @@
 /* 새 가계부 만들기 마법사의 순수 도우미 (화면과 분리해서 테스트해요) */
-import { DEFAULT_CATEGORIES, defaultSpreadFor } from '@/domain';
+import { ALLOWANCE_RULE_PREFIX, DEFAULT_CATEGORIES, defaultSpreadFor } from '@/domain';
 import type { Account, AccountRole, AllocationRule, Category, FixedExpense, IncomePlan, LivingSpread, Won, YearMonth } from '@/domain/types';
 
 export type AllocRole = Extract<AccountRole, 'fixed' | 'event' | 'savings' | 'reservoir'>;
@@ -23,14 +23,6 @@ export interface BillDraft {
   day: number;
 }
 
-export interface AllowanceDraft {
-  key: string;
-  email: string;
-  name: string;
-  amount: Won | null;
-  day: number;
-}
-
 /**
  * 공용 가계부의 버는 사람 한 명 (PLAN 4-13): 월급 · 월급날은 수입 계획이 되고, 월급은 함께 쓰는 월급통장 하나로 들어와요.
  * 월급날에 월급통장에서 각 통장으로 보낼 금액(alloc)을 정하고, 남은 돈은 저수지로 모두 보낼 수 있어요(rest)
@@ -43,6 +35,11 @@ export interface EarnerDraft {
   /** 월급날 = 배분하는 날 */
   day: number;
   alloc: Record<AllocRole, Won | null>;
+  /**
+   * 용돈 (8-2): 있으면 '<이름> 용돈' 통장(역할 용돈, 주인 = 이 사람)을 만들고 월급날 월급통장에서 이 금액을 보내요.
+   * 용돈은 고정지출 행이 아니라 매달 배분이에요
+   */
+  allowance: Won | null;
   /** 남은 돈은 모두 저수지통장으로 (나머지 전부 보내기). true 면 alloc.reservoir 는 쓰지 않아요 */
   rest: boolean;
 }
@@ -81,7 +78,7 @@ export function emptyAlloc(): Record<AllocRole, Won | null> {
 }
 
 export function newEarner(name = '', email = ''): EarnerDraft {
-  return { key: draftKey('earner'), name, email, salary: null, day: 25, alloc: emptyAlloc(), rest: true };
+  return { key: draftKey('earner'), name, email, salary: null, day: 25, alloc: emptyAlloc(), allowance: null, rest: true };
 }
 
 /** 정한 금액으로 보내는 통장 (남은 돈을 저수지로 모두 보내면 저수지는 빼요) */
@@ -95,8 +92,19 @@ export function incomeAccountName(name: string): string {
   return n ? `${n} 수입통장` : '수입통장';
 }
 
-function hasAnyAmount(e: Pick<EarnerDraft, 'salary' | 'alloc'>): boolean {
-  return (e.salary !== null && e.salary > 0) || ALLOC_TARGETS.some((t) => (e.alloc[t.role] ?? 0) > 0);
+function hasAnyAmount(e: Pick<EarnerDraft, 'salary' | 'alloc' | 'allowance'>): boolean {
+  return (e.salary !== null && e.salary > 0) || (e.allowance ?? 0) > 0 || ALLOC_TARGETS.some((t) => (e.alloc[t.role] ?? 0) > 0);
+}
+
+/** 사람의 용돈 통장 이름: '민지 용돈' (이름이 없으면 '용돈') */
+export function allowanceAccountName(name: string): string {
+  const n = name.trim();
+  return n ? `${n} 용돈` : '용돈';
+}
+
+/** 한 사람이 월급날 보내는 금액들 (정한 금액 통장 + 용돈) — 합계 · 월급 비교용 */
+export function earnerAmounts(e: EarnerDraft): (Won | null)[] {
+  return [...fixedTargets(e).map((t) => e.alloc[t.role]), e.allowance];
 }
 
 /** 저장할 사람: 첫 사람(만든 사람)은 늘, 나머지는 이름이나 금액이 있을 때만 */
@@ -171,19 +179,6 @@ export function validateBills(bills: BillDraft[]): DraftErrors {
   return errors;
 }
 
-/** 금액이 있으면 받는 사람 이메일이 꼭 있어야 해요. 금액이 없는 행은 무시해요 (내 이메일이 미리 채워져 있어서) */
-export function validateAllowances(rows: AllowanceDraft[]): DraftErrors {
-  const errors: DraftErrors = {};
-  for (const r of rows) {
-    const hasAmount = r.amount !== null && r.amount > 0;
-    const email = r.email.trim();
-    if (!hasAmount) continue;
-    if (!email) errors[r.key] = { email: '받는 사람 이메일을 입력해 주세요' };
-    else if (!isEmail(email)) errors[r.key] = { email: '이메일 주소를 확인해 주세요' };
-  }
-  return errors;
-}
-
 /* ---------- 저장할 행 만들기 ---------- */
 
 export type FixedInput = Omit<FixedExpense, 'id' | 'deleted'>;
@@ -194,12 +189,8 @@ export interface FixedContext {
   month: YearMonth;
 }
 
-/** 마법사 입력 → 고정 지출 행 (키는 저장 상태를 맞출 때 써요) */
-export function wantedFixed(
-  ctx: FixedContext,
-  bills: BillDraft[],
-  allowances: AllowanceDraft[],
-): { key: string; input: FixedInput }[] {
+/** 마법사 입력 → 고정비 행 (키는 저장 상태를 맞출 때 써요). 용돈은 고정지출 행으로 만들지 않아요 (wantedAllowanceRules) */
+export function wantedFixed(ctx: FixedContext, bills: BillDraft[]): { key: string; input: FixedInput }[] {
   const base = { accountId: ctx.accountId, startMonth: ctx.month, endMonth: null, spread: 'daily' as const };
   const out: { key: string; input: FixedInput }[] = [];
   for (const b of bills) {
@@ -207,15 +198,6 @@ export function wantedFixed(
     out.push({
       key: b.key,
       input: { ...base, name: b.name.trim(), amount: b.amount, categoryId: null, dayOfMonth: b.day, kind: 'bill', targetEmail: null },
-    });
-  }
-  for (const r of allowances) {
-    const email = r.email.trim();
-    if (!isEmail(email) || r.amount === null || r.amount <= 0) continue;
-    const who = r.name.trim() || email.split('@')[0] || email;
-    out.push({
-      key: r.key,
-      input: { ...base, name: `용돈(${who})`, amount: r.amount, categoryId: null, dayOfMonth: r.day, kind: 'allowance', targetEmail: email },
     });
   }
   return out;
@@ -329,6 +311,41 @@ export function wantedRules(
     });
   }
   return out;
+}
+
+/**
+ * 용돈 배분 (8-2): 용돈이 있는 사람마다 월급날 월급통장 → 그 사람 용돈 통장 '매달 같은 금액' (키 = <사람 키>:allowance).
+ * accountOf 는 그 사람의 용돈 통장 id (아직 없으면 null → 건너뛰어요). id 는 용돈 배분 표시(allowance-rule-…)로 붙여요
+ */
+export function wantedAllowanceRules(
+  ctx: { incomeAccountId: string | null; month: YearMonth },
+  earners: EarnerDraft[],
+  accountOf: (e: EarnerDraft) => string | null,
+): { key: string; input: RuleInput }[] {
+  if (!ctx.incomeAccountId) return [];
+  const out: { key: string; input: RuleInput }[] = [];
+  for (const e of earners) {
+    const to = accountOf(e);
+    if (!to || e.allowance === null || e.allowance <= 0) continue;
+    out.push({
+      key: `${e.key}:allowance`,
+      input: {
+        fromAccountId: ctx.incomeAccountId,
+        toAccountId: to,
+        amount: e.allowance,
+        kind: 'fixed',
+        dayOfMonth: e.day,
+        startMonth: ctx.month,
+        endMonth: null,
+      },
+    });
+  }
+  return out;
+}
+
+/** 마법사가 만드는 용돈 배분 id */
+export function allowanceRuleIdForWizard(uuid: string): string {
+  return `${ALLOWANCE_RULE_PREFIX}${uuid}`;
 }
 
 /**

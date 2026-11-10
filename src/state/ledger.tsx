@@ -31,6 +31,7 @@ import {
   autoLinkOwnerEmails,
   AUTO_KIND_NOTICE,
   rulesToAutoKind,
+  migrateAllowanceRows,
   claimOwnerAccounts,
   unlinkedOwnerNames,
   memberName,
@@ -496,6 +497,34 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [setNotice],
   );
 
+  /**
+   * 기존 시트 자동 고치기 (8-2): 예전 '용돈' 고정지출 행을 용돈 통장으로 가는 배분 또는 일반 고정비로 옮겨요.
+   * 구글 시트 가계부만. 배분 → 고정지출 순서로 한 번에 쓰고(다시 해도 같음), 다 썼을 때만 한 번 알려요
+   */
+  const migrateAllowances = useCallback(
+    async (repo: LedgerRepository, loaded: LedgerData): Promise<LedgerData> => {
+      if (repo.ref.source !== 'sheets') return loaded;
+      const moved = migrateAllowanceRows(loaded);
+      if (moved.fixedExpenses.length === 0) return loaded;
+      let next = loaded;
+      try {
+        if (moved.rules.length > 0) {
+          await repo.upsertMany('rules', moved.rules);
+          const ids = new Set(moved.rules.map((r) => r.id));
+          next = { ...next, rules: [...next.rules.filter((r) => !ids.has(r.id)), ...moved.rules] };
+        }
+        await repo.upsertMany('fixedExpenses', moved.fixedExpenses);
+      } catch {
+        // 보기 권한 등: 그대로 두고 다음에 열 때 다시 써 봐요 (배분 id 가 정해져 있어 두 번 생기지 않아요)
+        return loaded;
+      }
+      const byId = new Map(moved.fixedExpenses.map((f) => [f.id, f]));
+      if (moved.notice) setNotice(moved.notice);
+      return { ...next, fixedExpenses: next.fixedExpenses.map((f) => byId.get(f.id) ?? f) };
+    },
+    [setNotice],
+  );
+
   const loadAll = useCallback(async () => {
     const repo = repoRef.current;
     if (!repo) return;
@@ -505,7 +534,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     setLoadingCount((n) => n + 1);
     try {
       const members = await syncMembers(repo, await repo.load());
-      const fresh = await migrateRuleKinds(repo, members, todayRef.current);
+      const moved = await migrateAllowances(repo, members);
+      const fresh = await migrateRuleKinds(repo, moved, todayRef.current);
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
       const merged = withPendingWrites(synced, loadStart);
@@ -533,7 +563,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingCount((n) => n - 1);
     }
-  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateRuleKinds, syncAutoRecords, withPendingWrites]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, migrateRuleKinds, syncAutoRecords, withPendingWrites]);
   const loadAllRef = useRef(loadAll);
   useEffect(() => {
     loadAllRef.current = loadAll;
@@ -1775,7 +1805,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   );
 
   const addRule = useCallback(
-    async (input: Omit<AllocationRule, 'id' | 'deleted'>): Promise<AllocationRule> => {
+    async ({ id: givenId, ...input }: Omit<AllocationRule, 'id' | 'deleted'> & { id?: string }): Promise<AllocationRule> => {
       if (input.fromAccountId === input.toAccountId) throw new Error('보내는 통장과 받는 통장이 같아요');
       if (isRemainderRule(input) && conflictingRemainderRule(requireData().data, input)) {
         throw new Error('같은 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요');
@@ -1784,7 +1814,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         throw new Error('알아서 맞추기는 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요');
       }
       const computed = isRemainderRule(input) || input.kind === 'auto';
-      const row: AllocationRule = computed ? { ...input, amount: 0, id: newId(), deleted: false } : { ...input, id: newId(), deleted: false };
+      const id = givenId || newId();
+      const row: AllocationRule = computed ? { ...input, amount: 0, id, deleted: false } : { ...input, id, deleted: false };
       await insertRows('rules', [row], '매달 배분을 추가하지 못했어요');
       await syncAutoNow();
       return row;

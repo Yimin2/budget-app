@@ -72,10 +72,10 @@ describe('settings helpers', () => {
     expect(ownerLabel({ name: '고정지출통장', ownerName: null, ownerEmail: null })).toBeNull();
   });
 
-  it('고정 지출: 생활비 항목 → 고정비(결제일 순) → 용돈', () => {
+  it('고정 지출: 생활비 항목 → 고정비(결제일 순, 예시의 용돈은 1일 고정비)', () => {
     const kinds = visibleFixed(demo.fixedExpenses, '2026-11').map((f) => f.name);
     expect(kinds).toEqual([
-      '식비', '카페', '교통', '생활', '쇼핑', '의료', '문화', '월세', '통신비', '보험', '용돈(민지)', '용돈(준호)',
+      '식비', '카페', '교통', '생활', '쇼핑', '의료', '문화', '용돈(민지)', '용돈(준호)', '월세', '통신비', '보험',
     ]);
   });
 

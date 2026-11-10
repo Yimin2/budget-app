@@ -374,8 +374,9 @@ export function createDemoLedger(
     fx('rent', '월세', 800_000, 'bill', 10, 'living'),
     fx('phone', '통신비', 120_000, 'bill', 15, 'living'),
     fx('insurance', '보험', 180_000, 'bill', 20, 'medical'),
-    fx('allowance-minji', '용돈(민지)', 150_000, 'allowance', 1, null, minji),
-    fx('allowance-junho', '용돈(준호)', 150_000, 'allowance', 1, null, junho),
+    // 예전 예시는 용돈 통장이 없어 용돈을 고정지출통장의 고정비로 둬요 (8-2: 용돈 종류 행은 만들지 않아요)
+    fx('allowance-minji', '용돈(민지)', 150_000, 'bill', 1, null),
+    fx('allowance-junho', '용돈(준호)', 150_000, 'bill', 1, null),
     ...DEMO_LIVING_ITEMS.map(([key, amount, spread]) =>
       fx(`living-${key}`, DEFAULT_CATEGORIES.find((c) => c.key === key)!.name, amount, 'living', null, key, null, spread),
     ),

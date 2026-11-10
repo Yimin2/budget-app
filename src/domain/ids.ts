@@ -24,3 +24,14 @@ export function allowanceIncomeId(sharedLedgerId: string, fixedId: string, month
 export function monthEndTransferId(month: string): string {
   return `monthend:${month}`;
 }
+/**
+ * 용돈 배분 규칙 id 앞부분 (8-2). 용돈 항목에서 옮긴 배분(`allowance-rule-<고정지출id>`)과 새 가계부 마법사의 용돈 배분.
+ * 정한 금액 그대로 보내는 배분이라 '알아서 맞추기' 자동 고치기(4-15)가 건드리지 않는다
+ */
+export const ALLOWANCE_RULE_PREFIX = 'allowance-rule-';
+export function allowanceRuleId(fixedId: string): string {
+  return `${ALLOWANCE_RULE_PREFIX}${fixedId}`;
+}
+export function isAllowanceRuleId(id: string): boolean {
+  return id.startsWith(ALLOWANCE_RULE_PREFIX);
+}

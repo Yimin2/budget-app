@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Category, FixedExpense } from '@/domain/types';
 import {
-  activeEarners, allocationSummary, defaultLivingDrafts, diffByKey, earnerAccountFields, incomeAccountName, livingTotal,
-  newEarner, validateAllowances, validateBills, validateEarners, wantedFixed, wantedLiving, wantedRules,
-  type AllowanceDraft, type BillDraft,
+  activeEarners, allocationSummary, allowanceAccountName, allowanceRuleIdForWizard, defaultLivingDrafts, diffByKey, earnerAccountFields,
+  earnerAmounts, incomeAccountName, livingTotal, newEarner, validateBills, validateEarners, wantedAllowanceRules, wantedFixed,
+  wantedLiving, wantedRules,
+  type BillDraft,
 } from './wizard';
+import { isAllowanceRuleId } from '@/domain';
 
 describe('allocationSummary', () => {
   it('월급이 없으면 합계만', () => {
@@ -30,32 +32,37 @@ describe('입력 확인', () => {
     expect(validateBills([bill({ key: 'a' })])).toEqual({});
     expect(validateBills([bill({ key: 'a', name: '월세', amount: 800_000 })])).toEqual({});
   });
-  it('용돈은 금액이 있으면 이메일이 필요해요', () => {
-    const row = (p: Partial<AllowanceDraft>): AllowanceDraft => ({ key: 'r', email: '', name: '', amount: null, day: 1, ...p });
-    expect(validateAllowances([row({ amount: 100 })]).r?.email).toBeDefined();
-    expect(validateAllowances([row({ amount: 100, email: 'nope' })]).r?.email).toBe('이메일 주소를 확인해 주세요');
-    expect(validateAllowances([row({ email: 'a@b.c' })])).toEqual({});
-    expect(validateAllowances([row({})])).toEqual({});
-    expect(validateAllowances([row({ amount: 100, email: 'a@b.c' })])).toEqual({});
-  });
 });
 
 describe('저장할 행', () => {
-  it('고정비 · 용돈을 고정 지출 행으로', () => {
-    const rows = wantedFixed(
-      { accountId: 'acc-fixed', month: '2026-11' },
-      [
-        { key: 'b1', name: ' 월세 ', amount: 800_000, day: 10 },
-        { key: 'b2', name: '', amount: null, day: 1 },
-      ],
-      [
-        { key: 'a1', email: 'minji@x.com', name: '', amount: 150_000, day: 1 },
-        { key: 'a2', email: 'bad', name: '준호', amount: 150_000, day: 1 },
-      ],
-    );
-    expect(rows.map((r) => r.key)).toEqual(['b1', 'a1']);
+  it('고정비만 고정 지출 행으로 (용돈 행은 만들지 않아요)', () => {
+    const rows = wantedFixed({ accountId: 'acc-fixed', month: '2026-11' }, [
+      { key: 'b1', name: ' 월세 ', amount: 800_000, day: 10 },
+      { key: 'b2', name: '', amount: null, day: 1 },
+    ]);
+    expect(rows.map((r) => r.key)).toEqual(['b1']);
     expect(rows[0]!.input).toMatchObject({ kind: 'bill', name: '월세', dayOfMonth: 10, accountId: 'acc-fixed', startMonth: '2026-11', endMonth: null });
-    expect(rows[1]!.input).toMatchObject({ kind: 'allowance', name: '용돈(minji)', targetEmail: 'minji@x.com' });
+    expect(rows.every((r) => r.input.kind !== 'allowance')).toBe(true);
+  });
+
+  it('용돈은 그 사람 용돈 통장으로 가는 매달 같은 금액 배분 (월급날)', () => {
+    const minji = { ...newEarner('민지', 'minji@x.com'), allowance: 300_000, day: 25 };
+    const junho = { ...newEarner('준호'), allowance: null };
+    const nobody = { ...newEarner('기쁜'), allowance: 100_000 };
+    const wallets: Record<string, string> = { [minji.key]: 'w-minji' };
+    const rules = wantedAllowanceRules({ incomeAccountId: 'inc', month: '2026-11' }, [minji, junho, nobody], (e) => wallets[e.key] ?? null);
+    expect(rules).toEqual([
+      {
+        key: `${minji.key}:allowance`,
+        input: { fromAccountId: 'inc', toAccountId: 'w-minji', amount: 300_000, kind: 'fixed', dayOfMonth: 25, startMonth: '2026-11', endMonth: null },
+      },
+    ]);
+    expect(wantedAllowanceRules({ incomeAccountId: null, month: '2026-11' }, [minji], () => 'w')).toEqual([]);
+    expect(allowanceAccountName(' 민지 ')).toBe('민지 용돈');
+    expect(allowanceAccountName('')).toBe('용돈');
+    expect(isAllowanceRuleId(allowanceRuleIdForWizard('abc'))).toBe(true);
+    // 합계에 용돈도 들어가요
+    expect(allocationSummary(500_000, earnerAmounts({ ...minji, alloc: { ...minji.alloc, event: 100_000 } })).total).toBe(400_000);
   });
 
   it('수입통장이 없으면 배분 규칙을 만들지 않아요', () => {
@@ -85,7 +92,7 @@ describe('저장할 행', () => {
       ...wantedLiving({ accountId: 'f', month: '2026-11' }, [
         { key: 'l1', categoryId: 'food', name: '식비', icon: 'utensils', amount: 600_000, spread: 'daily' },
       ]),
-      ...wantedFixed({ accountId: 'f', month: '2026-11' }, [{ key: 'b9', name: '통신비', amount: 1, day: 1 }], []),
+      ...wantedFixed({ accountId: 'f', month: '2026-11' }, [{ key: 'b9', name: '통신비', amount: 1, day: 1 }]),
     ];
     const d = diffByKey(saved, wanted);
     expect(d.add.map((a) => a.key)).toEqual(['b9']);

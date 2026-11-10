@@ -14,7 +14,7 @@ import {
   isDatedBill, lastChargeDate, nextChargeOnOrAfter, rowStart,
 } from './bills';
 import { addDays, addMonths, dateInMonth, formatShortDate, isMonthActive, isValidDate, isValidMonth, monthOf } from './dates';
-import { autoTransferId } from './ids';
+import { autoTransferId, isAllowanceRuleId } from './ids';
 import { installmentGroups, installmentPayments, installmentPlanId } from './installments';
 import { activeLivingRows } from './living';
 import { formatMan, formatWon } from './money';
@@ -301,7 +301,8 @@ export function rulesToAutoKind(data: LedgerData, today: ISODate): AllocationRul
   const live = (r: AllocationRule) => !r.deleted && isValidMonth(r.startMonth) && (r.endMonth === null || r.endMonth >= month);
   const byTarget = new Map<Id, AllocationRule[]>();
   for (const r of data.rules) {
-    if (!live(r) || !isFixedRule(r)) continue;
+    // 용돈 배분(용돈 항목에서 옮긴 것 · 마법사에서 정한 것)은 정한 금액 그대로 둬요 (8-2)
+    if (!live(r) || !isFixedRule(r) || isAllowanceRuleId(r.id)) continue;
     const to = data.accounts.find((a) => a.id === r.toAccountId && !a.deleted);
     if (!canAutoFill(to)) continue;
     byTarget.set(r.toAccountId, [...(byTarget.get(r.toAccountId) ?? []), r]);
