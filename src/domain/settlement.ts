@@ -6,7 +6,7 @@
  *   (정산일이 지났으면 오늘 기준. 아직 안 돌려준 청구는 잔액에 없으니 따로 빼지 않는다)
  * - 이번 정산에 들어가는 청구 = 정산일(오늘이 더 늦으면 오늘)까지 돌려줄 날이 된 아직 안 돌려준 청구
  * - 이벤트통장 청구는 ① 지난달부터 못 준 청구(돌려줄 날이 이번 달 첫날 전)를 쓸 수 있는 돈 전체에서 먼저
- *   ② 이번 달 청구는 그 뒤 이번 달 아직 안 쓴 일정 · 여행 · 할부를 뺀 남은 돈에서 나눈다. 둘 다 지출 날짜가 오래된 것부터, 청구는 쪼개지 않는다:
+ *   ② 이번 달 청구는 그 뒤 이번 달 아직 안 쓴 일정 · 여행 · 할부(이번 달 날짜만, 평소 쓰는 돈 제외 — reservedThisMonth)를 뺀 남은 돈에서 나눈다. 둘 다 지출 날짜가 오래된 것부터, 청구는 쪼개지 않는다:
  *   다음 청구가 안 들어가면 건너뛰고 그 뒤의 더 작은 청구를 넣어 본다 (first-fit). 안 들어간 청구는 '다음 달로 넘어가요'
  *   지급할 수 있는 돈 = 지난달 청구로 먼저 주는 돈 + max(0, 쓸 수 있는 돈 − 그 돈 − 이번 달 일정). 지난달 청구를 주고 일정이 모자라면
  *   막지 않고 '이 돈을 먼저 돌려주면 ○월 일정에 ○원이 모자라요' (예측은 지난 청구를 이번 달 나갈 돈으로 이미 뺀다)
@@ -36,6 +36,7 @@ import { claimLoanTransferId, claimTransferId, isReservoirEventExpense, pendingC
 import { dateInMonth, monthOf } from './dates';
 import { projectEventAccount } from './events';
 import { autoTransferId } from './ids';
+import { unrecordedInstallmentPayments } from './installments';
 import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isComputedRule, projectRemainders, ruleAmountFor } from './income';
 import { firstAccountByRole } from './internal';
 import { formatMan, formatWon } from './money';
@@ -352,6 +353,20 @@ function scheduledDate(data: LedgerData, accountId: Id, today: ISODate, asOf: IS
   return dates.size === 1 ? [...dates][0]! : null;
 }
 
+/**
+ * 정산에서 남겨 둘 이번 달 돈 = 이번 달 날짜의 아직 안 쓴 일정(반복 회차 포함) + 이번 달 여행 남은 예산 + 이번 달 할부 회차.
+ * 평소 쓰는 돈(usual)은 넣지 않는다. 예측은 지난달 날짜인데 아직 '예정'인 일정 · 기록 안 된 지난 할부 회차도 이번 달 나갈 돈으로 모으지만,
+ * 그건 대개 '썼어요'를 누르지 않은 지난 일정이라 정산 한도에서는 빼지 않는다 (줄 수 있는 돈이 까닭 없이 작아지지 않게)
+ */
+export function reservedThisMonth(data: LedgerData, eventAccountId: Id, today: ISODate, proj: EventProjection): Won {
+  const month = monthOf(today);
+  const m0 = proj.months.find((m) => m.month === month);
+  if (!m0) return 0;
+  const planned = m0.events.reduce((t, e) => (monthOf(e.date) === month ? t + e.amount : t), 0);
+  const installments = unrecordedInstallmentPayments(data, eventAccountId).reduce((t, p) => (p.month === month ? t + p.amount : t), 0);
+  return planned + (m0.trips ?? 0) + installments;
+}
+
 /** 지난달부터 못 준 청구인지 (돌려줄 날이 이번 달 첫날 전) — 정산 화면의 '지난달부터' 표시 */
 export function isCarriedOverClaim(s: Pick<Settlement, 'monthStart'>, c: PendingClaim): boolean {
   return c.due < s.monthStart;
@@ -364,8 +379,7 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
   const eventAcc = firstAccountByRole(data, 'event');
   const reservoirAcc = firstAccountByRole(data, 'reservoir');
   const proj = projection ?? projectEventAccount(data, today);
-  const m0 = proj.months[0];
-  const reserved = m0 ? m0.planned + (m0.trips ?? 0) + (m0.installments ?? 0) : 0;
+  const reserved = eventAcc ? reservedThisMonth(data, eventAcc.id, today, proj) : 0;
   const balance = eventAcc ? balanceWithScheduled(data, eventAcc.id, today, asOf) : 0;
   const recorded = eventAcc ? accountBalance(data, eventAcc.id, asOf) : 0;
   const incoming = balance - recorded;
@@ -699,12 +713,27 @@ export function settleRoster(s: Settlement): SettlePerson[] {
 }
 
 export interface SettlementSummary {
-  /** 이번 달 줄 돈 = 처음 골라 둘 청구 (이번 달 지급 + 돌려줄 날이 된 저수지 청구) */
+  /**
+   * 이번 달 줄 돈 = 정산 기준일까지 돌려줄 날이 된 모든 청구의 합 (지난달부터 못 준 것 · 다음 달로 넘어갈 것 포함,
+   * 돌려줄 날이 된 저수지 청구 포함). 이벤트통장에서 지금 줄 수 있는지와 상관없이 이번 달에 줘야 하는 돈
+   */
   total: Won;
   /** 사람마다 (많은 순) */
   people: { name: string; amount: Won }[];
   /** 정산일 */
   date: ISODate;
+  /** 그중 이벤트통장에서 줄 수 있는 돈 = 처음 골라 둔 이벤트통장 청구 (지난달 청구 먼저 · 오래된 순 first-fit, 쪼개지 않음) */
+  fromEvent: Won;
+  /** 생활비(고정지출) 통장에서 줄 돈 */
+  fromFixed: Won;
+  /** 저수지에서 줄 돈 (저수지통장의 이벤트 아닌 청구, 빌린 돈이 아니다) */
+  fromReservoir: Won;
+  /** 저수지에서 빌려 줄 돈 (저수지 돈으로 낸 이벤트 청구) */
+  borrow: Won;
+  /** 나머지 = 이벤트통장에서 줄 수 있는 돈에 안 드는 청구 → 저수지에서 빌리거나 다음 달로 */
+  rest: Won;
+  /** 이벤트통장에서 줄 수 있는 돈 (한도) */
+  payable: Won;
   /** 줄 돈이 없을 때 다음에 줄 돈: 가장 이른 정산일과 그날 줄 돈 (없으면 null) */
   next: { date: ISODate; amount: Won } | null;
   /** 넘어가는 돈 합과 가장 늦은 지급 예상 달 (12개월 안에 어려우면 null) */
@@ -713,15 +742,19 @@ export interface SettlementSummary {
   hasClaims: boolean;
 }
 
-/** 이벤트 화면 · 홈의 한 줄 요약: '이번 달 줄 돈 32.4만 (민구 30만 · 기쁜 2.4만) · 11/21' */
+/**
+ * 이벤트 화면 · 홈 · 정산 화면 맨 위의 요약: '이번 달 줄 돈 70만 (민구 55만 · 기쁜 15만) · 11/21'
+ * 과 그중 어디서 줄 수 있는지 (splitText)
+ */
 export function settlementSummary(s: Settlement): SettlementSummary {
-  const picked = defaultSettlementSelection(s);
   const roster = settleRoster(s);
+  const isDue = (i: SettleItem) => i.kind !== 'upcoming' && i.claim.due <= s.asOf;
   const people = roster
-    .map((p) => ({ name: p.name, amount: p.items.filter((i) => picked.has(i.claim.expense.id)).reduce((t, i) => t + i.claim.amount, 0) }))
+    .map((p) => ({ name: p.name, amount: p.items.filter(isDue).reduce((t, i) => t + i.claim.amount, 0) }))
     .filter((p) => p.amount > 0)
     .sort((a, b) => b.amount - a.amount || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const later = roster.flatMap((p) => p.items).filter((i) => !picked.has(i.claim.expense.id) && i.kind !== 'carry');
+  const dueOf = (list: PersonClaims[]) => sumOf(list.flatMap((g) => g.claims).filter((c) => c.due <= s.asOf));
+  const later = roster.flatMap((p) => p.items).filter((i) => !isDue(i));
   let next: SettlementSummary['next'] = null;
   if (later.length > 0) {
     const date = later.reduce((m, i) => (i.claim.due < m ? i.claim.due : m), later[0]!.claim.due);
@@ -743,10 +776,40 @@ export function settlementSummary(s: Settlement): SettlementSummary {
     total: people.reduce((t, p) => t + p.amount, 0),
     people,
     date: s.date,
+    fromEvent: s.eventPayTotal,
+    fromFixed: s.payTotal - s.eventPayTotal,
+    fromReservoir: dueOf(s.reservoir),
+    borrow: dueOf(s.reservoirLoan),
+    rest: s.carryTotal,
+    payable: s.payable,
     next,
     carry,
     hasClaims: roster.length > 0,
   };
+}
+
+/**
+ * 줄 돈을 어디서 주는지 한 줄: '이벤트통장에서 2만 · 나머지 68만은 저수지에서 빌리거나 다음 달로'
+ * (모두 이벤트통장 몫이고 다 들어가면 '모두 이벤트통장에서 줄 수 있어요'). 줄 돈이 없으면 null
+ */
+export function settlementSplitText(sum: SettlementSummary): string | null {
+  if (sum.total <= 0) return null;
+  if (sum.rest === 0 && sum.fromFixed === 0 && sum.fromReservoir === 0 && sum.borrow === 0) return '모두 이벤트통장에서 줄 수 있어요';
+  const parts: string[] = [];
+  if (sum.fromEvent > 0) parts.push(`이벤트통장에서 ${formatMan(sum.fromEvent)}`);
+  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatMan(sum.fromFixed)}`);
+  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatMan(sum.fromReservoir)}`);
+  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatMan(sum.borrow)}`);
+  if (sum.rest > 0) {
+    const head =
+      parts.length > 0
+        ? '나머지 '
+        : sum.payable > 0
+          ? `이벤트통장에서 줄 수 있는 ${formatMan(sum.payable)}에 안 들어가 `
+          : '이벤트통장에서 줄 수 있는 돈이 없어 ';
+    parts.push(`${head}${formatMan(sum.rest)}은 저수지에서 빌리거나 다음 달로`);
+  }
+  return parts.join(' · ');
 }
 
 export interface SettlePlan {

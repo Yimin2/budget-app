@@ -42,6 +42,12 @@ describe('정산 화면', () => {
     const { list, bar } = await renderScreen();
     expect(screen.getByRole('heading', { name: '이번 달 정산', level: 1 })).toBeTruthy();
     expect(screen.getByRole('link', { name: '이벤트로' }).getAttribute('href')).toBe('/plan');
+    // 맨 위: 이번 달 줄 돈 · 이벤트통장에서 줄 수 있는 돈 · 나머지
+    const due = screen.getByRole('region', { name: '이번 달 줄 돈' });
+    expect(screen.getByTestId('settle-due').textContent).toMatch(/^이번 달 줄 돈 [\d,]+원 \(.+\)$/);
+    expect(within(due).getByText('이벤트통장에서 줄 수 있는 돈')).toBeTruthy();
+    expect(within(due).getByText('나머지')).toBeTruthy();
+    expect(screen.getByTestId('settle-split').textContent).not.toBe('');
     const payable = screen.getByRole('region', { name: '지급할 수 있는 돈' });
     expect(payable.textContent).toContain('지급할 수 있는 돈 750,000원');
     expect(payable.textContent).toMatch(/이벤트통장 잔액/);

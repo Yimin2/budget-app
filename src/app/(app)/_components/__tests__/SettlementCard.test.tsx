@@ -25,7 +25,8 @@ describe('이번 달 정산 한 줄 요약', () => {
     const card = await screen.findByRole('region', { name: '이번 달 정산' });
     expect(card.id).toBe('settlement');
     const date = formatShortDate(L(h).settlement!.date);
-    expect(within(card).getByTestId('settlement-line').textContent).toBe(`이번 달 줄 돈 30만 (민지 30만) · ${date}`);
+    expect(within(card).getByTestId('settlement-line').textContent).toBe(`이번 달 줄 돈 30만 (민지 30만) · ${date} · 모두 이벤트통장에서 줄 수 있어요`);
+    expect(within(card).getByTestId('settlement-split').textContent).toBe(' · 모두 이벤트통장에서 줄 수 있어요');
     expect(within(card).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
 
     // 저수지 돈으로 낸 이벤트 청구도 사람에게 줄 돈으로 더해져요 (많은 순)
@@ -33,7 +34,9 @@ describe('이번 달 정산 한 줄 요약', () => {
       await L(h).addExpense({ date: '2026-10-02', amount: 24_000, accountId: 'demo-acc-reservoir', categoryId: eventCat(h), memo: '꽃', paidBy: '준호' });
     });
     await waitFor(() =>
-      expect(within(card).getByTestId('settlement-line').textContent).toBe(`이번 달 줄 돈 32.4만 (민지 30만 · 준호 2.4만) · ${date}`),
+      expect(within(card).getByTestId('settlement-line').textContent).toBe(
+        `이번 달 줄 돈 32.4만 (민지 30만 · 준호 2.4만) · ${date} · 이벤트통장에서 30만 · 저수지에서 빌려 2.4만`,
+      ),
     );
     expect(card.textContent).not.toMatch(/저수지에 (쓸|줄) 돈|저수지에서 돌려받을|빌려 줄 돈/);
   });
