@@ -634,14 +634,14 @@ export interface ImportPlan {
   claims: {
     pending: { payer: string; count: number; amount: Won }[];
     pendingTotal: Won;
-    /** 그중 저수지에 쓸 돈 (저수지통장의 이벤트 아닌 청구). 저수지에서 돌려주면 빌린 돈이 되지 않는다 */
+    /** 그중 저수지에서 지급할 청구 (저수지통장의 이벤트 아닌 청구). 저수지에서 돌려주면 빌린 돈이 되지 않는다 */
     reservoirPending: { payer: string; count: number; amount: Won }[];
     /**
-     * 그중 저수지에서 빌려 줄 돈 (저수지통장의 이벤트 청구: 이벤트 카테고리 · 일정 · 여행). 정산 카드에서 지급하면
+     * 그중 저수지에서 빌려 지급할 청구 (저수지통장의 이벤트 청구: 이벤트 카테고리 · 일정 · 여행). 정산 화면에서 지급하면
      * 이벤트통장 지출이 되고 저수지에 갚을 돈이 늘어난다 (PLAN 4-9)
      */
     reservoirLoanPending: { payer: string; count: number; amount: Won }[];
-    /** 저수지에서 이미 돌려준 이벤트 청구. 정산 카드에서 한 번에 저수지에 갚을 돈으로 바꿀 수 있다 */
+    /** 저수지에서 이미 돌려준 이벤트 청구. '저수지에 갚을 돈' 카드에서 한 번에 저수지에 갚을 돈으로 바꿀 수 있다 */
     reservoirLoanSettled: { count: number; amount: Won };
     nextDue: ISODate | null;
     settledCount: number;

@@ -6,7 +6,7 @@ import { autoTransferId } from './ids';
 import { projectEventAccount } from './events';
 import {
   allocateClaims, balanceWithScheduled, checkSettlementSelection, claimsBySource, computeSettlement, defaultSettlementSelection, expenseLoanTransferId, followLoanTransfers,
-  loanCandidates, loanRepayId, loanStatus, settledReservoirEventClaims,
+  loanCandidates, loanRepayId, loanStatus, planSettlement, settledReservoirEventClaims, settlementSummary, settleRoster,
 } from './settlement';
 import { usualHistory } from './usual';
 import type { Category, Expense, LedgerData, PendingClaim, Transfer } from './types';
@@ -394,7 +394,7 @@ describe('하나씩 고르기 (정산 카드 항목 목록)', () => {
 });
 
 describe('저수지통장 이벤트 청구 = 저수지에서 빌린 돈', () => {
-  // 이벤트통장에 돈이 없어 저수지 돈으로 낸 경조사 청구 (다온) + 저수지에 쓸 돈(이벤트 아닌 카테고리)
+  // 이벤트통장에 돈이 없어 저수지 돈으로 낸 경조사 청구 (다온) + 저수지에서 지급할 청구(이벤트 아닌 카테고리)
   const resEvent = (id: string, amount: number, date: string) =>
     claim(id, { amount, date, accountId: 'res', categoryId: 'cat-gift', paidBy: '나래', claimDue: date });
   const data = () =>
@@ -406,7 +406,7 @@ describe('저수지통장 이벤트 청구 = 저수지에서 빌린 돈', () => 
       ],
     });
 
-  it('이벤트 카테고리 청구는 저수지에서 빌려 줄 돈, 나머지는 저수지에 쓸 돈으로 나눠요', () => {
+  it('이벤트 카테고리 청구는 저수지에서 빌려 지급, 나머지는 저수지에서 지급으로 나눠요', () => {
     const d = data();
     const s = computeSettlement(d, TODAY);
     expect(s.reservoirLoan.map((g) => [g.name, g.amount, g.claims.length])).toEqual([['나래', 450_000, 2]]);
@@ -414,7 +414,7 @@ describe('저수지통장 이벤트 청구 = 저수지에서 빌린 돈', () => 
     expect(s.reservoir.map((g) => [g.name, g.amount])).toEqual([['가람', 40_000]]);
     expect(s.dueNow).toBe(true);
     expect([...defaultSettlementSelection(s)].sort()).toEqual(['re1', 're2', 'rn1']);
-    // 빌려 줄 돈은 지급할 수 있는 돈과 견주지 않아요
+    // 빌려 지급할 청구는 지급할 수 있는 돈과 견주지 않아요
     expect(checkSettlementSelection(d, s, ['re1', 're2']).fits).toBe(true);
     const groups = claimsBySource(d, pendingClaims(d, TODAY));
     expect(groups.reservoirLoan.map((g) => g.name)).toEqual(['나래']);
@@ -463,5 +463,60 @@ describe('저수지통장 이벤트 청구 = 저수지에서 빌린 돈', () => 
     expect(allBalances(converted, TODAY)).toEqual(before);
     expect(loanStatus(converted, TODAY).balance).toBe(450_000);
     expect(settledReservoirEventClaims(converted)).toEqual([]);
+  });
+});
+
+describe('정산 화면 · 한 줄 요약 (settleRoster · settlementSummary · planSettlement)', () => {
+  // 가람: 이벤트통장 청구 2건(하나는 넘어가요) · 나래: 저수지 돈으로 낸 이벤트 청구 · 생활비 청구(정산일 전)
+  const data = () =>
+    ledger({
+      expenses: [
+        claim('e1', { amount: 300_000, date: '2026-10-01' }),
+        claim('e2', { amount: 900_000, date: '2026-10-02' }),
+        claim('re1', { amount: 24_000, date: '2026-10-03', accountId: 'res', categoryId: 'cat-gift', paidBy: '나래', claimDue: '2026-10-03' }),
+        claim('f1', { amount: 10_000, date: '2026-11-09', accountId: 'fixed', categoryId: 'cat-food', paidBy: '나래', claimDue: '2026-12-21' }),
+      ],
+    });
+
+  it('사람마다 한 목록으로 묶고 항목마다 종류를 붙여요 (저수지는 받는 사람이 아니에요)', () => {
+    const s = computeSettlement(data(), TODAY);
+    const roster = settleRoster(s);
+    expect(roster.map((p) => p.name)).toEqual(['가람', '나래']);
+    expect(roster[0]!.items.map((i) => [i.claim.expense.id, i.kind])).toEqual([['e1', 'pay'], ['e2', 'carry']]);
+    expect(roster[1]!.items.map((i) => [i.claim.expense.id, i.kind])).toEqual([['re1', 'borrow'], ['f1', 'upcoming']]);
+    expect(roster[1]!.amount).toBe(34_000);
+  });
+
+  it('한 줄 요약: 이번 달 줄 돈 = 처음 골라 둔 것, 사람은 많은 순 · 넘어가는 돈과 지급 예상 달', () => {
+    const s = computeSettlement(data(), TODAY);
+    const sum = settlementSummary(s);
+    expect(sum.total).toBe(324_000);
+    expect(sum.people).toEqual([{ name: '가람', amount: 300_000 }, { name: '나래', amount: 24_000 }]);
+    expect(sum.date).toBe('2026-11-21');
+    expect(sum.carry?.amount).toBe(900_000);
+    expect(sum.next).toEqual({ date: '2026-12-21', amount: 10_000 });
+    expect(sum.hasClaims).toBe(true);
+  });
+
+  it('줄 돈이 없으면 total 0 과 다음 정산일, 청구가 없으면 hasClaims false', () => {
+    const only = ledger({ expenses: [claim('f1', { amount: 10_000, date: '2026-11-09', accountId: 'fixed', categoryId: 'cat-food', claimDue: '2026-12-21' })] });
+    const sum = settlementSummary(computeSettlement(only, TODAY));
+    expect(sum.total).toBe(0);
+    expect(sum.next).toEqual({ date: '2026-12-21', amount: 10_000 });
+    expect(settlementSummary(computeSettlement(ledger(), TODAY)).hasClaims).toBe(false);
+  });
+
+  it('고른 것 나누기: 저수지 이벤트 청구는 늘 빌려 지급, 한도를 넘는 이벤트통장 청구는 over', () => {
+    const d = data();
+    const s = computeSettlement(d, TODAY);
+    const fit = planSettlement(d, s, ['e1', 're1']);
+    expect(fit).toMatchObject({ settle: ['e1'], over: [], borrow: ['re1'], total: 324_000, fits: true });
+    const over = planSettlement(d, s, ['e1', 'e2', 're1', 'f1']);
+    expect(over.fits).toBe(false);
+    expect(over.excess).toBe(1_200_000 - s.payable);
+    expect(over.over).toEqual(['e2']);
+    expect([...over.settle].sort()).toEqual(['e1', 'f1']);
+    expect(over.borrow).toEqual(['re1']);
+    expect(over.claims.map((c) => c.expense.id)).toEqual(['e1', 'e2', 're1', 'f1']);
   });
 });

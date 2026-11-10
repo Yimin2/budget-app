@@ -179,7 +179,7 @@ describe('planImport', () => {
     });
   });
 
-  it('저수지통장의 이벤트 카테고리 청구는 저수지에서 빌려 줄 돈 · 갚을 돈으로 바꿀 수 있는 돌려준 청구로 따로 세요', () => {
+  it('저수지통장의 이벤트 카테고리 청구는 저수지에서 빌려 지급할 청구 · 갚을 돈으로 바꿀 수 있는 돌려준 청구로 따로 세요', () => {
     const raw = sample();
     (raw.expenses as unknown[]).push(
       { key: 'r1', date: '2026-09-02', amount: 300_000, account: 'res', category: 'hobby', memo: '동호회 회비', claim: { payer: '가람', status: 'pending' } },

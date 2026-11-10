@@ -1,0 +1,158 @@
+/* 이번 달 정산 '/plan/settle'
+   규칙은 src/ui/components.css 와 같아요: 의미 토큰만, 글자 12·14·15·16·18·22·28·36, 굵기 400·500·700·800 */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .page {
+    gap: var(--space-6);
+  }
+}
+
+.calc {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.calc div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.calc dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.carry {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  font-size: 14px;
+  line-height: 22px;
+}
+.carry strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+.carry ul {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+}
+
+.listCard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.listHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.bulk {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.people {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.person {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.personHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.personName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.personName strong {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.personName span {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 고른 합 막대: 화면 아래에 붙어 있어요 (폰은 하단 메뉴 위) */
+.totalBar {
+  position: sticky;
+  bottom: calc(var(--dock-height) + var(--space-6) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+@media (min-width: 768px) {
+  .totalBar {
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  }
+}
+.totalOver {
+  background: var(--warning-subtle);
+  border-color: var(--warning-border);
+}
+.totalText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 200px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.totalText strong {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.overText {
+  color: var(--warning-text);
+  font-weight: 500;
+}
