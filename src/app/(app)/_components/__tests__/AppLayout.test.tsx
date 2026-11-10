@@ -46,7 +46,8 @@ describe('앱 틀 (app)/layout', () => {
     nav.router.replace.mockClear();
     expect(screen.getByText('설정 내용')).toBeTruthy();
     const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
-    expect(within(side).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/plan', '/budget']);
+    // 사이드바(태블릿 · 데스크톱)는 내역 아래 통계도. 하단 메뉴에는 없어요 (내역 안 [내역 · 통계])
+    expect(within(side).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/history/stats', '/plan', '/budget']);
     // 하단 메뉴: 홈 · 내역 · [+] · 이벤트 · 예산
     expect(within(dock).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '내역', '이벤트', '예산']);
     const plus = within(dock).getByRole('button', { name: '기록' });
@@ -78,6 +79,21 @@ describe('앱 틀 (app)/layout', () => {
     fireEvent.click(trigger);
     fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: /새 가계부/ }));
     expect(nav.router.push).toHaveBeenCalledWith('/start/new');
+  });
+
+  it('통계(/history/stats): 사이드바는 통계, 하단 메뉴는 내역이 켜져요', async () => {
+    nav.pathname = '/history/stats';
+    const h = renderApp(
+      <AppLayout>
+        <p>통계 내용</p>
+      </AppLayout>,
+    );
+    await startDemo(h);
+    const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
+    expect(within(side).getByRole('link', { current: 'page' }).getAttribute('href')).toBe('/history/stats');
+    expect(within(side).getByRole('link', { name: '내역' }).getAttribute('aria-current')).toBeNull();
+    expect(within(dock).getByRole('link', { current: 'page' }).textContent).toBe('내역');
+    expect(within(dock).queryByRole('link', { name: '통계' })).toBeNull();
   });
 
   it('+ 기록: 지출 기록 · 사도 돼? · 이체 기록 중에서 골라요', async () => {
