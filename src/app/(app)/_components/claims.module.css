@@ -527,3 +527,40 @@
   line-height: 24px;
   font-weight: 700;
 }
+
+/* 저수지 기록 한 줄: 위에 이름 · 금액, 아래에 [금액 고치기] [취소] 또는 그 자리 금액 칸 · 취소 묻기 */
+.moreList li.recordItem {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+.recordLine {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.recordBtns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-2);
+}
+.recordEdit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.recordEdit > :first-child {
+  flex: 1 1 10em;
+  min-width: 0;
+}
+.recordAsk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}

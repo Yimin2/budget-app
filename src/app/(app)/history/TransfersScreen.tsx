@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { formatShortDate, formatWon } from '@/domain';
+import { formatShortDate, formatWon, settleEditHref } from '@/domain';
 import type { Account, Transfer } from '@/domain/types';
 import { useLedger } from '@/state';
 import { Badge, Button, Card, EmptyState, ListRow, Money, PageHeader, Skeleton } from '@/ui';
@@ -52,6 +53,8 @@ function TransfersBody({ ledger }: { ledger: ReadyLedger }) {
   const { data, today } = ledger;
   const [shown, setShown] = useState(PAGE);
   const [open, setOpen] = useState<Transfer | null>(null);
+  // 정산 이체(claim: · loan: · loanpay:)는 창 대신 그 줄 아래에 '정산 화면에서 고칠 수 있어요 →'
+  const [noteId, setNoteId] = useState<string | null>(null);
   const list = useMemo(
     () =>
       data.transfers
@@ -113,8 +116,12 @@ function TransfersBody({ ledger }: { ledger: ReadyLedger }) {
                       ) : undefined
                     }
                     trailing={<Money amount={t.amount} />}
-                    onClick={() => setOpen(t)}
+                    onClick={() => {
+                      if (settleEditHref(t.id)) setNoteId((cur) => (cur === t.id ? null : t.id));
+                      else setOpen(t);
+                    }}
                   />
+                  {noteId === t.id ? <SettleNote href={settleEditHref(t.id)!} /> : null}
                 </li>
               ))}
             </ul>
@@ -130,6 +137,17 @@ function TransfersBody({ ledger }: { ledger: ReadyLedger }) {
       ) : null}
       {open ? <TransferInfoDialog transfer={open} onClose={() => setOpen(null)} /> : null}
     </>
+  );
+}
+
+/** 정산 이체를 누르면 그 줄 아래에: '정산 화면에서 고칠 수 있어요 →' (지급한 기록 #paid · 저수지 #loan) */
+function SettleNote({ href }: { href: string }) {
+  return (
+    <p className="muted" role="note" style={{ margin: '0 0 var(--space-2)', padding: '0 var(--space-3)', fontSize: 14, lineHeight: '22px' }}>
+      <Link href={href} style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none', display: 'inline-block', padding: '11px 0' }}>
+        정산 화면에서 고칠 수 있어요 →
+      </Link>
+    </p>
   );
 }
 
