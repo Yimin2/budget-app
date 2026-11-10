@@ -13,7 +13,7 @@ import {
   recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { Category, CompromisePlan, EventProjection, ExclusionDraft, Id, PlannedEvent, RepayMonths, UsualInsight } from '@/domain';
+import type { Category, CompromisePlan, EventProjection, ExclusionDraft, Expense, Id, PlannedEvent, RepayMonths, UsualInsight } from '@/domain';
 import { useLedger } from '@/state';
 import {
   Button,
@@ -31,6 +31,7 @@ import {
 } from '@/ui';
 import { RequireLedger, SettlementCard, type ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
+import { ExpenseDialog } from '../history/_expenses/ExpenseDialog';
 import { AnnualCard } from './AnnualCard';
 import { CompleteDialog } from './CompleteDialog';
 import { CompromisePanel, readRepayMonths, writeRepayMonths } from './CompromisePanel';
@@ -38,6 +39,7 @@ import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
 import { ExceptionCard } from './ExceptionCard';
 import { LoanCard } from './LoanCard';
+import { MonthlyCostCard } from './MonthlyCostCard';
 import { ProjectionCard } from './ProjectionCard';
 import { RecurringCard } from './RecurringCard';
 import {
@@ -60,10 +62,11 @@ type Overlay =
   | { kind: 'complete'; event: PlannedEvent }
   | { kind: 'delete'; event: PlannedEvent }
   | { kind: 'addTrip' }
+  | { kind: 'editExpense'; expense: Expense }
   | null;
 
 /**
- * '/plan' 이벤트통장 — 잔액 · 매달 적립 → 12개월 예상 잔액 막대 → 부족 알림(두 가지 방법) → 일정 목록.
+ * '/plan' 이벤트통장 — 잔액 · 매달 적립 → 12개월 예상 잔액 막대 → 월별 이벤트 비용 → 부족 알림(두 가지 방법) → 일정 목록.
  * 일정 추가 · 고치기 · 썼어요(실제 금액) · 취소됐어요 · 지우기를 여기서 해요.
  */
 export function EventsView() {
@@ -156,11 +159,13 @@ export function EventsView() {
             onComplete={(event) => setOverlay({ kind: 'complete', event })}
             onCancel={cancelEvent}
             onAddTrip={() => setOverlay({ kind: 'addTrip' })}
+            onEditExpense={(expense) => setOverlay({ kind: 'editExpense', expense })}
           />
         )}
       </RequireLedger>
 
       {ready && overlay?.kind === 'addTrip' ? <TripDialog onClose={close} /> : null}
+      {ready && overlay?.kind === 'editExpense' ? <ExpenseDialog expense={overlay.expense} onClose={close} /> : null}
 
       {ready && overlay?.kind === 'add' ? <EventDialog preset={overlay.preset} onClose={close} /> : null}
       {ready && overlay?.kind === 'edit' ? (
@@ -201,9 +206,10 @@ interface BodyProps {
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
   onAddTrip: () => void;
+  onEditExpense: (expense: Expense) => void;
 }
 
-function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip }: BodyProps) {
+function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip, onEditExpense }: BodyProps) {
   const { data, today } = ledger;
   const projection = ledger.eventProjection;
   const sections = useMemo(() => sectionEvents(data.events, today), [data.events, today]);
@@ -242,6 +248,7 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
           <LoanCard />
           <HashTarget />
           <ProjectionCard projection={shown ?? projection} today={today} badge={tried ? '미리 보는 중' : undefined} />
+          <MonthlyCostCard data={data} today={today} onEditExpense={onEditExpense} />
           <ExceptionCard
             data={data}
             today={today}
