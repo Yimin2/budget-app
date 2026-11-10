@@ -8,7 +8,7 @@
  * - 청구: pending 은 낸 사람 · 돌려받을 통장 · 정산일을 앱 규칙(4-9)으로 정하고, settled 는 돌려준 이체 claim:<지출id> 도 함께 만든다
  * - v2 (PLAN 4-13 · 4-14): 수입 계획(incomePlans), 매달 배분의 방식(rules[].kind = fixed · remainder). 사람별 생활비 · 용돈 통장은
  *   v1 처럼 통장의 ownerName · ownerEmail 로 적는다. v1 파일은 그대로 읽는다 (v2 칸을 쓰면 버전을 올리라고 알린다)
- * - v2 (PLAN 4-15): 매달 배분 kind = 'auto'(필요한 만큼, 생활비 · 용돈 통장으로만), 고정비 fixedExpenses[].startDate · endDate
+ * - v2 (PLAN 4-15): 매달 배분 kind = 'auto'(필요한 만큼, 생활비 통장으로만 — 용돈은 매달 같은 금액), 고정비 fixedExpenses[].startDate · endDate
  *   (시작일 · 해지일, 'YYYY-MM-DD') · subItems([{ name, amount, startDate?, endDate? }]). 모두 선택이고 비우면 예전과 같다.
  *   startDate 가 있으면 startMonth · dayOfMonth 는 비워도 된다 (첫 결제 달 · 시작일의 날)
  * - v2 (PLAN 4-1): 생활비 항목의 쓰는 날 fixedExpenses[].useDays('every' · 'weekdays' · 'weekends' · ['mon', 'wed', …]),
@@ -828,7 +828,7 @@ export function planImport(
       continue;
     }
     if (r.kind === 'auto' && !canAutoFill(accountRow(to))) {
-      errors.push(`매달 배분 '${r.key}': 알아서 맞추기(auto)는 생활비 · 용돈 통장으로 보내는 배분에서만 써요`);
+      errors.push(`매달 배분 '${r.key}': 알아서 맞추기(auto)는 생활비 통장으로 보내는 배분에서만 써요 (용돈은 매달 같은 금액)`);
       continue;
     }
     const row: AllocationRule = {

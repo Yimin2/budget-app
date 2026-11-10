@@ -15,6 +15,8 @@ import {
 } from './bills';
 import { addDays, addMonths, dateInMonth, formatShortDate, isMonthActive, isValidDate, isValidMonth, monthOf } from './dates';
 import { autoTransferId, isAllowanceRuleId } from './ids';
+import { allowanceAccountOf } from './allowance';
+import { memberName } from './people';
 import { installmentGroups, installmentPayments, installmentPlanId } from './installments';
 import { activeLivingRows } from './living';
 import { formatMan, formatWon } from './money';
@@ -49,10 +51,16 @@ export function isFixedRule(rule: Pick<AllocationRule, 'kind'>): boolean {
   return rule.kind !== 'remainder' && rule.kind !== 'auto';
 }
 
-/** '필요한 만큼 (자동)'으로 받을 수 있는 통장 (생활비 · 용돈) */
+/**
+ * '알아서 맞추기'로 받을 수 있는 통장: 생활비(고정지출) 통장만.
+ * 용돈 통장은 '매달 같은 금액'이에요 — 알아서 맞추기 금액은 그 통장의 고정비(십일조 · 헌금 등)뿐이라 실제 용돈이 빠져요
+ */
 export function canAutoFill(account: Pick<Account, 'role'> | undefined | null): boolean {
-  return !!account && (account.role === 'fixed' || account.role === 'allowance');
+  return !!account && account.role === 'fixed';
 }
+
+/** 알아서 맞추기 자동 기록의 메모 (매달 같은 금액은 '매달 배분') */
+export const AUTO_RULE_MEMO = '매달 배분 (알아서 맞추기)';
 
 /** 그달 이 통장으로 들어오는 배분 중 기간을 정하는 규칙 (정한 금액 · 자동, 금액이 큰 것 → id 순) */
 export function allocationRuleInto(data: LedgerData, accountId: Id, month: YearMonth): AllocationRule | null {
@@ -283,17 +291,17 @@ export function ruleChangeText(n: Pick<RuleNext, 'diff' | 'reason'>): string | n
   return n.reason ? `${head} · ${n.reason}` : head;
 }
 
-/* ---------- 기존 시트 자동 고치기: 생활비 · 용돈 배분을 알아서 맞추기로 ---------- */
+/* ---------- 기존 시트 자동 고치기: 생활비 배분을 알아서 맞추기로 ---------- */
 
-/** 바꾼 뒤 한 번 보여 주는 알림 */
+/** 바꾼 뒤 한 번 보여 주는 알림 (예전 문구 그대로) */
 export const AUTO_KIND_NOTICE = "생활비 · 용돈 배분을 '알아서 맞추기'로 바꿨어요";
 
 const overlaps = (a: Pick<AllocationRule, 'startMonth' | 'endMonth'>, b: Pick<AllocationRule, 'startMonth' | 'endMonth'>) =>
   (a.endMonth === null || b.startMonth <= a.endMonth) && (b.endMonth === null || a.startMonth <= b.endMonth);
 
 /**
- * 생활비 · 용돈 통장으로 보내는 '매달 같은 금액' 규칙 중 이번 달 이후에도 살아 있는 것을 '알아서 맞추기'(금액 0)로 바꾼 행.
- * 이벤트 · 저축 · 저수지 등으로 가는 규칙, 남는 돈 전부, 이미 끝난 규칙은 그대로. 같은 통장으로 같은 달에 겹쳐 들어오는
+ * 생활비 통장으로 보내는 '매달 같은 금액' 규칙 중 이번 달 이후에도 살아 있는 것을 '알아서 맞추기'(금액 0)로 바꾼 행.
+ * 용돈 통장으로 가는 규칙은 절대 바꾸지 않아요 (용돈은 매달 같은 금액). 이벤트 · 저축 · 저수지 등으로 가는 규칙, 남는 돈 전부, 이미 끝난 규칙도 그대로. 같은 통장으로 같은 달에 겹쳐 들어오는
  * 규칙이 여럿이거나 이미 알아서 맞추기가 있으면 두 번 보내게 되므로 그 통장은 건드리지 않아요. 다시 해도 같아요 (바꿀 게 없으면 빈 배열)
  */
 export function rulesToAutoKind(data: LedgerData, today: ISODate): AllocationRule[] {
@@ -304,7 +312,7 @@ export function rulesToAutoKind(data: LedgerData, today: ISODate): AllocationRul
     // 용돈 배분(용돈 항목에서 옮긴 것 · 마법사에서 정한 것)은 정한 금액 그대로 둬요 (8-2)
     if (!live(r) || !isFixedRule(r) || isAllowanceRuleId(r.id)) continue;
     const to = data.accounts.find((a) => a.id === r.toAccountId && !a.deleted);
-    if (!canAutoFill(to)) continue;
+    if (!to || to.role !== 'fixed' || !canAutoFill(to)) continue;
     byTarget.set(r.toAccountId, [...(byTarget.get(r.toAccountId) ?? []), r]);
   }
   const out: AllocationRule[] = [];
@@ -316,6 +324,112 @@ export function rulesToAutoKind(data: LedgerData, today: ISODate): AllocationRul
     for (const r of list) out.push({ ...r, kind: 'auto', amount: 0 });
   }
   return out;
+}
+
+/* ---------- 기존 시트 자동 고치기: 용돈 배분을 다시 매달 같은 금액으로 ---------- */
+
+/** 고친 뒤 한 번 보여 주는 알림 (앞부분). 뒤에 ' · 민구 용돈 39만' */
+export const ALLOWANCE_FIXED_NOTICE = "용돈 배분을 다시 '매달 같은 금액'으로 바꿨어요";
+/** 금액을 찾지 못해 고정비 합으로 넣은 용돈 배분 줄의 안내 */
+export const ALLOWANCE_REVIEW_PROMPT = '용돈 금액을 확인해 주세요';
+
+/** 금액을 어디서 찾았는지: 바꾸기 전 마지막 자동 기록 · 나뉜 규칙이나 예전 용돈 행 · 그 통장의 고정비 합(확인 필요) */
+export type AllowanceAmountSource = 'transfer' | 'history' | 'bills';
+
+export interface AllowanceRuleRepair {
+  rule: AllocationRule;
+  source: AllowanceAmountSource;
+  /** 알림에 쓸 이름 ('민구 용돈' 또는 통장 이름) */
+  label: string;
+}
+
+export interface AllowanceRuleRepairs {
+  repairs: AllowanceRuleRepair[];
+  /** 쓸 행 (repairs 의 rule) */
+  rules: AllocationRule[];
+  /** 알림 (고칠 게 없으면 null) */
+  notice: string | null;
+}
+
+/** (a) 이 규칙의 자동 기록 중 '알아서 맞추기'로 바뀌기 전(매달 같은 금액일 때) 마지막 기록 금액 */
+function amountBeforeAuto(data: LedgerData, rule: AllocationRule): Won | null {
+  const prefix = `auto:${rule.id}:`;
+  const mine = data.transfers.filter((t) => !t.deleted && t.id.startsWith(prefix) && t.amount > 0);
+  // 바뀐 때 = 알아서 맞추기 메모로 처음 기록된 날. 그보다 앞서 '매달 배분'으로 기록된 것만 봐요
+  const autoDates = mine.filter((t) => t.memo === AUTO_RULE_MEMO).map((t) => t.date).sort();
+  const switched = autoDates[0] ?? null;
+  const before = mine
+    .filter((t) => t.memo !== AUTO_RULE_MEMO && (switched === null || t.date < switched))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return before[0]?.amount ?? null;
+}
+
+const baseRuleId = (id: string) => {
+  const i = id.indexOf('@');
+  return i < 0 ? id : id.slice(0, i);
+};
+
+/** (b) 원래 금액: 금액 변경으로 나뉜 앞 규칙 → 예전 '용돈' 고정지출 행(받는 사람의 용돈 통장이 이 통장) */
+function amountFromHistory(data: LedgerData, rule: AllocationRule): Won | null {
+  const split = data.rules
+    .filter(
+      (r) =>
+        r.id !== rule.id &&
+        !r.deleted &&
+        r.toAccountId === rule.toAccountId &&
+        isFixedRule(r) &&
+        r.amount > 0 &&
+        (baseRuleId(r.id) === baseRuleId(rule.id) ||
+          (r.fromAccountId === rule.fromAccountId && r.endMonth !== null && r.endMonth < rule.startMonth)),
+    )
+    .sort((a, b) => (a.startMonth < b.startMonth ? 1 : a.startMonth > b.startMonth ? -1 : 0));
+  if (split[0]) return split[0].amount;
+  const old = data.fixedExpenses
+    .filter(
+      (f) =>
+        f.kind === 'allowance' &&
+        f.amount > 0 &&
+        !!(f.targetEmail ?? '').trim() &&
+        allowanceAccountOf(data, f.targetEmail ?? '')?.id === rule.toAccountId,
+    )
+    .sort((a, b) => (a.startMonth < b.startMonth ? 1 : a.startMonth > b.startMonth ? -1 : 0));
+  return old[0]?.amount ?? null;
+}
+
+/**
+ * 지난 자동 고치기(4-15)가 용돈 통장으로 가는 배분까지 '알아서 맞추기'(금액 0)로 바꾼 것을 되돌린 행.
+ * 알아서 맞추기 금액은 그 통장의 고정비(십일조 · 헌금)뿐이라 실제 용돈이 빠지기 때문이에요.
+ * 받는 통장이 용돈 통장인 '알아서 맞추기' 규칙마다 '매달 같은 금액'으로, 금액은
+ *   (a) 바뀌기 전 마지막 자동 기록(`auto:<규칙id>:<월>`, 금액 > 0, '매달 배분'으로 기록된 것) 금액
+ *   (b) 없으면 금액 변경으로 나뉜 앞 규칙이나 예전 용돈 행의 금액
+ *   (c) 그래도 없으면 다음 배분 기간의 그 통장 고정비 합 + 확인 필요 표시(needsReview)
+ * 다시 해도 같아요 (고칠 게 없으면 빈 결과). 행은 지우지 않아요
+ */
+export function repairAllowanceAutoRules(data: LedgerData, today: ISODate): AllowanceRuleRepairs {
+  const repairs: AllowanceRuleRepair[] = [];
+  for (const r of data.rules) {
+    if (r.deleted || !isAutoRule(r)) continue;
+    const to = data.accounts.find((a) => a.id === r.toAccountId);
+    if (!to || to.role !== 'allowance') continue;
+    let source: AllowanceAmountSource = 'transfer';
+    let amount = amountBeforeAuto(data, r);
+    if (amount === null) {
+      source = 'history';
+      amount = amountFromHistory(data, r);
+    }
+    if (amount === null) {
+      source = 'bills';
+      amount = windowNeed(data, to.id, nextAllocationDate(data, r, today), r.dayOfMonth).total;
+    }
+    const owner = (to.ownerName ?? '').trim() || ((to.ownerEmail ?? '').trim() ? memberName(data, to.ownerEmail!) : '');
+    const fixed: AllocationRule = { ...r, kind: 'fixed', amount: Math.max(0, Math.round(amount)) };
+    if (source === 'bills') fixed.needsReview = true;
+    else delete fixed.needsReview;
+    repairs.push({ rule: fixed, source, label: owner ? `${owner} 용돈` : to.name });
+  }
+  if (repairs.length === 0) return { repairs, rules: [], notice: null };
+  const parts = repairs.map((x) => `${x.label} ${formatMan(x.rule.amount)}${x.source === 'bills' ? ' (확인 필요)' : ''}`);
+  return { repairs, rules: repairs.map((x) => x.rule), notice: `${ALLOWANCE_FIXED_NOTICE} · ${parts.join(', ')}` };
 }
 
 /* ---------- 고정비 하나의 배분 시점 ---------- */

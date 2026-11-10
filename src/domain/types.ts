@@ -43,7 +43,7 @@ export interface Account {
 /**
  * 월배분 방식. fixed=정한 금액 보내기, remainder=나머지 전부 보내기 (PLAN 4-13).
  * remainder 는 그날 다른 배분이 다 나간 뒤 보내는 통장에 남은 돈을 모두 보낸다 (0 아래로는 보내지 않음).
- * auto 는 '필요한 만큼 (자동)': 생활비 · 용돈 통장으로 보내는 규칙만. 그 배분이 채우는 기간([그날, 다음 배분일))의
+ * auto 는 '필요한 만큼 (자동)': 생활비 통장으로 보내는 규칙만 (용돈은 매달 같은 금액). 그 배분이 채우는 기간([그날, 다음 배분일))의
  * 고정 결제(고정비 · 세부 항목 · 할부) + 생활비 항목 예산을 기록될 때 계산해 보낸다 (PLAN 4-15)
  */
 export type RuleKind = 'fixed' | 'remainder' | 'auto';
@@ -60,6 +60,11 @@ export interface AllocationRule {
   endMonth: YearMonth | null; // null = 계속
   /** 방식. 시트 빈 셀 · 없음 = 'fixed' (예전 시트의 배분은 모두 정한 금액) */
   kind?: RuleKind;
+  /**
+   * 금액 확인 필요 (용돈 배분 되돌리기에서 금액을 찾지 못해 고정비 합으로 넣었을 때). 시트 `확인필요` 칸 '예' / 빈 칸.
+   * 금액을 확인하거나 고치면 지워요
+   */
+  needsReview?: boolean;
   deleted: boolean;
 }
 

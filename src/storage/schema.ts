@@ -483,6 +483,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('deleted', '삭제됨', bool, ['삭제']),
       // 방식 (PLAN 4-13). 나중에 더한 열이라 빈 칸 = 고정(정한 금액)
       c('kind', '방식', enumCodec(RULE_KIND_LABELS, 'fixed'), ['배분방식']),
+      // 금액 확인 필요 (용돈 배분 되돌리기, 4-7). 나중에 더한 열이라 빈 칸 = 확인할 것 없음
+      c('needsReview', '확인필요', yesFlag),
     ],
   },
   transfers: {

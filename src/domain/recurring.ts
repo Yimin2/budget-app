@@ -1,5 +1,5 @@
 import { compareMonth, dateInMonth, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
-import { autoRuleAmount, isAutoRule } from './allocation';
+import { AUTO_RULE_MEMO, autoRuleAmount, isAutoRule } from './allocation';
 import { billAmountOn, billChargeDate, billMemo, isDatedBill } from './bills';
 import { autoFixedExpenseId, autoTransferId } from './ids';
 import {
@@ -117,7 +117,7 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
         amount,
         status: 'done',
         ruleId: rule.id,
-        memo: auto ? '매달 배분 (알아서 맞추기)' : '매달 배분',
+        memo: auto ? AUTO_RULE_MEMO : '매달 배분',
         author,
         createdAt: now,
         updatedAt: now,
