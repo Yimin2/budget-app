@@ -815,17 +815,13 @@ export function settlementSplitText(sum: SettlementSummary): string | null {
 /** 이번 달 이벤트통장 쓴 돈 · 예정 · 들어올 돈 — 이벤트 화면 · 홈의 정산 한 줄 카드 머리말 (PLAN 4-9) */
 export interface EventMonthUsage {
   /**
-   * 이번 달 1일 ~ 오늘 이벤트통장에서 실제로 나간 돈 = 이벤트통장 지출(청구 아닌 보통 지출) + 이벤트통장에서 돌려준 청구(claim:<지출id>).
-   * 저수지에서 빌려 돌려준 청구도 이벤트통장에서 나간 돈이라 넣는다 (빌린 이체 loan:은 들어온 쪽이라 셈에 없다).
-   * 저수지에 갚은 이체(loanpay:) · 다른 통장으로 옮긴 이체는 쓴 돈이 아니라 넣지 않는다
+   * 이번 달 1일 ~ 오늘 날짜로 쓴 이벤트통장 지출 (돌려줄 청구 포함, 지급 여부와 상관없이 쓴 날 기준).
+   * 지난달 이전에 쓴 청구를 이번 달에 지급 처리해도 넣지 않는다. 이체(지급 · 갚기 · 빌리기)는 세지 않는다
    */
   spent: Won;
-  /**
-   * 이번 달 남은 예정 = 아직 안 쓴 이번 달 일정 · 여행 · 할부(reservedThisMonth) + 오늘 뒤 날짜로 미리 기록한 이번 달 지출 · 돌려준 청구
-   * + 이번 달 이벤트통장에서 돌려줄 청구(지급할 수 있는 돈 안에 든 몫 = eventPayTotal, 한도를 넘지 않는다)
-   */
+  /** 이번 달 남은 예정 = 아직 안 쓴 이번 달 일정 · 여행 · 할부(reservedThisMonth) + 오늘 뒤 날짜로 미리 기록한 이번 달 이벤트통장 지출 */
   planned: Won;
-  /** planned 중 이번 달 이벤트통장에서 돌려줄 청구 */
+  /** 이번 달 정산일에 이벤트통장에서 돌려줄 청구 (지급할 수 있는 돈 안 = eventPayTotal, 예정에는 넣지 않는다 — 쓴 날에 이미 셈) */
   plannedClaims: Won;
   /** 이번 달 이벤트통장에 들어오는(들어온) 돈 = 이번 달 적립 · 수입 · 이체(기록된 것 + 아직 기록 안 된 매달 배분 · 수입 계획 · 예정 이체). 저수지에서 빌린 이체(loan:)는 뺀다 */
   incoming: Won;
@@ -865,25 +861,19 @@ export function eventMonthUsage(data: LedgerData, s: Settlement, today: ISODate)
   const acc = s.eventAccountId;
   if (!acc) return { spent: 0, planned: 0, plannedClaims: 0, incoming: 0, unpaid: s.carryTotal, unpaidPeople };
   const month = monthOf(today);
-  const claimPrefix = claimTransferId('');
+  // 이번 달 사용 = 지출 날짜가 이번 달인 이벤트통장 지출 (돌려줄 청구 포함). 지급한 날이 아니라 쓴 날 기준이라,
+  // 지난달 이전에 쓴 청구를 이번 달에 지급 처리해도 이번 달 쓴 돈에 들어가지 않아요.
   let spent = 0;
   let ahead = 0;
-  const add = (date: ISODate, amount: Won) => {
-    if (date <= today) spent += amount;
-    else ahead += amount;
-  };
   for (const e of data.expenses) {
-    if (e.deleted || isClaimExpense(e) || e.accountId !== acc || monthOf(e.date) !== month) continue;
-    add(e.date, e.amount);
-  }
-  for (const t of data.transfers) {
-    if (t.fromAccountId !== acc || monthOf(t.date) !== month || !t.id.startsWith(claimPrefix) || !isCountedTransfer(data, t)) continue;
-    add(t.date, t.amount);
+    if (e.deleted || e.accountId !== acc || monthOf(e.date) !== month) continue;
+    if (e.date <= today) spent += e.amount;
+    else ahead += e.amount;
   }
   const plannedClaims = s.eventPayTotal;
   return {
     spent,
-    planned: s.reserved + ahead + plannedClaims,
+    planned: s.reserved + ahead,
     plannedClaims,
     incoming: monthIncoming(data, acc, today),
     unpaid: s.carryTotal,
