@@ -24,7 +24,7 @@ export interface ShellCreate {
   expanded?: boolean;
 }
 
-/** 내 정보 버튼: 모바일 머리 오른쪽 · 사이드바 아래. 누르면 설정으로 가요 */
+/** 내 정보 버튼: 사이드바 아래 (모바일 머리 오른쪽은 설정 톱니바퀴만). 누르면 설정으로 가요 */
 export interface ShellProfile {
   href: string;
   /** 사용자 이름 (데스크톱 사이드바에 보여요) */
@@ -60,7 +60,7 @@ export interface AppShellProps {
   homeHref?: string;
   /** 기록 버튼 (모바일 하단 메뉴 가운데 + · 사이드바 '+ 기록'). 있으면 하단 메뉴 링크는 4개까지 */
   create?: ShellCreate;
-  /** 내 정보 버튼 (모바일 머리 오른쪽 · 사이드바 아래) */
+  /** 내 정보 버튼 (사이드바 아래). 있으면 모바일 머리 오른쪽에 설정 톱니바퀴(href)도 보여요 */
   profile?: ShellProfile;
   /** 새로고침 버튼 · 당겨서 새로고침 */
   refresh?: ShellRefresh;
@@ -147,7 +147,7 @@ function useRouteEnter(mainRef: RefObject<HTMLElement | null>, current: string) 
   }, [mainRef, current]);
 }
 
-/** 내 정보 버튼 (모바일 머리 · 사이드바 아래가 같은 모양을 써요) */
+/** 내 정보 버튼 (사이드바 아래) */
 function ProfileLink({ profile, current, className }: { profile: ShellProfile; current: string; className: string }) {
   const on = isNavActive(profile.href, current);
   const label = profile.label ?? '내 정보와 설정';
@@ -164,6 +164,16 @@ function ProfileLink({ profile, current, className }: { profile: ShellProfile; c
       <span className="tip-label" aria-hidden>
         {label}
       </span>
+    </Link>
+  );
+}
+
+/** 모바일 머리 오른쪽: 설정 톱니바퀴 버튼 하나 (사진 · 이름은 홈 · 설정 화면에 이미 있어요) */
+function SettingsLink({ href, current }: { href: string; current: string }) {
+  const on = isNavActive(href, current);
+  return (
+    <Link href={href} className={cx('top-settings', on && 'on')} aria-current={on ? 'page' : undefined} aria-label="설정">
+      <Icon name="settings" size={22} />
     </Link>
   );
 }
@@ -193,7 +203,7 @@ function RefreshButton({ refresh, className }: { refresh: ShellRefresh; classNam
 }
 
 /**
- * 앱 틀. 모바일(<768): 얇은 머리(내 정보) + 하단 플로팅 메뉴(가운데 + 기록) · 태블릿(768–1279): 80px 아이콘 사이드바 ·
+ * 앱 틀. 모바일(<768): 얇은 머리(로고 · 새로고침 · 설정 톱니바퀴) + 하단 플로팅 메뉴(가운데 + 기록) · 태블릿(768–1279): 80px 아이콘 사이드바 ·
  * 데스크톱(≥1280): 280px 사이드바. 사이드바는 메뉴 위에 '+ 기록', 아래에 내 정보 버튼이 있어요.
  */
 export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '/', create, profile, refresh, children }: AppShellProps) {
@@ -256,7 +266,7 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
           </Link>
           <div className="top-right">
             {refresh ? <RefreshButton refresh={refresh} className="top-refresh" /> : null}
-            <ProfileLink profile={profile} current={current} className="top-profile" />
+            <SettingsLink href={profile.href} current={current} />
           </div>
         </header>
       ) : null}

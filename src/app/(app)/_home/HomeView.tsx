@@ -67,15 +67,16 @@ function HomeBody() {
   const [viewId, setViewId] = useState<string | null>(null);
   const views = ledger.livingViews;
   const multi = views.length > 1;
-  const selected = multi
-    ? (views.find((v) => v.accountId === (viewId ?? ledger.myLivingAccountId)) ?? views[0]!)
-    : null;
+  // 내가 어느 생활비 통장과도 이어지지 않았으면(고르기 전) 모두 합친 화면이에요. 첫 사람을 '나'로 짐작하지 않아요
+  const targetId = viewId ?? ledger.myLivingAccountId;
+  const selected = multi && targetId ? (views.find((v) => v.accountId === targetId) ?? views[0]!) : null;
   const living = selected ? selected.status : ledger.living;
   const person = selected ? { view: selected, isMe: selected.accountId === ledger.myLivingAccountId } : null;
 
   return (
     <>
       <div className={styles.col}>
+        {ledger.meChoices.length > 0 ? <MeChooser names={ledger.meChoices} /> : null}
         {living && hasLivingBudget(living) ? (
           <TodayCard
             living={living}
@@ -92,7 +93,8 @@ function HomeBody() {
           사도 돼? 확인하기
         </Button>
         <FavoriteChips favorites={data.favorites} />
-        {living && living.items.length > 0 ? <LivingItemsCard living={living} owner={selected?.name ?? null} /> : null}
+        {/* 모두 합친 화면(나를 고르기 전)에서는 항목이 사람마다 겹쳐 보여서 빼요 */}
+        {living && living.items.length > 0 && (!multi || selected) ? <LivingItemsCard living={living} owner={selected?.name ?? null} /> : null}
         <MonthSpentCard
           statuses={selected ? [selected.status] : multi ? views.map((v) => v.status) : ledger.living ? [ledger.living] : []}
           livingAccountId={selected?.accountId ?? null}
@@ -112,6 +114,48 @@ function HomeBody() {
         {wide ? null : <RecentExpenses />}
       </div>
     </>
+  );
+}
+
+/* ───────── 누가 나인지 ───────── */
+
+/**
+ * 로그인한 계정이 어느 생활비 통장과도 이어지지 않았을 때: 통장 주인 이름 칩으로 나를 골라요.
+ * 고르면 그 이름의 통장(주인 이메일이 빈 것)을 모두 내 이메일과 이어 시트에 써 둬요 (다음부터 묻지 않아요)
+ */
+function MeChooser({ names }: { names: string[] }) {
+  const ledger = useLedger();
+  const toast = useToast();
+  const titleId = useId();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function choose(name: string) {
+    if (busy) return;
+    setBusy(name);
+    try {
+      await ledger.claimOwner(name);
+      toast.success(`${name} 님으로 이었어요`);
+    } catch (e) {
+      toast.error(errorMessage(e, '나를 정하지 못했어요'));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className={cx(styles.section, styles.meChooser)} aria-labelledby={titleId}>
+      <h2 id={titleId} className="section-title">
+        누가 나인지 골라 주세요
+      </h2>
+      <p className={styles.meHint}>고른 사람의 통장이 이 계정과 이어져요. 그전까지는 모두 합친 생활비를 보여 줘요</p>
+      <ChipGroup label="나는 누구인가요">
+        {names.map((n) => (
+          <Chip key={n} disabled={busy !== null} aria-busy={busy === n || undefined} onClick={() => void choose(n)}>
+            {n}
+          </Chip>
+        ))}
+      </ChipGroup>
+    </section>
   );
 }
 

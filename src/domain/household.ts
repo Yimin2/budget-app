@@ -3,8 +3,9 @@
  * 사람마다 생활비 통장(역할 고정지출, 주인 = 그 사람)과 용돈 통장(역할 용돈)을 둘 수 있다.
  * - 생활비 예산 행 · 고정비는 통장에 속하므로 그 통장 주인의 것이다
  * - 통장과 사람 잇기: 통장 주인 이메일 = 사람 이메일 (대소문자 무시), 주인 이메일이 비었으면 주인 이름 = 사람 이름 ·
- *   표시 이름이 주인 이름으로 끝남 ('김가람' ↔ '가람')
- * - 나 = 로그인한 멤버와 이어진 생활비 통장. 없으면 첫 생활비 통장 (체험 모드는 첫 사람)
+ *   표시 이름이 주인 이름을 가리킴 (nameMatchesOwner: '김가람' · '가람 김' ↔ '가람')
+ * - 나 = 로그인한 멤버와 이어진 생활비 통장. 없으면 생활비 통장이 하나일 때만 그 통장 (체험 모드는 첫 사람),
+ *   여럿이면 고를 때까지 없음
  */
 import { livingAccountIdsFor } from './internal';
 import { ledgerPeople, nameMatchesOwner, type LedgerPerson } from './people';
@@ -18,7 +19,7 @@ export function accountBelongsTo(account: Pick<Account, 'ownerName' | 'ownerEmai
   if (email) return email === lower(person.email);
   const owner = (account.ownerName ?? '').trim();
   if (!owner) return false;
-  return owner === person.name.trim() || nameMatchesOwner(person.displayName, owner);
+  return owner === person.name.trim() || nameMatchesOwner(person.displayName, owner, person.email);
 }
 
 export interface LivingOwner {
@@ -60,10 +61,17 @@ export function livingOwners(data: LedgerData, month: YearMonth): LivingOwner[] 
 }
 
 /**
- * 로그인한 사람의 생활비 통장: 이어진 사람 이메일 = email → 통장 주인 이메일 = email → 첫 생활비 통장.
+ * 로그인한 사람의 생활비 통장: 이어진 사람 이메일 = email → 통장 주인 이메일 = email.
+ * 이어진 통장이 없으면: 생활비 통장이 하나뿐이거나 email 이 없거나 fallbackFirst(체험 모드)면 첫 생활비 통장,
+ * 아니면 null — 첫 통장을 '나'로 짐작하지 않아요 (홈은 모두 합친 화면 + '누가 나인지 골라 주세요').
  * 생활비 통장이 없으면 null
  */
-export function myLivingAccountId(data: LedgerData, month: YearMonth, email: string | null | undefined): Id | null {
+export function myLivingAccountId(
+  data: LedgerData,
+  month: YearMonth,
+  email: string | null | undefined,
+  opts: { fallbackFirst?: boolean } = {},
+): Id | null {
   const owners = livingOwners(data, month);
   const key = lower(email);
   if (key) {
@@ -72,7 +80,8 @@ export function myLivingAccountId(data: LedgerData, month: YearMonth, email: str
       owners.find((o) => lower(data.accounts.find((a) => a.id === o.accountId)?.ownerEmail) === key);
     if (hit) return hit.accountId;
   }
-  return owners[0]?.accountId ?? null;
+  if (!key || owners.length <= 1 || opts.fallbackFirst) return owners[0]?.accountId ?? null;
+  return null;
 }
 
 export interface Spender {
