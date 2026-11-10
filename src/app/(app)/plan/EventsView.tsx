@@ -1,8 +1,8 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { formatWon, nextOccurrenceDate, nextOccurrenceId, seriesAnchorDay } from '@/domain';
-import type { Category, EventProjection, Id, PlannedEvent } from '@/domain';
+import { formatMonthKo, formatWon, manWon, nextOccurrenceDate, nextOccurrenceId, seriesAnchorDay, usualSpendingInsight } from '@/domain';
+import type { Category, EventProjection, Id, PlannedEvent, UsualInsight } from '@/domain';
 import { useLedger } from '@/state';
 import {
   Button,
@@ -30,6 +30,7 @@ import {
   projectionTotals,
   sectionEvents,
   spentByEvent,
+  usualCategoriesText,
 } from './selectors';
 import { ShortagePanel } from './ShortagePanel';
 import { TripDialog } from './trips/TripDialog';
@@ -192,6 +193,10 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
   const sections = useMemo(() => sectionEvents(data.events, today), [data.events, today]);
   const spent = useMemo(() => spentByEvent(data.expenses), [data.expenses]);
   const hasEventAccount = Boolean(projection?.accountId);
+  const insight = useMemo(
+    () => (projection ? usualSpendingInsight(data, today, projection) : null),
+    [data, today, projection],
+  );
 
   return (
     <>
@@ -200,6 +205,7 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
           <SummaryCard projection={projection} />
           <ClaimsCard />
           <ProjectionCard projection={projection} today={today} />
+          {insight ? <UsualInsightCard insight={insight} today={today} /> : null}
           {projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
           ) : null}
@@ -267,6 +273,59 @@ function SummaryCard({ projection }: { projection: EventProjection }) {
           </dd>
         </div>
       </dl>
+    </Card>
+  );
+}
+
+/* ───────── 평소 쓰는 돈과 적립 (정보만, 바꾸는 버튼 없음) ───────── */
+
+function UsualInsightCard({ insight, today }: { insight: UsualInsight; today: string }) {
+  const titleId = useId();
+  const short = Math.round(insight.gap / 1000) < 0;
+  const top = usualCategoriesText(insight.topCategories);
+  return (
+    <Card as="section" className={styles.insight} aria-labelledby={titleId}>
+      <div className={styles.insightHead}>
+        <Icon name="info" size={20} />
+        <div className={styles.txt}>
+          <h2 id={titleId} className={styles.insightTitle}>
+            평소 쓰는 돈과 적립
+          </h2>
+          <p className={cx(styles.insightMsg, short && styles.bad)}>{insight.message}</p>
+        </div>
+      </div>
+      <dl className={styles.insightFacts}>
+        <div>
+          <dt>평소 쓰는 돈 (최근 {insight.months}개월 평균)</dt>
+          <dd>매달 {manWon(insight.monthlyUsual)}</dd>
+        </div>
+        {top ? (
+          <div>
+            <dt>많이 쓰는 곳</dt>
+            <dd>{top}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>등록한 일정 · 여행 (앞으로 매달 평균)</dt>
+          <dd>매달 {manWon(insight.monthlyPlanned)}</dd>
+        </div>
+        <div>
+          <dt>매달 적립</dt>
+          <dd>{manWon(insight.monthlyContribution)}</dd>
+        </div>
+        {insight.heaviest ? (
+          <div>
+            <dt>작년 기록 중 가장 많이 쓴 달</dt>
+            <dd>
+              {formatMonthKo(insight.heaviest.month, Number(today.slice(0, 4)))} ·{' '}
+              {manWon(insight.heaviest.amount)}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      <p className={styles.foot}>
+        일정이나 여행에 묶지 않은 이벤트통장 지출을 ‘평소 쓰는 돈’으로 셌어요. 적립액은 예산의 매달 배분에서 직접 정해요
+      </p>
     </Card>
   );
 }

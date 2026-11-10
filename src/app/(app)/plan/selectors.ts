@@ -1,5 +1,5 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { addMonths, dateInMonth, formatDateKo, formatMonthKo, formatWon, monthOf, nextOccurrenceDate } from '@/domain';
+import { addMonths, dateInMonth, formatDateKo, formatMonthKo, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
   Category,
   EventProjection,
@@ -311,9 +311,11 @@ export interface DetailRow {
   amount: Won;
   /** 더하기(+) · 빼기(-) · 그대로 */
   sign: '+' | '-' | '';
+  /** 흐리게 보여 줄 줄 (추정치인 평소 쓰는 돈) */
+  muted?: boolean;
 }
 
-/** 그달 계산 줄: 시작 잔액 + 적립 + 옮겨 올 돈 − 옮겨 갈 돈 − 예정 일정 − 가정 지출 = 달 말 */
+/** 그달 계산 줄: 시작 잔액 + 적립 + 옮겨 올 돈 − 옮겨 갈 돈 − 예정 일정 − 평소 쓰는 돈 − 가정 지출 = 달 말 */
 export function monthDetailRows(m: ProjectionMonth, isThisMonth: boolean): DetailRow[] {
   const rows: DetailRow[] = [{ label: isThisMonth ? '지금 잔액' : '달 시작 잔액', amount: m.startBalance, sign: '' }];
   if (m.contributions !== 0) {
@@ -326,6 +328,9 @@ export function monthDetailRows(m: ProjectionMonth, isThisMonth: boolean): Detai
   if (m.transfersIn > 0) rows.push({ label: '옮겨 올 돈', amount: m.transfersIn, sign: '+' });
   if (m.transfersOut > 0) rows.push({ label: '옮겨 갈 돈', amount: m.transfersOut, sign: '-' });
   rows.push({ label: `예정 일정 ${m.events.length}건`, amount: m.planned, sign: m.planned > 0 ? '-' : '' });
+  if (m.usual > 0) {
+    rows.push({ label: m.usualBasis === 'lastYear' ? '평소 쓰는 돈 (작년 같은 달)' : '평소 쓰는 돈 (최근 평균)', amount: m.usual, sign: '-', muted: true });
+  }
   if (m.scheduledSpending && m.scheduledSpending > 0) {
     rows.push({ label: '미리 기록한 지출', amount: m.scheduledSpending, sign: '-' });
   }
@@ -349,4 +354,14 @@ export function nextContribution(projection: EventProjection): Won | null {
   const next = projection.months[1];
   if (!next) return null;
   return next.contributions !== projection.monthlyContribution ? next.contributions : null;
+}
+
+/** 예측에 평소 쓰는 돈이 들어간 달이 있는지 (설명 문구를 보일지) */
+export function hasUsual(projection: EventProjection): boolean {
+  return projection.months.some((m) => m.usual > 0);
+}
+
+/** 평소 쓰는 돈 카테고리 줄: '경조사 35만 · 선물 15만 · 여행 12만' */
+export function usualCategoriesText(top: { name: string; amount: Won }[]): string {
+  return top.map((c) => `${c.name} ${manWon(c.amount).replace(/원$/, '')}`).join(' · ');
 }

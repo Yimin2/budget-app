@@ -7,6 +7,7 @@ import { firstAccountByRole } from './internal';
 import { ceilTo1000 } from './money';
 import { tripOutflows } from './trips';
 import { ruleOccurrenceDate } from './recurring';
+import { usualForMonth, usualHistory } from './usual';
 import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isRemainderRule, projectRemainders, ruleAmountFor } from './income';
 import type {
   EventProjection, Id, ISODate, LedgerData, PlannedEvent, ProjectionMonth, Repeat, ShortageFix, YearMonth, Won,
@@ -102,6 +103,7 @@ function projectAccount(
   horizon: number,
   extras: { month: YearMonth; amount: Won }[] = [],
   trips: { month: YearMonth; tripId: Id; name: string; amount: Won }[] = [],
+  withUsual = false,
 ): { currentBalance: Won; monthlyContribution: Won; months: ProjectionMonth[] } {
   const thisMonth = monthOf(today);
   const lastMonth = addMonths(thisMonth, Math.max(1, horizon) - 1);
@@ -159,6 +161,9 @@ function projectAccount(
     spent.set(x.eventId, (spent.get(x.eventId) ?? 0) + x.amount);
   }
 
+  // 평소 쓰는 돈 (PLAN 4-2, 이벤트통장만)
+  const history = withUsual ? usualHistory(data, accountId) : null;
+
   const months: ProjectionMonth[] = [];
   let balance = currentBalance;
   for (const month of monthRange(thisMonth, lastMonth)) {
@@ -212,10 +217,12 @@ function projectAccount(
       else tripList.push({ id: t.tripId, name: t.name, amount: t.amount });
     }
     const tripsOut = tripList.reduce((s, t) => s + t.amount, 0);
+    const u = history ? usualForMonth(data, accountId, history, month, thisMonth, events) : { usual: 0, basis: 'none' as const };
+    const usual = u.usual;
     const startBalance = balance;
     const endBalance =
-      startBalance + income + contributions + transfersIn - transfersOut - planned - scheduledSpending - claimsOut - installments - tripsOut -
-      extraAmount;
+      startBalance + income + contributions + transfersIn - transfersOut - planned - usual - scheduledSpending - claimsOut - installments -
+      tripsOut - extraAmount;
     months.push({
       month,
       startBalance,
@@ -223,6 +230,8 @@ function projectAccount(
       transfersIn,
       transfersOut,
       planned,
+      usual,
+      ...(usual > 0 && u.basis !== 'none' ? { usualBasis: u.basis } : {}),
       extra: extraAmount,
       ...(scheduledSpending > 0 ? { scheduledSpending } : {}),
       ...(claimsOut > 0 ? { claims: claimsOut } : {}),
@@ -243,7 +252,8 @@ function projectAccount(
  * - 이번 달 시작값 = 오늘 기준 잔액. 이번 달: 아직 기록 안 된(자동 이체 id 없음) 월배분 적립 + 이번 달 planned 이체 − 오늘 이후(포함)·지난 날짜라도 아직 planned 인 이번 달 일정
  * - 다음 달부터: 전월 말 + 월배분 적립 + planned 이체 − 그달 planned 일정(반복 펼침)
  * - 여행의 남은 예산(총예산 − 묶은 지출)은 여행 날짜의 달에 나갈 돈 (trips)
- * - extra: 가정 지출 {month, amount} (사도 돼? 판단용). extras: 여러 달에 걸친 가정 지출 (할부 안내용)
+ * - 평소 쓰는 돈(usual): 등록하지 않은 채 늘 나가는 돈. 작년 같은 달 기록, 없으면 최근 6개월 평균 (usual.ts). 기록이 없으면 0
+ * - extra: 가정 지출 {month, amount} (사도 돼? 판단용, 평소 쓰는 돈과 따로 더한다). extras: 여러 달에 걸친 가정 지출 (할부 안내용)
  * - endBalance < 0 인 달 = shortages
  */
 export function projectEventAccount(
@@ -255,7 +265,7 @@ export function projectEventAccount(
   if (!account) return { accountId: null, currentBalance: 0, monthlyContribution: 0, months: [], shortages: [] };
   const extras = [...(opts?.extra ? [opts.extra] : []), ...(opts?.extras ?? [])];
   // 여행 예산은 늘 이벤트통장에서 나간다 (PLAN 4-11)
-  const p = projectAccount(data, account.id, today, opts?.horizonMonths ?? DEFAULT_HORIZON, extras, tripOutflows(data, today));
+  const p = projectAccount(data, account.id, today, opts?.horizonMonths ?? DEFAULT_HORIZON, extras, tripOutflows(data, today), true);
   return {
     accountId: account.id,
     currentBalance: p.currentBalance,

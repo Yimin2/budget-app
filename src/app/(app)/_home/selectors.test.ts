@@ -9,7 +9,7 @@ import {
 const TODAY = '2026-11-20';
 
 function month(m: string, endBalance: number, events: ProjectionMonth['events'] = []): ProjectionMonth {
-  return { month: m, startBalance: 0, contributions: 0, transfersIn: 0, transfersOut: 0, planned: 0, extra: 0, endBalance, events };
+  return { month: m, startBalance: 0, contributions: 0, transfersIn: 0, transfersOut: 0, planned: 0, usual: 0, extra: 0, endBalance, events };
 }
 
 function projection(months: ProjectionMonth[]): EventProjection {
@@ -62,6 +62,11 @@ describe('upcomingEvents', () => {
 });
 
 describe('shortageBannerText', () => {
+  it('평소 쓰는 돈이 들어간 달이면 함께 알려요', () => {
+    const p = projection([month('2026-11', 100), { ...month('2027-01', -50_000), usual: 200_000 }]);
+    expect(shortageBannerText(p, TODAY)?.description).toBe('평소 쓰는 돈 200,000원 포함');
+  });
+
   it('첫 부족 달 · 금액 · 일정 요약', () => {
     const p = projection([
       month('2026-11', 100),

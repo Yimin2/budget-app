@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { formatShortDate, formatWon, monthOf } from '@/domain';
 import type { EventProjection, ISODate, ProjectionMonth, YearMonth } from '@/domain';
 import { Button, Card, Icon, cx, useMediaQuery } from '@/ui';
-import { barsGeometry, compactWon, initialMonth, monthDetailRows, monthLabel } from './selectors';
+import { barsGeometry, compactWon, hasUsual, initialMonth, monthDetailRows, monthLabel } from './selectors';
 import { tripHref } from './trips/selectors';
 import styles from './events.module.css';
 
@@ -53,6 +53,7 @@ export function ProjectionCard({ projection, today }: ProjectionCardProps) {
   // 모자라는 금액이 모두 '만' 단위면 좁은 화면에서 단위를 떼고 위에 따로 적어요
   const canDropUnit = negatives.length > 0 && negatives.every((b) => compactWon(b.value).unit === '만');
   const transfersIn = months.reduce((s, m) => s + m.transfersIn, 0);
+  const withUsual = hasUsual(projection);
 
   if (months.length === 0) return null;
 
@@ -63,7 +64,8 @@ export function ProjectionCard({ projection, today }: ProjectionCardProps) {
     const m = months.find((x) => x.month === month);
     if (m) {
       const tail = m.endBalance < 0 ? ` ${formatWon(-m.endBalance)} 모자라요` : '';
-      setAnnounce(`${label(month)}, 달 말 예상 잔액 ${formatWon(m.endBalance)}.${tail} 일정 ${m.events.length}건`);
+      const usual = m.usual > 0 ? `, 평소 쓰는 돈 ${formatWon(m.usual)}` : '';
+      setAnnounce(`${label(month)}, 달 말 예상 잔액 ${formatWon(m.endBalance)}.${tail} 일정 ${m.events.length}건${usual}`);
     }
     if (focus) {
       const i = months.findIndex((x) => x.month === month);
@@ -199,6 +201,11 @@ export function ProjectionCard({ projection, today }: ProjectionCardProps) {
             <Icon name={shortages.length > 0 ? 'alert-triangle' : 'check-circle'} size={16} />
             <span>{caption}</span>
           </figcaption>
+          {withUsual ? (
+            <p className={styles.foot}>
+              등록한 일정 말고도 늘 나가는 ‘평소 쓰는 돈’을 빼고 계산했어요. 작년 같은 달 기록, 없으면 최근 6개월 평균이에요
+            </p>
+          ) : null}
           {transfersIn > 0 ? (
             <p className={styles.foot}>저수지 등에서 옮겨 올 예정인 {formatWon(transfersIn)}을 넣어서 계산했어요</p>
           ) : null}
@@ -211,6 +218,7 @@ export function ProjectionCard({ projection, today }: ProjectionCardProps) {
                 <tr>
                   <th scope="col">달</th>
                   <th scope="col">예정 일정</th>
+                  {withUsual ? <th scope="col">평소 쓰는 돈</th> : null}
                   <th scope="col">달 말 예상 잔액</th>
                 </tr>
               </thead>
@@ -222,6 +230,7 @@ export function ProjectionCard({ projection, today }: ProjectionCardProps) {
                       {m.month === thisMonth ? ' (이번 달)' : ''}
                     </th>
                     <td>{m.events.length > 0 ? `${m.events.length}건 ${formatWon(m.planned)}` : '없음'}</td>
+                    {withUsual ? <td>{formatWon(m.usual)}</td> : null}
                     <td>
                       {formatWon(m.endBalance)}
                       {m.endBalance < 0 ? ` (${formatWon(-m.endBalance)} 모자라요)` : ''}
@@ -299,7 +308,7 @@ function MonthDetail({
       </div>
       <dl className={styles.calc}>
         {rows.map((r) => (
-          <div key={r.label} className={styles.calcRow}>
+          <div key={r.label} className={cx(styles.calcRow, r.muted && styles.calcMuted)}>
             <dt>{r.label}</dt>
             <dd>
               {r.sign}

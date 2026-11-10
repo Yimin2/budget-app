@@ -56,6 +56,7 @@ export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
   const month = projection.months.find((m) => m.month === summary.month);
   const desc = [
     month && month.events.length > 0 ? `그달 일정 ${month.events.length}건 · ${formatWon(month.planned)} 예정` : '',
+    month && month.usual > 0 ? `평소 쓰는 돈 ${formatWon(month.usual)}` : '',
     summary.others > 0 ? `그 뒤로 ${summary.others}개월 더 모자라요` : '',
   ]
     .filter(Boolean)
