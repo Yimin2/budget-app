@@ -17,7 +17,8 @@ import { useLedger } from '@/state';
 import { Badge, Button, Card, Icon, MoneyInput, SegmentedControl, Select, TextInput, cx, useToast } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
 import { dateLabel, errorText } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './AnnualCard.module.css';
 
 const CALENDAR_OPTIONS: { value: AnnualCalendar; label: string }[] = [
   { value: 'solar', label: '양력' },
@@ -195,7 +196,7 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
           ariaLabel={`${label} 양력 또는 음력`}
         />
       ) : null}
-      <div className={styles.annualMonthDay} id={`${key}-date`} tabIndex={-1}>
+      <div className={shared.annualMonthDay} id={`${key}-date`} tabIndex={-1}>
         <Select
           value={r.month}
           onChange={(v) => update({ month: v, day: fitDay(r.calendar, v, r.day) })}
@@ -251,13 +252,13 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
 
   return (
     <Card as="section" className={styles.annual} aria-labelledby={titleId}>
-      <div className={styles.insightHead}>
+      <div className={shared.insightHead}>
         <Icon name="calendar" size={20} />
-        <div className={styles.txt}>
-          <h2 id={titleId} className={styles.insightTitle}>
+        <div className={shared.txt}>
+          <h2 id={titleId} className={shared.insightTitle}>
             매년 일정 한 번에 등록
           </h2>
-          <p className={styles.recurringSub} data-testid="annual-summary">
+          <p className={shared.recurringSub} data-testid="annual-summary">
             {doneCount > 0 ? `등록됨 ${doneCount}개` : '아직 등록한 매년 일정이 없어요'}
           </p>
         </div>
@@ -266,7 +267,7 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
 
       {open ? (
         <div id={`${ids}-list`} className={styles.annualBody}>
-          <p className={styles.recurringSub}>명절 · 생신 · 기념일을 체크하고 금액을 넣으면 매년 반복 일정이 돼요. 등록한 {doneCount}/{items.length}</p>
+          <p className={shared.recurringSub}>명절 · 생신 · 기념일을 체크하고 금액을 넣으면 매년 반복 일정이 돼요. 등록한 {doneCount}/{items.length}</p>
           <ul className={styles.annualList}>
             {items.map((item) => {
               const ev = registered.get(item.id);
@@ -348,15 +349,15 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
           <Button variant="outline" icon="plus" onClick={() => setExtra((list) => [...list, { ...emptyRow(), checked: true }])} disabled={busy}>
             직접 추가
           </Button>
-          <div className={styles.applyRow}>
+          <div className={shared.applyRow}>
             <Button icon="check" onClick={() => void register()} loading={busy} disabled={checkedCount === 0}>
               등록하기
             </Button>
-            <p className={styles.applyNote}>
+            <p className={shared.applyNote}>
               {checkedCount > 0 ? `${checkedCount}개를 이벤트통장의 매년 반복 일정으로 넣어요` : '넣을 항목을 체크해 주세요'}
             </p>
           </div>
-          <p className={styles.foot}>
+          <p className={shared.foot}>
             설날 · 추석과 음력 생신은 해마다 그해 양력 날짜로 바뀌어요. 넣은 일정은 그달 같은 카테고리의 ‘평소 쓰는 돈’에서 빠져 두 번 세지 않아요
           </p>
         </div>

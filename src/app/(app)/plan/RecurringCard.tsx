@@ -6,7 +6,8 @@ import type { Category, ISODate, LedgerData, RecurringCandidate } from '@/domain
 import { useLedger } from '@/state';
 import { Button, Card, Icon, isIconName, useToast } from '@/ui';
 import { dateLabel, errorText } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './RecurringCard.module.css';
 
 /** 카드에 보여 줄 제안 수 */
 export const RECURRING_SHOWN = 5;
@@ -78,17 +79,17 @@ export function RecurringCard({ data, today, categories }: { data: LedgerData; t
   }
 
   return (
-    <Card as="section" className={styles.recurring} aria-labelledby={titleId}>
-      <div className={styles.insightHead}>
+    <Card as="section" className={shared.recurring} aria-labelledby={titleId}>
+      <div className={shared.insightHead}>
         <Icon name="calendar" size={20} />
-        <div className={styles.txt}>
-          <h2 id={titleId} className={styles.insightTitle}>
+        <div className={shared.txt}>
+          <h2 id={titleId} className={shared.insightTitle}>
             매년 돌아오는 일
           </h2>
-          <p className={styles.recurringSub}>위 목록에 없는 일 중 지난 기록에서 해마다 나올 만한 지출을 찾았어요</p>
+          <p className={shared.recurringSub}>위 목록에 없는 일 중 지난 기록에서 해마다 나올 만한 지출을 찾았어요</p>
         </div>
       </div>
-      <ul className={styles.recurringList}>
+      <ul className={shared.recurringList}>
         {list.map((c) => {
           const cat = c.categoryId ? categories.find((x) => x.id === c.categoryId) : undefined;
           return (
@@ -126,11 +127,11 @@ export function RecurringCard({ data, today, categories }: { data: LedgerData; t
           );
         })}
       </ul>
-      <label htmlFor={repeatId} className={styles.recurringRepeat}>
+      <label htmlFor={repeatId} className={shared.recurringRepeat}>
         <input id={repeatId} type="checkbox" checked={yearly} onChange={(e) => setYearly(e.target.checked)} />
         넣을 때 매년 반복으로
       </label>
-      <p className={styles.foot}>넣은 일정은 그달 같은 카테고리의 ‘평소 쓰는 돈’에서 빠져 두 번 세지 않아요</p>
+      <p className={shared.foot}>넣은 일정은 그달 같은 카테고리의 ‘평소 쓰는 돈’에서 빠져 두 번 세지 않아요</p>
     </Card>
   );
 }

@@ -6,7 +6,8 @@ import type { PlannedEvent } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, DateInput, Dialog, Field, Icon, MoneyInput, useToast } from '@/ui';
 import { dateLabel, defaultCompleteDate, errorText, REPEAT_LABEL } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './CompleteDialog.module.css';
 
 export interface CompleteDialogProps {
   event: PlannedEvent;
@@ -81,7 +82,7 @@ export function CompleteDialog({ event, onClose }: CompleteDialogProps) {
         </>
       }
     >
-      <form id={formId} className={styles.form} onSubmit={submit} noValidate>
+      <form id={formId} className={shared.form} onSubmit={submit} noValidate>
         <div className={styles.expected}>
           <span>예상 금액</span>
           <strong>{formatWon(event.amount)}</strong>

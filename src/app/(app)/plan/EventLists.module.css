@@ -1,0 +1,260 @@
+/* EventLists — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+/* ───────── 일정 목록 ───────── */
+.lists {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'overdue'
+    'upcoming'
+    'past';
+  gap: var(--space-4);
+  align-items: start;
+}
+.areaOverdue {
+  grid-area: overdue;
+}
+.areaUpcoming {
+  grid-area: upcoming;
+}
+.areaPast {
+  grid-area: past;
+}
+@media (min-width: 768px) {
+.lists {
+    gap: var(--space-6);
+  }
+}
+@media (min-width: 1280px) {
+.lists {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'upcoming overdue'
+      'upcoming past';
+  }
+
+.lists.noOverdue {
+    grid-template-rows: auto;
+    grid-template-areas: 'upcoming past';
+  }
+
+/* 옆에 둘 것(날짜 지난 일정 · 지난 일정)이 없으면 다가오는 일정이 넓게 차지해요 */
+
+.lists.solo {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas: 'upcoming';
+  }
+}
+/* 다가오는 일정 카드가 넓으면 달 묶음을 두 칸으로 흘려요 (위에서 아래로 읽는 순서 그대로) */
+.areaUpcoming {
+  container-type: inline-size;
+}
+@container (min-width: 720px) {
+.groupsFlow {
+    columns: 2;
+    column-gap: var(--space-8);
+  }
+}
+.groupsFlow .group {
+  break-inside: avoid;
+}
+.listCard {
+  gap: var(--space-2);
+}
+.listCard.attention {
+  border-color: var(--warning-border);
+}
+.cardTitle {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.cardSub {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.group:not(:last-child) {
+  padding-bottom: var(--space-3);
+}
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.groupTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.groupTotal {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.item {
+  border-top: 1px solid var(--border);
+}
+.item.overdue {
+  border-top: 0;
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+}
+.item.overdue:first-child {
+  margin-top: 0;
+}
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 64px;
+  margin: 0;
+  padding: var(--space-2) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.rowMain:hover {
+  background: var(--surface-subtle);
+}
+.overdue .rowMain {
+  min-height: 52px;
+  padding-left: 0;
+  padding-right: 0;
+}
+.overdue .rowMain:hover {
+  background: none;
+}
+.overdue .rowMain:hover .name {
+  text-decoration: underline;
+}
+.date {
+  flex: none;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+}
+.date .md {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.date .wd {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.nameLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-2);
+  min-width: 0;
+}
+.name {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.past .name {
+  color: var(--text-muted);
+}
+.meta {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.amt {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.amt .was {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.overdueNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--warning-text);
+}
+.overdueNote > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.rowActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+.todayTag {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--primary-text);
+}
+.pastHeading {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.emptyLine {
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+}

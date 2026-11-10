@@ -1,5 +1,6 @@
 import { Card, Skeleton } from '@/ui';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './EventsSkeleton.module.css';
 
 /* ───────── 불러오는 중 ───────── */
 
@@ -7,7 +8,7 @@ const SKEL_BARS = [72, 64, 48, 88, 40, 20, 56, 80, 96, 104, 112, 120];
 
 export function EventsSkeleton() {
   return (
-    <div className={styles.page} role="status">
+    <div className={shared.page} role="status">
       <span className="sr-only">일정을 불러오는 중이에요</span>
       <Card variant="brand" className={styles.skelCard}>
         <Skeleton width={120} height={22} />

@@ -1,0 +1,5 @@
+/* EventsView — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+.headerAdd {
+  flex: none;
+}

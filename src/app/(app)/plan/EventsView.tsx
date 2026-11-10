@@ -13,7 +13,8 @@ import { EventsBody } from './EventsBody';
 import { EventsSkeleton } from './EventsSkeleton';
 import { errorText } from './selectors';
 import { TripDialog } from './trips/TripDialog';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './EventsView.module.css';
 
 type Overlay =
   | { kind: 'add'; preset?: EventPreset }
@@ -98,7 +99,7 @@ export function EventsView() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={shared.page}>
       <PageHeader
         title="이벤트"
         subtitle="이벤트통장 일정 · 12개월 예측 · 여행이에요"

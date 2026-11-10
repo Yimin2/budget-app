@@ -1,0 +1,61 @@
+/* EventDialog — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+.formRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+@media (min-width: 480px) {
+.formRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.group2 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.group2 > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.groupHint {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.statusBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.statusBox p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.statusBox .btns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+/* 전역 .btn.ghost 보다 강하게 (빨간 글자 · 연한 빨강 바탕) */
+.deleteBtn:global(.btn.ghost) {
+  color: var(--danger-text);
+}
+.deleteBtn:global(.btn.ghost):hover {
+  background: var(--danger-subtle);
+}
+@media (min-width: 768px) {
+.deleteBtn:global(.btn) {
+    margin-right: auto;
+  }
+}

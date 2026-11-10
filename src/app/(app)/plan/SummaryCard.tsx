@@ -5,7 +5,8 @@ import { formatWon } from '@/domain';
 import type { EventProjection } from '@/domain';
 import { Card, Icon, cx } from '@/ui';
 import { nextContribution, projectionTotals } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './SummaryCard.module.css';
 
 /* ───────── 잔액 · 매달 적립 ───────── */
 
@@ -23,23 +24,23 @@ export function SummaryCard({ projection }: { projection: EventProjection }) {
         <p className={styles.sumValue}>{formatWon(projection.currentBalance)}</p>
       </div>
       <dl className={styles.sumStats}>
-        <div className={styles.sumStat}>
+        <div className={shared.sumStat}>
           <dt>매달 적립</dt>
           <dd>
             {formatWon(projection.monthlyContribution)}
-            {next !== null ? <span className={styles.subNote}>다음 달부터 {formatWon(next)}</span> : null}
+            {next !== null ? <span className={shared.subNote}>다음 달부터 {formatWon(next)}</span> : null}
           </dd>
         </div>
-        <div className={styles.sumStat}>
+        <div className={shared.sumStat}>
           <dt>{projection.months.length}개월 예정 일정</dt>
           <dd>
-            {totals.count}건<span className={styles.subNote}>{formatWon(totals.amount)}</span>
+            {totals.count}건<span className={shared.subNote}>{formatWon(totals.amount)}</span>
           </dd>
         </div>
-        <div className={cx(styles.sumStat, styles.sumStatWide)}>
+        <div className={cx(shared.sumStat, styles.sumStatWide)}>
           <dt>모자라는 달</dt>
           <dd>
-            <span className={cx(styles.statusLine, short > 0 ? styles.bad : styles.ok)}>
+            <span className={cx(shared.statusLine, short > 0 ? shared.bad : shared.ok)}>
               <Icon name={short > 0 ? 'alert-triangle' : 'check-circle'} size={20} />
               {short > 0 ? `${short}개월` : '없어요'}
             </span>

@@ -1,0 +1,416 @@
+/* ProjectionCard — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+/* ───────── 12개월 막대 + 고른 달 ───────── */
+.chartCard {
+  gap: var(--space-4);
+}
+.chartTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+}
+.chartTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.chartHint {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.chartBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+@media (min-width: 1024px) {
+.chartBody {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    gap: var(--space-6);
+    align-items: start;
+  }
+}
+.figure {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  container-type: inline-size;
+}
+.bars {
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  gap: 0;
+}
+.col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-2) 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.col:hover,
+.col.preview {
+  background: var(--surface-subtle);
+}
+.col.selected {
+  background: var(--primary-subtle);
+}
+.col:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.posArea {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--border-strong);
+}
+.negArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+.barPos,
+.barNeg {
+  display: block;
+  flex: none;
+  width: min(20px, 62%);
+}
+.barPos {
+  background: var(--chart-bar);
+  border-radius: 4px 4px 0 0;
+}
+.barNeg {
+  background: var(--danger);
+  border-radius: 0 0 4px 4px;
+}
+.negLabel {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--danger-text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+/* 좁은 차트에서는 '만'을 떼고 단위를 위에 따로 적어요 */
+.unitNote {
+  display: none;
+}
+@container (max-width: 419.98px) {
+.canDropUnit .negUnit {
+    display: none;
+  }
+
+.canDropUnit .unitNote {
+    display: inline;
+  }
+}
+.colLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: var(--space-1);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.colLabel .yr {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.colLabel .yrSpacer {
+  visibility: hidden;
+}
+.monthNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 2px;
+  border-radius: var(--radius-full);
+}
+.monthSuffix {
+  display: none;
+}
+@container (min-width: 520px) {
+.monthSuffix {
+    display: inline;
+  }
+
+.monthNum {
+    padding: 0 var(--space-1);
+  }
+}
+.col.short .monthNum {
+  color: var(--danger-text);
+  font-weight: 700;
+}
+.col.now .monthNum {
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--chart-bar);
+}
+.swatch.neg {
+  background: var(--danger);
+}
+.swatch.now {
+  border-radius: var(--radius-full);
+  background: var(--primary);
+}
+.caption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.caption > svg {
+  flex: none;
+  margin-top: 3px;
+}
+/* 고른 달 자세히 */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.detailTitle {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.detailStatus {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.calc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+}
+.calcRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.calcRow dt {
+  color: var(--text-muted);
+  min-width: 0;
+}
+.calcRow dd {
+  margin: 0;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.calcMuted dt,
+.calcMuted dd {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.calcTotal {
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  font-size: 16px;
+  line-height: 24px;
+}
+.calcTotal dt {
+  color: var(--text);
+  font-weight: 700;
+}
+.calcTotal dd {
+  font-weight: 800;
+}
+.detailEvents {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.detailEvents li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 22px;
+}
+.detailEvents .d {
+  flex: none;
+  width: 44px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.detailEvents .n {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.detailEvents .n a {
+  color: var(--primary-text);
+  font-weight: 500;
+}
+.detailEvents .a {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.detailEmpty {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+/* ───────── 범위 (아끼면 ~ 많이 쓰면) ───────── */
+.bars {
+  position: relative;
+}
+/* 넓은 화면: 칸 위에 겹친 띠 + 보통 선. 좁은 화면은 달마다 가는 세로 막대(whisker) */
+.band {
+  position: absolute;
+  top: var(--space-2);
+  left: 0;
+  width: 100%;
+  display: none;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 1;
+  animation: bandIn var(--duration-slow) var(--ease-out) both;
+}
+.bandArea {
+  fill: var(--chart-bar);
+  fill-opacity: 0.14;
+  stroke: none;
+}
+.bandLine {
+  fill: none;
+  stroke: var(--chart-bar);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+.whisker {
+  position: absolute;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text-muted);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+  animation: bandIn var(--duration-slow) var(--ease-out) both;
+}
+.whisker::before,
+.whisker::after {
+  content: '';
+  position: absolute;
+  left: -3px;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: inherit;
+}
+.whisker::before {
+  top: 0;
+}
+.whisker::after {
+  bottom: 0;
+}
+@media (min-width: 768px) {
+.band {
+    display: block;
+  }
+
+.whisker {
+    display: none;
+  }
+}
+@keyframes bandIn {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+.band,
+  .whisker {
+    animation: none;
+  }
+}
+.swatch.bandSwatch {
+  background: color-mix(in srgb, var(--chart-bar) 22%, transparent);
+  border: 1px solid var(--chart-bar);
+}
+.detailWarn {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--warning-text);
+}

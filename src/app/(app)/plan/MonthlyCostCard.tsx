@@ -6,7 +6,8 @@ import type { EventMonthCost, EventMonthItem, Expense, ISODate, LedgerData } fro
 import { Badge, Card, Icon, cx } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
 import { monthLabel } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './MonthlyCostCard.module.css';
 
 /** 접혀 있을 때 보이는 달 수 (이번 달 + 다음 2개월) */
 export const MONTHLY_COST_COLLAPSED = 3;
@@ -54,13 +55,13 @@ export function MonthlyCostCard({
 
   return (
     <Card as="section" className={styles.monthCost} aria-labelledby={titleId}>
-      <div className={styles.insightHead}>
+      <div className={shared.insightHead}>
         <Icon name="calendar" size={20} />
-        <div className={styles.txt}>
-          <h2 id={titleId} className={styles.insightTitle}>
+        <div className={shared.txt}>
+          <h2 id={titleId} className={shared.insightTitle}>
             월별 이벤트 비용
           </h2>
-          <p className={styles.recurringSub}>
+          <p className={shared.recurringSub}>
             {all
               ? `지난 ${pastCount}개월은 쓴 돈, 이번 달부터 ${futureCount}개월 뒤까지는 예정이에요`
               : '이번 달과 다음 2개월이에요. 지난 달 쓴 돈은 더 보기에서 볼 수 있어요'}
@@ -92,7 +93,7 @@ export function MonthlyCostCard({
           label="월별 이벤트 비용"
         />
       </div>
-      <p className={styles.foot}>
+      <p className={shared.foot}>
         청구는 돌려준 날이 아니라 쓴 날의 달에 넣었어요. 통장끼리 옮긴 돈 · 저수지에서 빌리거나 갚은 돈은 쓴 돈이 아니라 빼요. 평소 쓰는
         돈은 지난 기록으로 셈한 예상이에요
       </p>
@@ -144,7 +145,7 @@ function MonthRow({
       {open ? (
         <div id={panelId} className={styles.monthCostPanel}>
           {cost.items.length === 0 ? (
-            <p className={styles.recurringSub}>{emptyText}</p>
+            <p className={shared.recurringSub}>{emptyText}</p>
           ) : (
             <ul className={styles.monthCostDetail} aria-label={`${label} 항목`}>
               {cost.items.map((item) => (

@@ -1,0 +1,31 @@
+/* CompleteDialog — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+.diff {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.diff > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.expected {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  font-size: 15px;
+  line-height: 22px;
+}
+.expected span:first-child {
+  color: var(--text-muted);
+}
+.expected strong {
+  font-variant-numeric: tabular-nums;
+}

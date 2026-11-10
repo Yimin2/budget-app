@@ -3,7 +3,7 @@
 import type { Category } from '@/domain';
 import { Button, Card, Chip, ChipGroup, EmptyState, isIconName } from '@/ui';
 import type { EventPreset } from './EventDialog';
-import styles from './events.module.css';
+import styles from './EmptyEvents.module.css';
 
 /* ───────── 빈 상태 ───────── */
 

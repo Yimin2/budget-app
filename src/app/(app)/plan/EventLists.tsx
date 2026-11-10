@@ -5,7 +5,8 @@ import { formatShortDate, formatWon, lunarRepeatLabel, monthOf } from '@/domain'
 import type { Category, Id, ISODate, PlannedEvent, Won } from '@/domain';
 import { Badge, Button, Card, Icon, cx } from '@/ui';
 import { dateLabel, monthLabel, REPEAT_LABEL, weekdayShort, type EventSections } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './EventLists.module.css';
 
 export interface EventListsProps {
   sections: EventSections;
@@ -51,10 +52,10 @@ function OverdueCard({ sections, ...rest }: EventListsProps) {
       className={cx(styles.listCard, styles.attention, styles.areaOverdue)}
       aria-labelledby={titleId}
     >
-      <div className={styles.cardHead}>
-        <div className={styles.txt}>
+      <div className={shared.cardHead}>
+        <div className={shared.txt}>
           <h2 id={titleId} className={styles.cardTitle}>
-            <Icon name="alert-triangle" size={20} className={styles.warn} />
+            <Icon name="alert-triangle" size={20} className={shared.warn} />
             날짜가 지난 일정 {list.length}건
           </h2>
           <span className={styles.cardSub}>썼는지 알려 주세요. 알려 줄 때까지 이번 달에 나갈 돈으로 계산해요</span>
@@ -77,8 +78,8 @@ function UpcomingCard({ sections, today, onAdd, ...rest }: EventListsProps) {
   const thisMonth = monthOf(today);
   return (
     <Card as="section" padding="sm" className={cx(styles.listCard, styles.areaUpcoming)} aria-labelledby={titleId}>
-      <div className={styles.cardHead}>
-        <div className={styles.txt}>
+      <div className={shared.cardHead}>
+        <div className={shared.txt}>
           <h2 id={titleId} className={styles.cardTitle}>
             다가오는 일정
           </h2>
@@ -133,12 +134,12 @@ function PastCard({ sections, ...rest }: EventListsProps) {
       <h2 className={styles.pastHeading}>
         <button
           type="button"
-          className={styles.disclosure}
+          className={shared.disclosure}
           aria-expanded={open}
           aria-controls={`${ids}-list`}
           onClick={() => setOpen((v) => !v)}
         >
-          <span className={styles.txt}>
+          <span className={shared.txt}>
             <span id={`${ids}-t`} className={styles.cardTitle}>
               지난 일정 {list.length}건
             </span>

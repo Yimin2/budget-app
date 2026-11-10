@@ -1,0 +1,13 @@
+/* EventsSkeleton — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+/* ───────── 불러오는 중 ───────── */
+.skelCard {
+  gap: var(--space-3);
+}
+.skelBars {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--space-2);
+  height: 128px;
+}

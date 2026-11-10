@@ -7,7 +7,8 @@ import { Card, Icon, cx } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
 import { CompromisePanel } from './CompromisePanel';
 import { UsualDetails, UsualDonut, useUsualBreakdown } from './UsualSpendingViz';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './UsualInsightCard.module.css';
 import vizStyles from './usualViz.module.css';
 
 /* ───────── 평소 쓰는 돈과 적립 (정보만, 바꾸는 버튼 없음) ───────── */
@@ -37,20 +38,20 @@ export function UsualInsightCard({
   const { breakdown, slices } = useUsualBreakdown(data, accountId, today, null);
   return (
     <Card as="section" className={styles.insight} aria-labelledby={titleId}>
-      <div className={styles.insightHead}>
+      <div className={shared.insightHead}>
         <Icon name="info" size={20} />
-        <div className={styles.txt}>
-          <h2 id={titleId} className={styles.insightTitle}>
+        <div className={shared.txt}>
+          <h2 id={titleId} className={shared.insightTitle}>
             평소 쓰는 돈과 적립
           </h2>
-          <p className={cx(styles.insightMsg, short && styles.bad)} data-testid="usual-summary">
+          <p className={cx(shared.insightMsg, short && shared.bad)} data-testid="usual-summary">
             {insight.message}
           </p>
         </div>
       </div>
       <div className={vizStyles.summaryRow}>
         <UsualDonut slices={slices} total={breakdown.monthlyTotal} size="sm" />
-        <span className={styles.foot}>평소 쓰는 돈 월 {formatManShort(breakdown.monthlyTotal)}</span>
+        <span className={shared.foot}>평소 쓰는 돈 월 {formatManShort(breakdown.monthlyTotal)}</span>
         <ExpandButton
           open={open}
           onToggle={() => setOpen((o) => !o)}
@@ -71,7 +72,7 @@ export function UsualInsightCard({
               planned={insight.monthlyPlanned}
               shortages={projection.shortages}
             />
-            <dl className={styles.insightFacts}>
+            <dl className={shared.insightFacts}>
               <div>
                 <dt>평소 쓰는 돈 (최근 {insight.months}개월 평균)</dt>
                 <dd>매달 {manWon(insight.monthlyUsual)}</dd>
@@ -94,7 +95,7 @@ export function UsualInsightCard({
                 </div>
               ) : null}
             </dl>
-            <p className={styles.foot}>
+            <p className={shared.foot}>
               일정이나 여행에 묶지 않은 이벤트통장 지출을 ‘평소 쓰는 돈’으로 셌어요. 적립액은 예산의 매달 배분에서 직접 정해요
             </p>
           </>

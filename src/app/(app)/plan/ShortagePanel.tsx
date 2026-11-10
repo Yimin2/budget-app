@@ -14,7 +14,8 @@ import {
   shortageSummary,
   type FixChoiceText,
 } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './ShortagePanel.module.css';
 
 type Choice = 'increase' | 'reservoir';
 
@@ -88,11 +89,11 @@ export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
 
   return (
     <Card as="section" className={styles.panel} aria-labelledby={titleId}>
-      <div className={styles.panelHead}>
+      <div className={shared.panelHead}>
         <span className={styles.panelIcon} aria-hidden>
           <Icon name="alert-triangle" size={20} />
         </span>
-        <div className={styles.txt}>
+        <div className={shared.txt}>
           <h2 id={titleId} className={styles.panelTitle}>
             <span className="sr-only">이벤트통장 부족 알림: </span>
             {summary.title}
@@ -154,11 +155,11 @@ export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
               })}
             </div>
           </fieldset>
-          <div className={styles.applyRow}>
+          <div className={shared.applyRow}>
             <Button onClick={apply} loading={busy} disabled={!effective} icon="check">
               이 방법으로 반영하기
             </Button>
-            <p className={styles.applyNote}>
+            <p className={shared.applyNote}>
               {effective === 'increase'
                 ? '매달 배분 규칙의 이벤트통장 적립액을 바꿔요'
                 : effective === 'reservoir'
@@ -170,11 +171,11 @@ export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
           </div>
         </>
       ) : (
-        <div className={styles.applyRow}>
+        <div className={shared.applyRow}>
           <Button href="/budget#st-rules" variant="outline" icon="sliders">
             매달 배분 고치기
           </Button>
-          <p className={styles.applyNote}>
+          <p className={shared.applyNote}>
             {summary.isThisMonth
               ? '이번 달 부족은 적립으로 채울 수 없어요. 저수지통장이 있으면 옮겨 채울 수 있어요'
               : '적립액을 늘리거나 저수지통장을 만들면 채울 수 있어요'}
