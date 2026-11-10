@@ -238,6 +238,11 @@ export interface LedgerApi {
   saveFixed(fixed: FixedExpense): Promise<void>;
   addFixed(input: Omit<FixedExpense, 'id' | 'deleted'>): Promise<FixedExpense>;
   saveCategory(category: Category): Promise<void>;
+  /**
+   * 카테고리를 delta 칸 옮겨요 (-1 = 위로, +1 = 아래로). 순서(order)를 0..n-1 로 다시 매기고 바뀐 행만 한 번에 저장해요.
+   * 못 옮기면(맨 위 · 맨 아래) false. 모든 화면이 이 순서를 따라요
+   */
+  moveCategory(id: Id, delta: number): Promise<boolean>;
   addCategory(input: Omit<Category, 'id' | 'deleted' | 'order'>): Promise<Category>;
   saveFavorite(favorite: Favorite): Promise<void>;
   addFavorite(input: Omit<Favorite, 'id' | 'deleted' | 'order'>): Promise<Favorite>;

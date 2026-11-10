@@ -192,6 +192,28 @@ describe('state — 체험 모드 흐름', () => {
     expect(message).toBe('지출을 기록하지 못했어요');
     expect(r.result.current.ledger.data!.expenses.length).toBe(n);
     expect(r.result.current.ledger.saving).toBe(false);
+
+    // 카테고리 순서: 저장이 실패하면 화면 순서를 되돌려요
+    const order = r.result.current.ledger.activeCategories.map((c) => c.id);
+    let moveError = '';
+    await act(async () => {
+      try {
+        await r.result.current.ledger.moveCategory(order[0]!, 1);
+      } catch (e) {
+        moveError = (e as Error).message;
+      }
+    });
+    expect(moveError).toBe('카테고리 순서를 바꾸지 못했어요');
+    expect(r.result.current.ledger.activeCategories.map((c) => c.id)).toEqual(order);
+    local.fail = false;
+    await act(async () => {
+      expect(await r.result.current.ledger.moveCategory(order[0]!, 1)).toBe(true);
+    });
+    expect(r.result.current.ledger.activeCategories.map((c) => c.id).slice(0, 2)).toEqual([order[1], order[0]]);
+    // 맨 위에서 위로는 바꿀 게 없어요
+    await act(async () => {
+      expect(await r.result.current.ledger.moveCategory(order[1]!, -1)).toBe(false);
+    });
   });
 
   it('적립액 변경·부족 대처·잔액 맞추기', async () => {

@@ -21,6 +21,7 @@ import {
   claimAccountFor,
   linkAccountsToEmail,
   memberName,
+  moveCategory as moveCategoryDomain,
   mergeMembers,
   type MemberSelf,
   type SharingList,
@@ -1447,6 +1448,23 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, insertRows],
   );
 
+  const moveCategory = useCallback<LedgerApi['moveCategory']>(
+    async (id, delta) => {
+      const { data: d } = requireData();
+      const changed = moveCategoryDomain(d.categories, id, delta);
+      if (changed.length === 0) return false;
+      const byId = new Map(changed.map((c) => [c.id, c]));
+      // 화면에 먼저 반영하고, 바뀐 행만 한 번에 저장해요. 실패하면 되돌려요
+      await mutate(
+        (cur) => ({ ...cur, categories: cur.categories.map((c) => byId.get(c.id) ?? c) }),
+        (repo) => repo.upsertMany('categories', changed),
+        '카테고리 순서를 바꾸지 못했어요',
+      );
+      return true;
+    },
+    [requireData, mutate],
+  );
+
   const saveFavorite = useCallback(
     (favorite: Favorite) => upsertRow('favorites', favorite, '자주 쓰는 지출을 저장하지 못했어요'),
     [upsertRow],
@@ -1701,6 +1719,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       saveFixed,
       addFixed,
       saveCategory,
+      moveCategory,
       addCategory,
       saveFavorite,
       addFavorite,
@@ -1723,7 +1742,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       restoreTrip, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, saveFixed, addFixed, saveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,
+      changeRuleAmount, saveFixed, addFixed, saveCategory, moveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );

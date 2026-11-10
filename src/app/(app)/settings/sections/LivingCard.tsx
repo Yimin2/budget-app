@@ -44,10 +44,13 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const month = monthOf(ledger.today);
   const data = ledger.data;
   const accountOrder = new Map(ledger.activeAccounts.map((a, i) => [a.id, i]));
+  const catById = new Map(data.categories.map((c) => [c.id, c]));
+  // 통장 순서 → 카테고리 순서(설정에서 정한 순서). 카테고리 없는 예전 한 줄 · 지운 카테고리는 뒤에
+  const catPos = new Map(ledger.activeCategories.map((c, i) => [c.id, i]));
+  const catRank = (f: FixedExpense) => (f.categoryId ? (catPos.get(f.categoryId) ?? Number.MAX_SAFE_INTEGER - 1) : Number.MAX_SAFE_INTEGER);
   const rows = visibleFixed(data.fixedExpenses, month)
     .filter((f) => f.kind === 'living')
-    .sort((a, b) => (accountOrder.get(a.accountId) ?? 999) - (accountOrder.get(b.accountId) ?? 999));
-  const catById = new Map(data.categories.map((c) => [c.id, c]));
+    .sort((a, b) => (accountOrder.get(a.accountId) ?? 999) - (accountOrder.get(b.accountId) ?? 999) || catRank(a) - catRank(b));
   const categories = ledger.activeCategories.filter((c) => c.defaultAccountRole !== 'event');
   const legacy = hasLegacyLivingRow(data, month);
   const legacyRows = rows.filter((f) => f.categoryId === null && isMonthActive(month, f.startMonth, f.endMonth));

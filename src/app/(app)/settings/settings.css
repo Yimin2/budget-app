@@ -433,17 +433,21 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 카테고리 목록: 넓으면 여러 줄로 */
-@media (min-width: 768px) {
-  .st-cats {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: var(--space-6);
-  }
-  .st-cats > li > .lrow {
-    border-top: 0 !important;
-    border-bottom: 1px solid var(--border);
-  }
+/* 카테고리 목록: 순서가 보이도록 한 줄에 하나, 오른쪽에 위로 · 아래로 (44px) */
+.st-cat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.st-cat-row > .lrow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.st-cat-move {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
 }
 
 /* 생활비 예산 */

@@ -1,5 +1,6 @@
 import { addMonths, daysInMonth, daysLeftInMonth, isMonthActive, monthOf } from './dates';
 import { activeAccountsSorted, livingAccountIdsFor } from './internal';
+import { orderedCategories } from './categories';
 import { livingOwnerName } from './household';
 import { floorTo100 } from './money';
 import type {
@@ -128,6 +129,8 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
   const month = monthOf(today);
   const daysLeft = Math.max(1, daysLeftInMonth(today));
   const catById = new Map<Id, Category>(data.categories.map((c) => [c.id, c]));
+  // 항목은 설정에서 정한 카테고리 순서대로 (지운 카테고리 · 예전 한 줄 · 기타 묶음은 뒤)
+  const catPos = new Map<Id, number>(orderedCategories(data.categories).map((c, i) => [c.id, i]));
   const buckets = new Map<string, Bucket>();
 
   const nullBucket = (): Bucket => {
@@ -156,7 +159,7 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
       name: row.categoryId ? (cat?.name ?? (row.name.trim() || '항목')) : row.name.trim() || '생활비',
       icon: row.categoryId ? (cat?.icon ?? 'dots') : 'wallet',
       spread: row.spread === 'monthly' ? 'monthly' : 'daily',
-      order: row.categoryId ? (cat?.order ?? Number.MAX_SAFE_INTEGER - 1) : Number.MAX_SAFE_INTEGER,
+      order: row.categoryId ? (catPos.get(row.categoryId) ?? Number.MAX_SAFE_INTEGER - 1) : Number.MAX_SAFE_INTEGER,
       base: row.amount,
       carryIn: 0,
       spent: 0,
