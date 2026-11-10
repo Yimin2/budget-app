@@ -5,7 +5,8 @@ import { formatDateKo } from '@/domain';
 import type { Account, AccountRole } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON, Badge, Button, Card, ConfirmDialog, DateInput, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
-import { ROLE_OPTIONS, ROLE_TEXT, ownerLabel } from '../helpers';
+import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
+import { ROLE_OPTIONS, ROLE_TEXT, ownerText } from '../helpers';
 import { incomeAccountName, isEmail } from '@/app/start/new/wizard';
 import { useRunner } from '../useRunner';
 
@@ -28,6 +29,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
   const [confirmDelete, setConfirmDelete] = useState<Account | null>(null);
   const accounts = ledger.activeAccounts;
   const isShared = ledger.data.settings.kind === 'shared';
+  const people = peopleOptions(ledger.data);
 
   function openNew(role: AccountRole = 'other') {
     setNameError(undefined);
@@ -140,9 +142,9 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                     <Badge size="sm" dot={false}>
                       {ROLE_TEXT[a.role]}
                     </Badge>
-                    {ownerLabel(a) ? (
+                    {ownerText(a) ? (
                       <Badge size="sm" tone="info" dot={false}>
-                        {ownerLabel(a)}
+                        {ownerText(a)}
                       </Badge>
                     ) : null}
                     <span>
@@ -215,27 +217,21 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             <Field label="역할" hint="역할에 따라 생활비·이벤트 예측·월말 처리에 쓰는 통장이 정해져요.">
               <Select value={draft.role} onChange={(v) => setDraft({ ...draft, role: v as AccountRole })} options={ROLE_OPTIONS} />
             </Field>
-            <Field
+            <PersonPicker
               label="주인"
               optional
-              hint={draft.role === 'income' ? '누구 월급이 들어오는 통장인지 적어 주세요. 가계부에 아직 안 들어온 사람도 돼요.' : '함께 쓰는 통장이면 비워 두세요.'}
-            >
-              <TextInput
-                value={draft.ownerName}
-                maxLength={20}
-                autoComplete="off"
-                onChange={(e) => setDraft({ ...draft, ownerName: e.target.value })}
-              />
-            </Field>
-            <Field label="주인 이메일" optional error={emailError} hint={ownerEmailHint(draft.ownerEmail)}>
-              <TextInput
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                value={draft.ownerEmail}
-                onChange={(e) => setDraft({ ...draft, ownerEmail: e.target.value })}
-              />
-            </Field>
+              people={people}
+              noneLabel="함께 쓰는 통장 (주인 없음)"
+              value={{ name: draft.ownerName, email: draft.ownerEmail }}
+              onChange={(v) => setDraft({ ...draft, ownerName: v.name, ownerEmail: v.email })}
+              hint={
+                draft.role === 'income'
+                  ? '누구 월급이 들어오는 통장인지 골라 주세요. 아직 초대하지 않은 사람은 직접 입력해요.'
+                  : '사람별 생활비 · 용돈 통장이면 주인을 골라 주세요. 함께 쓰는 통장이면 비워 두세요.'
+              }
+              emailError={emailError}
+              emailHint={ownerEmailHint(draft.ownerEmail)}
+            />
             <Field label="시작 잔액">
               <MoneyInput value={draft.openingBalance} onChange={(v) => setDraft({ ...draft, openingBalance: v })} allowNegative />
             </Field>

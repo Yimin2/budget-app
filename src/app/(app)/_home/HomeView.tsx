@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useId, useState } from 'react';
 import { formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, withSubject } from '@/domain';
-import type { Account, Favorite, LivingItem, LivingStatus, LivingView } from '@/domain';
+import type { Favorite, LivingItem, LivingStatus, LivingView } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import {
   AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
-  SegmentedControl, useToast, cx, ACCOUNT_ROLE_ICON, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
+  SegmentedControl, useToast, cx, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
 } from '@/ui';
 import { ClaimsCard, LedgerSwitcher } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
@@ -15,7 +15,7 @@ import { ProjectionChart } from './ProjectionChart';
 import { errorMessage, expenseTitle, recentExpenses, shortageBannerText, upcomingEvents } from './selectors';
 import styles from './home.module.css';
 
-/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 이벤트통장 · 최근 지출 */
+/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 부족 알림 · 이벤트통장 · 최근 지출 (통장 잔액은 내역) */
 export function HomeView() {
   const ledger = useLedger();
   const session = useSession();
@@ -94,14 +94,13 @@ function HomeBody() {
       </div>
       <div className={styles.col}>
         {banner ? (
-          <Banner tone="warning" title={banner.title} action={{ label: '대처하기', href: '/events' }} className={styles.oBanner}>
+          <Banner tone="warning" title={banner.title} action={{ label: '대처하기', href: '/plan' }} className={styles.oBanner}>
             {banner.description}
           </Banner>
         ) : null}
         <ClaimsCard className={styles.oClaims} />
         <EventAccountCard />
         {wide ? null : <RecentExpenses />}
-        <BalancesCard />
       </div>
     </>
   );
@@ -237,7 +236,7 @@ function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner
       as="section"
       {...heading}
       aside={
-        <Button href="/settings#st-living" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
+        <Button href="/budget#st-living" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
           예산 바꾸기
         </Button>
       }
@@ -305,7 +304,7 @@ function LivingSetupCard() {
         생활비 예산을 정해 주세요
       </h2>
       <p className={styles.setupText}>식비·카페처럼 항목마다 예산을 정하면 오늘 써도 되는 돈을 매일 계산해 드려요.</p>
-      <Button href="/settings#st-living" icon="settings">
+      <Button href="/budget#st-living" icon="settings">
         생활비 정하기
       </Button>
     </Card>
@@ -420,7 +419,7 @@ function EventAccountCard() {
               <ListRow
                 leadText={formatShortDate(e.date)}
                 title={e.name}
-                href={e.tripId ? `/events/trips?id=${encodeURIComponent(e.tripId)}` : undefined}
+                href={e.tripId ? `/plan/trips?id=${encodeURIComponent(e.tripId)}` : undefined}
                 subtitle={
                   e.tripId ? (
                     '여행 · 남은 예산'
@@ -440,7 +439,7 @@ function EventAccountCard() {
         <p className={styles.emptyLine}>다가오는 일정이 없어요.</p>
       )}
       <div className={styles.cardFoot}>
-        <Button href="/events" variant="ghost" iconRight="chevron-right">
+        <Button href="/plan" variant="ghost" iconRight="chevron-right">
           {events.length > 0 ? '일정 모두 보기' : '일정 추가하기'}
         </Button>
       </div>
@@ -466,7 +465,7 @@ function RecentExpenses() {
       as="section"
       {...heading}
       aside={
-        <Button href="/expenses" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
+        <Button href="/history" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
           모두 보기
         </Button>
       }
@@ -499,43 +498,6 @@ function RecentExpenses() {
           })}
         </ul>
       )}
-    </Card>
-  );
-}
-
-/* ───────── 통장 잔액 (데스크톱) ───────── */
-
-function BalancesCard() {
-  const ledger = useLedger();
-  const heading = useCardTitle('통장 잔액');
-  const accounts: Account[] = ledger.activeAccounts;
-  if (accounts.length === 0) return null;
-  const total = accounts.reduce((s, a) => s + (ledger.balances[a.id] ?? 0), 0);
-
-  return (
-    <Card
-      as="section"
-      {...heading}
-      aside={
-        <span className={styles.totalAside}>
-          <span className={styles.totalLabel}>합계</span>
-          <Money amount={total} className={styles.balanceAside} />
-        </span>
-      }
-      className={cx(styles.cardGap, styles.oBalances, 'show-wide')}
-    >
-      <ul className={cx('list', styles.listTop)}>
-        {accounts.map((a) => (
-          <li key={a.id}>
-            <ListRow icon={ACCOUNT_ROLE_ICON[a.role]} title={a.name} trailing={<Money amount={ledger.balances[a.id] ?? 0} className={styles.amountCell} />} />
-          </li>
-        ))}
-      </ul>
-      <div className={styles.cardFoot}>
-        <Button href="/accounts" variant="ghost" iconRight="chevron-right">
-          통장 보기
-        </Button>
-      </div>
     </Card>
   );
 }

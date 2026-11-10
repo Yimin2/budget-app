@@ -9,7 +9,8 @@ import {
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { defaultLivingDrafts, livingDraftFor, livingTotal, type LivingDraft } from '@/app/start/new/wizard';
-import { periodLabel, visibleFixed } from '../helpers';
+import { periodLabel, visibleFixed, accountNameWithOwner, accountOptions as accountOptionsOf } from '../helpers';
+import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 import { useRunner } from '../useRunner';
 
 export const SPREAD_TEXT: Record<LivingSpread, string> = { daily: '하루에 나눠 쓰기', monthly: '한 달 한도만' };
@@ -63,7 +64,13 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
     (a) => a.role === 'fixed' || a.id === accountId || rows.some((f) => f.accountId === a.id),
   );
   const multiAccount = livingAccounts.length > 1;
-  const accountLabel = (id: string) => ledger.activeAccounts.find((a) => a.id === id)?.name ?? '지운 통장';
+  const accountLabel = (id: string) => accountNameWithOwner(ledger.activeAccounts, id);
+  // 사람별 생활비 통장이면 사람마다 탭 (기본: 내 생활비)
+  const keyOfAccount = (id: string) => ownerKeyOf(ledger.activeAccounts.find((a) => a.id === id));
+  const people = useOwnerFilter(livingAccounts.map((a) => ownerKeyOf(a)), data, keyOfAccount(accountId));
+  const shownRows = rows.filter((f) => people.matches(keyOfAccount(f.accountId)));
+  const newAccountId =
+    people.selected !== null ? (livingAccounts.find((a) => ownerKeyOf(a) === people.selected)?.id ?? accountId) : accountId;
   const editing = draft?.id ? data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
 
   const nameOf = (f: FixedExpense) => (f.categoryId ? (catById.get(f.categoryId)?.name ?? f.name) : f.name || '생활비');
@@ -74,9 +81,9 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
 
   function openNew() {
     setErrors({});
-    const used = new Set(rows.filter((f) => isMonthActive(month, f.startMonth, f.endMonth)).map((f) => f.categoryId));
+    const used = new Set(rows.filter((f) => f.accountId === newAccountId || !multiAccount).filter((f) => isMonthActive(month, f.startMonth, f.endMonth)).map((f) => f.categoryId));
     const first = categories.find((c) => !used.has(c.id));
-    setDraft({ id: null, categoryId: first?.id ?? '', amount: null, spread: first ? defaultSpreadFor(first.name) : 'daily', accountId });
+    setDraft({ id: null, categoryId: first?.id ?? '', amount: null, spread: first ? defaultSpreadFor(first.name) : 'daily', accountId: newAccountId });
   }
 
   function openEdit(f: FixedExpense) {
@@ -212,7 +219,9 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         </Banner>
       ) : null}
 
-      {rows.length === 0 ? (
+      <OwnerTabs filter={people} label="누구 생활비" />
+
+      {shownRows.length === 0 ? (
         <EmptyState
           icon="wallet"
           headingLevel={3}
@@ -221,7 +230,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         />
       ) : (
         <ul className="list">
-          {rows.map((f) => {
+          {shownRows.map((f) => {
             const label = periodLabel(f.startMonth, f.endMonth, month);
             return (
               <li key={f.id}>
@@ -230,7 +239,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                   title={nameOf(f)}
                   subtitle={
                     <span className="st-sub">
-                      {multiAccount ? <span>{accountLabel(f.accountId)}</span> : null}
+                      {multiAccount && (!people.show || people.selected === null) ? <span>{accountLabel(f.accountId)}</span> : null}
                       <span>{SPREAD_TEXT[f.spread]}</span>
                       {f.categoryId === null ? (
                         <Badge size="sm" tone="warning">
@@ -300,7 +309,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                 <Select
                   value={draft.accountId}
                   onChange={(v) => setDraft({ ...draft, accountId: v })}
-                  options={livingAccounts.map((a) => ({ value: a.id, label: a.name }))}
+                  options={accountOptionsOf(livingAccounts)}
                 />
               </Field>
             ) : null}

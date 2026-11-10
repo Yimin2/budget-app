@@ -9,6 +9,7 @@ import { ClaimFields } from '../_components/ClaimFields';
 import { SpenderField } from '../_components/SpenderField';
 import { accountIdForCategory, accountIdForSource, errorMessage, expenseTitle, type Source } from './selectors';
 import styles from './home.module.css';
+import { accountOptions } from '../settings/helpers';
 
 export interface RecordSheetProps {
   amount: number;
@@ -168,7 +169,7 @@ export function RecordSheet({ amount, source, categoryId, tripId = null, spender
               setAccountError(null);
             }}
             placeholder={ledger.activeAccounts.length === 0 ? '통장이 없어요' : undefined}
-            options={ledger.activeAccounts.map((a) => ({ value: a.id, label: a.name }))}
+            options={accountOptions(ledger.activeAccounts)}
           />
         </Field>
         <ClaimFields

@@ -267,7 +267,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
         ) : null}
 
         {livingMissing ? (
-          <Banner tone="info" title="생활비를 아직 정하지 않았어요" action={{ label: '정하기', href: '/settings#st-living' }} className={styles.cNotice}>
+          <Banner tone="info" title="생활비를 아직 정하지 않았어요" action={{ label: '정하기', href: '/budget#st-living' }} className={styles.cNotice}>
             항목마다 생활비 예산을 정하면 오늘 써도 되는 돈 기준으로 알려 드려요.
           </Banner>
         ) : null}

@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatWon } from '@/domain';
 import { useLedger } from '@/state';
-import { ExpenseDialog } from '../expenses/ExpenseDialog';
+import { ExpenseDialog } from '../history/_expenses/ExpenseDialog';
 import { CheckView } from './CheckView';
 import { HomeView } from './HomeView';
 import { makeHarness } from './testUtils';

@@ -7,6 +7,7 @@ import type { LedgerRef } from '@/storage/types';
 import {
   Banner, Button, Chip, ChipGroup, DateInput, Field, Icon, MoneyInput, SegmentedControl, Select, TextInput, isIconName,
 } from '@/ui';
+import { PersonPicker, type PersonOption } from '@/app/(app)/_components/PersonPicker';
 import {
   BILL_SUGGESTIONS, DAY_OPTIONS, allocationSummary, draftKey, fixedTargets, livingDraftFor, livingTotal,
   newEarner,
@@ -128,8 +129,10 @@ export function StepAllocation(props: {
   accountName: (role: AllocRole) => string | null;
   /** 월급이 모두 들어오는 통장 이름 */
   salaryAccountName: string;
+  /** 고를 수 있는 사람 (나 + 이 가계부 멤버) */
+  people: PersonOption[];
 }) {
-  const { earners, setEarners, errors, accountName, salaryAccountName } = props;
+  const { earners, setEarners, errors, accountName, salaryAccountName, people } = props;
   const patch = (key: string, p: Partial<EarnerDraft>) =>
     setEarners((list) => list.map((e) => (e.key === key ? { ...e, ...p } : e)));
   const reservoirName = accountName('reservoir');
@@ -157,9 +160,18 @@ export function StepAllocation(props: {
             <li key={e.key}>
               <div className="wz-item" role="group" aria-label={groupName}>
                 <div className="top">
-                  <Field label="이름" error={err?.name}>
-                    <TextInput value={e.name} onChange={(ev) => patch(e.key, { name: ev.target.value })} maxLength={20} autoComplete="off" />
-                  </Field>
+                  <div className="wz-person">
+                    <PersonPicker
+                      label="누구 월급인가요?"
+                      people={people}
+                      value={{ name: e.name, email: e.email }}
+                      onChange={(v) => patch(e.key, { name: v.name, email: v.email })}
+                      error={err?.name}
+                      nameError={err?.name}
+                      emailError={err?.email}
+                      emailHint="가계부를 함께 쓰는 사람이면 적어 두세요. 나중에 넣어도 돼요."
+                    />
+                  </div>
                   {i > 0 ? (
                     <Button
                       variant="ghost"
@@ -171,15 +183,6 @@ export function StepAllocation(props: {
                     />
                   ) : null}
                 </div>
-                <Field label="이메일" optional error={err?.email} hint="가계부를 함께 쓰는 사람이면 적어 두세요. 나중에 넣어도 돼요.">
-                  <TextInput
-                    type="email"
-                    inputMode="email"
-                    autoComplete="off"
-                    value={e.email}
-                    onChange={(ev) => patch(e.key, { email: ev.target.value })}
-                  />
-                </Field>
                 <div className="pair">
                   <Field label="한 달 월급" hint={`월급날 ${salaryAccountName} 수입으로 기록해요`}>
                     <MoneyInput value={e.salary} onChange={(v) => patch(e.key, { salary: v })} />
@@ -378,8 +381,10 @@ export function StepFixed(props: {
   setAllowances: Dispatch<SetStateAction<AllowanceDraft[]>>;
   billErrors: DraftErrors;
   allowanceErrors: DraftErrors;
+  /** 고를 수 있는 사람 (나 + 이 가계부 멤버) */
+  people: PersonOption[];
 }) {
-  const { isShared, bills, setBills, allowances, setAllowances, billErrors, allowanceErrors } = props;
+  const { isShared, bills, setBills, allowances, setAllowances, billErrors, allowanceErrors, people } = props;
   const used = new Set(bills.map((b) => b.name.trim()));
   const suggestions = BILL_SUGGESTIONS.filter((s) => !used.has(s));
 
@@ -455,15 +460,18 @@ export function StepFixed(props: {
                   <li key={r.key}>
                     <div className="wz-item" role="group" aria-label={`용돈 ${i + 1}${r.name.trim() ? ` (${r.name.trim()})` : ''}`}>
                       <div className="top">
-                        <Field label="받는 사람 이메일" error={err?.email}>
-                          <TextInput
-                            type="email"
-                            inputMode="email"
-                            autoComplete="off"
-                            value={r.email}
-                            onChange={(e) => patchAllowance(r.key, { email: e.target.value })}
+                        <div className="wz-person">
+                          <PersonPicker
+                            label="받는 사람"
+                            people={people}
+                            emailRequired
+                            value={{ name: r.name, email: r.email }}
+                            onChange={(v) => patchAllowance(r.key, { name: v.name, email: v.email })}
+                            error={err?.email}
+                            emailError={err?.email}
+                            hint="기록에 '용돈(이름)'으로 보여요"
                           />
-                        </Field>
+                        </div>
                         <Button
                           variant="ghost"
                           plain
@@ -473,9 +481,6 @@ export function StepFixed(props: {
                           onClick={() => setAllowances((list) => list.filter((x) => x.key !== r.key))}
                         />
                       </div>
-                      <Field label="이름" optional hint="기록에 '용돈(이름)'으로 보여요">
-                        <TextInput value={r.name} onChange={(e) => patchAllowance(r.key, { name: e.target.value })} maxLength={20} />
-                      </Field>
                       <div className="pair">
                         <Field label="금액" error={err?.amount}>
                           <MoneyInput value={r.amount} onChange={(v) => patchAllowance(r.key, { amount: v })} />

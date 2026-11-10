@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { monthOf } from '@/domain';
 import type { FixedExpense, FixedKind } from '@/domain/types';
 import {
@@ -8,8 +8,10 @@ import {
   SegmentedControl, Select, TextInput, focusFirstInvalid,
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
+import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
+import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 import { DAY_OPTIONS, isEmail } from '@/app/start/new/wizard';
-import { accountName, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
+import { accountNameWithOwner, accountOptions as accountOptionsOf, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
 import { useRunner } from '../useRunner';
 
 /** 생활비 항목 예산은 생활비 예산 카드(LivingCard), 할부는 할부 카드(InstallmentCard)에서 다뤄요 */
@@ -41,7 +43,6 @@ type Errors = Partial<Record<'name' | 'amount' | 'email' | 'account', string>>;
 /** 고정 지출: 고정비 · 용돈. 결제일에 자동 기록 (생활비 항목 예산은 LivingCard) */
 export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   const { busy, run } = useRunner();
-  const listId = `st-members-${useId().replace(/:/g, '')}`;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [confirm, setConfirm] = useState<{ action: 'end' | 'delete'; row: FixedExpense } | null>(null);
@@ -50,9 +51,15 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   const accounts = ledger.activeAccounts;
   const items = visibleFixed(ledger.data.fixedExpenses, month).filter((f) => f.kind !== 'living' && f.kind !== 'installment');
   const isShared = ledger.data.settings.kind === 'shared';
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
+  const accountOptions = accountOptionsOf(accounts);
+  const people = peopleOptions(ledger.data);
   const categoryOptions = [{ value: '', label: '없음' }, ...ledger.activeCategories.map((c) => ({ value: c.id, label: c.name }))];
   const editing = draft?.id ? ledger.data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
+  // 사람별로 나눠 보기: 용돈은 받는 사람, 고정비는 나가는 통장 주인
+  const keyOf = (f: FixedExpense) =>
+    f.kind === 'allowance' && f.targetEmail ? f.targetEmail.trim().toLowerCase() : ownerKeyOf(accounts.find((a) => a.id === f.accountId));
+  const owners = useOwnerFilter(items.map(keyOf), ledger.data);
+  const shown = items.filter((f) => owners.matches(keyOf(f)));
 
   function defaultAccountId(): string {
     // 사람별 생활비 통장이 있으면 내 생활비 통장 (고정비도 통장 주인의 것이에요)
@@ -94,7 +101,8 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
     if (!draft.name.trim()) next.name = '이름을 입력해 주세요';
     if (draft.amount === null || draft.amount <= 0) next.amount = '금액을 입력해 주세요';
     if (!draft.accountId) next.account = '통장을 골라 주세요';
-    if (draft.kind === 'allowance' && !isEmail(draft.targetEmail)) next.email = '받는 사람 이메일을 확인해 주세요';
+    if (draft.kind === 'allowance' && !draft.targetEmail.trim()) next.email = '받는 사람을 골라 주세요';
+    else if (draft.kind === 'allowance' && !isEmail(draft.targetEmail)) next.email = '받는 사람 이메일을 확인해 주세요';
     setErrors(next);
     if (Object.keys(next).length > 0) {
       focusFirstInvalid();
@@ -144,8 +152,8 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
     const label = periodLabel(f.startMonth, f.endMonth, month);
     const parts =
       f.kind === 'allowance'
-          ? [`매달 ${f.dayOfMonth ?? 1}일`, `${f.targetEmail ? ledger.displayName(f.targetEmail) : '받는 사람 없음'}에게`]
-          : [`매달 ${f.dayOfMonth ?? 1}일`, accountName(accounts, f.accountId)];
+          ? [`매달 ${f.dayOfMonth ?? 1}일`, f.targetEmail ? `${ledger.displayName(f.targetEmail)}(${f.targetEmail})에게` : '받는 사람 없음']
+          : [`매달 ${f.dayOfMonth ?? 1}일`, accountNameWithOwner(accounts, f.accountId)];
     if (f.memo?.trim()) parts.push(f.memo.trim());
     return (
       <span className="st-sub">
@@ -163,11 +171,13 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
     <Card id="st-fixed" title="고정 지출">
       <p className="st-desc">고정비와 용돈은 결제일에 지출로 자동 기록돼요. 생활비 예산은 아래 생활비 예산에서 정해요.</p>
 
-      {items.length === 0 ? (
+      <OwnerTabs filter={owners} label="누구 고정 지출" />
+
+      {shown.length === 0 ? (
         <EmptyState icon="receipt" headingLevel={3} title="고정 지출이 없어요" description="월세·통신비처럼 매달 나가는 돈을 등록해 주세요." />
       ) : (
         GROUPS.map((g) => {
-          const rows = items.filter((f) => f.kind === g.kind);
+          const rows = shown.filter((f) => f.kind === g.kind);
           if (rows.length === 0) return null;
           return (
             <div key={g.kind}>
@@ -235,24 +245,19 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
               <MoneyInput value={draft.amount} onChange={(v) => setDraft({ ...draft, amount: v })} data-autofocus="" />
             </Field>
             {draft.kind === 'allowance' ? (
-              <Field label="받는 사람 이메일" error={errors.email} required hint="받는 사람의 개인 가계부에 수입으로 들어가요.">
-                <TextInput
-                  type="email"
-                  inputMode="email"
-                  autoComplete="off"
-                  list={listId}
-                  value={draft.targetEmail}
-                  onChange={(e) => setDraft({ ...draft, targetEmail: e.target.value })}
-                />
-              </Field>
+              <PersonPicker
+                label="받는 사람"
+                required
+                emailOnly
+                emailRequired
+                people={people}
+                value={{ name: '', email: draft.targetEmail }}
+                onChange={(v) => setDraft({ ...draft, targetEmail: v.email })}
+                error={errors.email}
+                emailError={errors.email}
+                hint="받는 사람의 개인 가계부에 수입으로 들어가요."
+              />
             ) : null}
-            <datalist id={listId}>
-              {ledger.data.members.map((m) => (
-                <option key={m.email} value={m.email}>
-                  {m.displayName}
-                </option>
-              ))}
-            </datalist>
             <Field
               label={draft.kind === 'allowance' ? '주는 날' : '결제일'}
               hint={draft.id ? undefined : startMonthHint(ledger.today, draft.day)}

@@ -9,7 +9,7 @@ import {
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { DAY_OPTIONS } from '@/app/start/new/wizard';
-import { accountName, incomeSummaries, paydayPreviewLines, periodLabel, startMonthForNew, startMonthHint, visibleRules } from '../helpers';
+import { incomeSummaries, paydayPreviewLines, periodLabel, startMonthForNew, startMonthHint, visibleRules, accountOptions as accountOptionsOf, accountNameWithOwner } from '../helpers';
 import { useRunner } from '../useRunner';
 
 interface Draft {
@@ -47,7 +47,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
   // 수입통장이 여럿이면 배분이나 수입 기록이 있는 통장만 보여요
   const summaries = allSummaries.length > 1 ? allSummaries.filter((x) => x.total > 0 || x.income !== null) : allSummaries;
   const multi = summaries.length > 1;
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
+  const accountOptions = accountOptionsOf(accounts);
   const editing = draft?.id ? ledger.data.rules.find((r) => r.id === draft.id) : undefined;
 
   function openNew() {
@@ -154,7 +154,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
                 </div>
                 {x.remainder && x.left !== null ? (
                   <div className="line">
-                    <span>나머지 → {accountName(accounts, x.remainder.toAccountId)}</span>
+                    <span>나머지 → {accountNameWithOwner(accounts, x.remainder.toAccountId)}</span>
                     <strong>{formatWon(x.left)}</strong>
                   </div>
                 ) : null}
@@ -198,7 +198,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
               <li key={r.id}>
                 <ListRow
                   icon="arrow-left-right"
-                  title={`${accountName(accounts, r.fromAccountId)} → ${accountName(accounts, r.toAccountId)}`}
+                  title={`${accountNameWithOwner(accounts, r.fromAccountId)} → ${accountNameWithOwner(accounts, r.toAccountId)}`}
                   subtitle={
                     <span className="st-sub">
                       <span>매달 {r.dayOfMonth}일</span>

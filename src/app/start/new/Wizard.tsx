@@ -8,6 +8,7 @@ import { useLedger, useSession } from '@/state';
 import type { LedgerRef } from '@/storage/types';
 import { Button, LoadingBlock, cx, useToast } from '@/ui';
 import { LedgerLoadError } from '@/app/(app)/_components/RequireLedger';
+import { peopleOptions } from '@/app/(app)/_components/PersonPicker';
 import { Stepper } from '../_components/Stepper';
 import { StepAllocation, StepBalances, StepBasics, StepFixed, StepLiving, StepNote } from './Steps';
 import {
@@ -25,7 +26,7 @@ const HEADS: Record<string, { title: string; desc: string }> = {
   '종류·이름': { title: '새 가계부 만들기', desc: '누구와 쓸 가계부인지 고르고 이름을 정해 주세요.' },
   '시작 잔액': {
     title: '통장 시작 잔액',
-    desc: '지금 은행 앱에 보이는 잔액을 적어 주세요. 다르면 나중에 통장 화면에서 언제든 맞출 수 있어요.',
+    desc: '지금 은행 앱에 보이는 잔액을 적어 주세요. 다르면 나중에 내역의 통장 잔액에서 언제든 맞출 수 있어요.',
   },
   '매달 배분': {
     title: '매달 배분',
@@ -96,6 +97,8 @@ export function Wizard() {
   const month = monthOf(ledger.today);
   const sharedLedgers = session.recentLedgers.filter((r) => r.kind === 'shared');
   const livingDrafts = livingRows ?? [];
+  // 사람 고르기: 만드는 나 + (이미 있으면) 이 가계부 멤버
+  const people = peopleOptions(ledgerReady ? ledger.data : null, user ? [{ name: user.name ?? '', email: user.email }] : []);
 
   function chooseKind(k: LedgerKind) {
     setKind(k);
@@ -334,6 +337,7 @@ export function Wizard() {
         errors={earnerErrors}
         accountName={(role) => ledger.accountByRole(role)?.name ?? null}
         salaryAccountName={SALARY_ACCOUNT_NAME}
+        people={people}
       />
     );
   } else if (stepName === '생활비') {
@@ -355,6 +359,7 @@ export function Wizard() {
         setAllowances={setAllowances}
         billErrors={billErrors}
         allowanceErrors={allowanceErrors}
+        people={people}
       />
     );
   }
@@ -384,7 +389,7 @@ export function Wizard() {
       </div>
 
       {step === 1 ? <StepNote>건너뛰면 잔액 0원으로 시작해요. 설정에서 언제든 바꿀 수 있어요.</StepNote> : null}
-      {step >= 2 ? <StepNote>지금 정하지 않아도 돼요. 설정에서 언제든 추가하고 고칠 수 있어요.</StepNote> : null}
+      {step >= 2 ? <StepNote>지금 정하지 않아도 돼요. 예산 화면에서 언제든 추가하고 고칠 수 있어요.</StepNote> : null}
 
       <div className="wz-actions">
         {canGoBack ? (

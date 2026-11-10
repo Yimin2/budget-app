@@ -1,15 +1,15 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLedger, useSession } from '@/state';
-import { AppShell, useToast } from '@/ui';
+import { AppShell, Avatar, useToast } from '@/ui';
+import { CreateSheet, type CreateState } from './_components/CreateSheet';
 import { LedgerSwitcher } from './_components/LedgerSwitcher';
 import { MonthEndDialog } from './_components/MonthEndDialog';
-import { APP_NAV, MOBILE_NAV } from './_components/nav';
+import { APP_NAV, MOBILE_NAV, SETTINGS_HREF } from './_components/nav';
 import { PageSkeleton, SwitcherSkeleton } from './_components/PageSkeleton';
-import { SidebarFooter } from './_components/SidebarFooter';
-// 설정·멤버 화면 스타일도 앱 틀과 같은 묶음으로 불러요. 화면마다 따로 두면 메뉴 링크를 미리 불러올 때마다
+// 설정·예산 화면 스타일도 앱 틀과 같은 묶음으로 불러요. 화면마다 따로 두면 메뉴 링크를 미리 불러올 때마다
 // 쓰지 않는 CSS 를 미리 받아 두고 브라우저가 경고를 남겨요
 import './settings/settings.css';
 
@@ -23,6 +23,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() ?? '/';
   const toast = useToast();
+  const [create, setCreate] = useState<CreateState>(null);
 
   const needsStart = session.status === 'signedOut' || (session.status === 'signedIn' && !session.activeLedger);
   const ready = session.status === 'signedIn' && session.activeLedger !== null;
@@ -53,16 +54,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     toast.error(ledger.error);
   }, [ledger.error, hasData, toast]);
 
+  const user = session.user;
+  const userName = user ? user.name || user.email : '내 정보';
+
   return (
     <AppShell
       nav={APP_NAV}
       mobileNav={MOBILE_NAV}
       current={pathname}
       header={ready ? <LedgerSwitcher variant="block" /> : <SwitcherSkeleton />}
-      footer={ready ? <SidebarFooter /> : null}
+      create={ready ? { label: '기록', onClick: () => setCreate('menu'), expanded: create === 'menu' } : undefined}
+      profile={{
+        href: SETTINGS_HREF,
+        name: userName,
+        caption: session.mode === 'demo' ? '설정 · 체험 모드' : '설정',
+        avatar: <Avatar name={userName} src={user?.picture} size="sm" />,
+      }}
     >
       {ready ? children : <PageSkeleton />}
       {ready ? <MonthEndDialog /> : null}
+      {ready ? <CreateSheet state={create} onChange={setCreate} /> : null}
     </AppShell>
   );
 }

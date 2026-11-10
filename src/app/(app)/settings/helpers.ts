@@ -129,7 +129,12 @@ export function incomeSummaries(data: LedgerData, month: YearMonth): IncomeSumma
  * 받는 통장 이름은 짧게 (통장 이름 끝의 '통장'을 뺀다)
  */
 export function paydayPreviewLines(data: LedgerData, month: YearMonth, sourceAccountId: string): { day: number; text: string; short: Won }[] {
-  const short = (id: string) => accountName(data.accounts, id).replace(/통장$/, '') || '통장';
+  const short = (id: string) => {
+    const acc = data.accounts.find((a) => a.id === id);
+    const base = accountName(data.accounts, id).replace(/통장$/, '') || '통장';
+    const owner = acc ? ownerLabel(acc) : null;
+    return owner ? `${base}(${owner})` : base;
+  };
   return paydayPlans(data, month, sourceAccountId).map((p) => {
     const parts = p.fixed.map((l) => `${short(l.rule.toAccountId)} ${formatMan(l.amount)}`);
     if (p.remainder) parts.push(`나머지 ${formatMan(p.remainder.amount)} → ${short(p.remainder.rule.toAccountId)}`);
@@ -146,6 +151,38 @@ export function ownerLabel(account: Pick<Account, 'name' | 'ownerName' | 'ownerE
   return account.name.includes(owner) ? null : owner;
 }
 
+/** 이메일을 짧게: 'minji@demo.com' → 'minji@…' (모바일 고르기 목록에서 두 사람 통장을 가려 볼 만큼만) */
+export function shortEmail(email: string): string {
+  const at = email.indexOf('@');
+  return at > 0 ? `${email.slice(0, at)}@…` : email;
+}
+
+/**
+ * 통장 주인 표시: '민지 · minji@demo' (short=true 면 '민지 (minji@…)'). 이름이 통장 이름에 이미 있으면 이메일만.
+ * 주인이 없으면 null
+ */
+export function ownerText(account: Pick<Account, 'name' | 'ownerName' | 'ownerEmail'>, short = false): string | null {
+  const email = account.ownerEmail?.trim() || '';
+  const name = account.ownerName?.trim() || '';
+  if (!name && !email) return null;
+  const mail = email ? (short ? shortEmail(email) : email) : '';
+  const who = name && !account.name.includes(name) ? name : '';
+  if (who && mail) return short ? `${who} (${mail})` : `${who} · ${mail}`;
+  return who || mail || null;
+}
+
+/** 고르기 목록의 통장 이름: '월급통장 · 준호 (jun@…)' · '생활비(민지) · minji@…'. 주인이 없으면 이름만 */
+export function accountOptionLabel(account: Pick<Account, 'name' | 'ownerName' | 'ownerEmail' | 'deleted'>): string {
+  const owner = ownerText(account, true);
+  const base = owner ? `${account.name} · ${owner}` : account.name;
+  return account.deleted ? `${base} (지운 통장)` : base;
+}
+
+/** 통장 목록을 고르기 선택지로 (사람별 통장은 주인을 붙여요) */
+export function accountOptions(accounts: Pick<Account, 'id' | 'name' | 'ownerName' | 'ownerEmail' | 'deleted'>[]): { value: string; label: string }[] {
+  return accounts.map((a) => ({ value: a.id, label: accountOptionLabel(a) }));
+}
+
 /** 지금 보여 줄 고정 지출 (지우지 않았고 이번 달 이후에도 살아 있는 것). 생활비 → 일반 → 용돈 → 할부 순 */
 export function visibleFixed(list: FixedExpense[], month: YearMonth): FixedExpense[] {
   const order = { living: 0, bill: 1, allowance: 2, installment: 3 } as const;
@@ -157,6 +194,15 @@ export function visibleFixed(list: FixedExpense[], month: YearMonth): FixedExpen
 export function accountName(accounts: Account[], id: string | null): string {
   if (!id) return '';
   return accounts.find((a) => a.id === id)?.name ?? '지운 통장';
+}
+
+/** 통장 이름 + 주인 (사람별 통장): '월급통장 · 준호 (jun@…)'. 지운 통장은 '지운 통장' */
+export function accountNameWithOwner(accounts: Account[], id: string | null): string {
+  if (!id) return '';
+  const acc = accounts.find((a) => a.id === id);
+  if (!acc) return '지운 통장';
+  const owner = ownerText(acc, true);
+  return owner ? `${acc.name} · ${owner}` : acc.name;
 }
 
 /** 카테고리에서 고를 기본 통장 역할: 가계부에 있는 통장 역할 (+ 지금 값) */

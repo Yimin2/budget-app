@@ -44,6 +44,8 @@ describe('새 가계부 만들기 마법사', () => {
     // ③ 매달 배분: 만든 사람(민지)이 먼저 있고, 사람을 더할 수 있어요. 월급은 모두 월급통장으로
     await screen.findByRole('heading', { level: 1, name: '매달 배분' });
     const minji = screen.getByRole('group', { name: '민지' });
+    // 첫 사람은 만드는 나: 고르기 목록에서 골라져 있어요 (이름 · 이메일이 함께 채워짐)
+    expect((within(minji).getByRole('combobox', { name: /누구 월급인가요/ }) as HTMLSelectElement).value).toBe('minji@demo');
     // 남은 돈은 저수지로 보내기가 기본이라 저수지 금액 칸은 없어요
     expect((within(minji).getByLabelText('남은 돈은 모두 저수지통장으로 보내기') as HTMLInputElement).checked).toBe(true);
     expect(within(minji).queryByLabelText('저수지통장')).toBeNull();
@@ -63,6 +65,10 @@ describe('새 가계부 만들기 마법사', () => {
     // 이름 없이 금액만 있으면 멈춰요
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));
     expect(await within(second).findByText('이름을 입력해 주세요')).toBeTruthy();
+    // 아직 가계부에 없는 사람은 '직접 입력'으로 이름을 적어요
+    const who = within(second).getByRole('combobox', { name: /누구 월급인가요/ }) as HTMLSelectElement;
+    expect([...who.options].filter((o) => o.value).map((o) => o.text)).toEqual(['민지 · minji@demo', '직접 입력']);
+    fireEvent.change(who, { target: { value: '__manual__' } });
     fireEvent.change(within(second).getByLabelText('이름'), { target: { value: '준호' } });
     const junho = screen.getByRole('group', { name: '준호' });
     fireEvent.change(within(junho).getByLabelText('월급날'), { target: { value: '21' } });
@@ -141,6 +147,7 @@ describe('새 가계부 만들기 마법사', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '사람 추가' }));
     const second = screen.getByRole('group', { name: '2번째 사람' });
+    fireEvent.change(within(second).getByRole('combobox', { name: /누구 월급인가요/ }), { target: { value: '__manual__' } });
     fireEvent.change(within(second).getByLabelText('이름'), { target: { value: '준호' } });
     fireEvent.change(within(screen.getByRole('group', { name: '준호' })).getByLabelText('한 달 월급'), { target: { value: '2000000' } });
     fireEvent.click(screen.getByRole('button', { name: /다음/ }));

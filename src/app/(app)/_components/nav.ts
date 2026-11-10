@@ -1,23 +1,19 @@
 import type { NavItem } from '@/ui';
 
-/** 사이드바 메뉴 (태블릿 접힘 · 데스크톱 펼침) */
+/**
+ * 주 메뉴: 홈 · 내역 · (+ 기록) · 예산 · 계획.
+ * 모바일 하단 메뉴는 가운데에 + 버튼이 끼고, 태블릿 · 데스크톱 사이드바는 메뉴 위에 '+ 기록' 버튼이 있어요.
+ * 설정은 메뉴에 두지 않고 오른쪽 위(모바일) · 사이드바 아래(태블릿 · 데스크톱)의 내 정보 버튼에서 열어요.
+ */
 export const APP_NAV: NavItem[] = [
-  { href: '/', label: '홈', icon: 'home' },
-  { href: '/check', label: '사도 돼?', icon: 'cart' },
-  { href: '/events', label: '이벤트', icon: 'calendar' },
-  { href: '/accounts', label: '통장', icon: 'wallet' },
-  { href: '/expenses', label: '지출', icon: 'receipt' },
-  { href: '/members', label: '멤버', icon: 'users' },
-  { href: '/settings', label: '설정', icon: 'settings' },
+  { href: '/', label: '홈', icon: 'home', match: ['/check'] },
+  { href: '/history', label: '내역', icon: 'receipt' },
+  { href: '/budget', label: '예산', icon: 'piggy-bank' },
+  { href: '/plan', label: '계획', icon: 'calendar' },
 ];
 
-/**
- * 모바일 하단 메뉴 (5개). 지출 · 멤버 · 설정은 '더보기'(설정 화면 맨 위 바로 가기)에서 열어요.
- */
-export const MOBILE_NAV: NavItem[] = [
-  { href: '/', label: '홈', icon: 'home' },
-  { href: '/check', label: '사도 돼?', icon: 'cart' },
-  { href: '/events', label: '이벤트', icon: 'calendar' },
-  { href: '/accounts', label: '통장', icon: 'wallet' },
-  { href: '/settings', label: '더보기', icon: 'menu', match: ['/expenses', '/members'] },
-];
+/** 모바일 하단 메뉴 (가운데 + 버튼과 함께 다섯 칸) */
+export const MOBILE_NAV: NavItem[] = APP_NAV;
+
+/** 내 정보 버튼이 여는 곳 */
+export const SETTINGS_HREF = '/settings';

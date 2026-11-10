@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { formatWon, monthOf, plannedIncome } from '@/domain';
 import type { IncomePlan } from '@/domain/types';
-import { Badge, Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
+import { Badge, Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, focusFirstInvalid } from '@/ui';
+import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { DAY_OPTIONS, isEmail } from '@/app/start/new/wizard';
-import { accountName, periodLabel, startMonthForNew, startMonthHint } from '../helpers';
+import { accountName, accountOptionLabel, periodLabel, startMonthForNew, startMonthHint } from '../helpers';
 import { useRunner } from '../useRunner';
 
 interface Draft {
@@ -40,8 +41,8 @@ export function IncomePlansCard({ ledger }: { ledger: ReadyLedger }) {
   // 받는 통장은 수입통장 먼저
   const accountOptions = [...accounts]
     .sort((a, b) => (a.role === 'income' ? 0 : 1) - (b.role === 'income' ? 0 : 1) || a.order - b.order)
-    .map((a) => ({ value: a.id, label: a.name }));
-  const people = ledger.spenders.filter((s) => s.email);
+    .map((a) => ({ value: a.id, label: accountOptionLabel(a) }));
+  const people = peopleOptions(ledger.data);
 
   function openNew() {
     setErrors({});
@@ -122,7 +123,7 @@ export function IncomePlansCard({ ledger }: { ledger: ReadyLedger }) {
               <li key={p.id}>
                 <ListRow
                   icon="coins"
-                  title={p.personName}
+                  title={p.personEmail ? `${p.personName} · ${p.personEmail}` : p.personName}
                   subtitle={
                     <span className="st-sub">
                       <span>
@@ -174,31 +175,17 @@ export function IncomePlansCard({ ledger }: { ledger: ReadyLedger }) {
               void save();
             }}
           >
-            <Field label="누구 수입인가요?" error={errors.name} required>
-              <TextInput
-                value={draft.personName}
-                onChange={(e) => setDraft({ ...draft, personName: e.target.value })}
-                maxLength={20}
-                autoComplete="off"
-                list={people.length > 0 ? 'st-income-people' : undefined}
-              />
-            </Field>
-            {people.length > 0 ? (
-              <datalist id="st-income-people">
-                {people.map((p) => (
-                  <option key={p.key} value={p.name} />
-                ))}
-              </datalist>
-            ) : null}
-            <Field label="이메일" optional error={errors.email} hint="가계부를 함께 쓰는 사람이면 적어 두세요.">
-              <TextInput
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                value={draft.personEmail}
-                onChange={(e) => setDraft({ ...draft, personEmail: e.target.value })}
-              />
-            </Field>
+            <PersonPicker
+              label="누구 수입인가요?"
+              required
+              people={people}
+              value={{ name: draft.personName, email: draft.personEmail }}
+              onChange={(v) => setDraft({ ...draft, personName: v.name, personEmail: v.email })}
+              error={errors.name}
+              nameError={errors.name}
+              emailError={errors.email}
+              emailHint="가계부를 함께 쓰는 사람이면 적어 두세요."
+            />
             <Field label="한 달 금액" error={errors.amount} required hint={editing ? '이미 기록된 수입은 그대로 두고 다음 회차부터 바뀌어요.' : undefined}>
               <MoneyInput value={draft.amount} onChange={(v) => setDraft({ ...draft, amount: v })} data-autofocus="" />
             </Field>

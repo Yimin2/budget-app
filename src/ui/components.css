@@ -1823,6 +1823,188 @@ button.lrow {
   border-top: 1px solid var(--border);
 }
 
+/* 모바일 머리: 로고 · 내 정보 버튼 (768px 이상은 사이드바에 있어서 숨겨요) */
+.shell-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  max-width: var(--content-max);
+  height: 56px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+.top-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  text-decoration: none;
+}
+.top-brand .logo {
+  width: 28px;
+  height: 28px;
+}
+.top-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding: 2px var(--space-2) 2px 2px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.top-profile .pf-av,
+.side-profile .pf-av {
+  display: inline-flex;
+  flex: none;
+}
+.top-profile .pf-txt,
+.top-profile .tip-label {
+  display: none;
+}
+.top-profile.on {
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+@media (hover: hover) {
+  .top-profile:hover {
+    background: var(--surface-subtle);
+  }
+}
+.shell.has-top .shell-content {
+  padding-top: var(--space-2);
+}
+
+/* 하단 메뉴 가운데 + 기록 */
+.dock-create {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--on-primary);
+  cursor: pointer;
+  font: inherit;
+}
+.dock-create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: var(--shadow-md);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+.dock-create-btn .icon {
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.dock-create[aria-expanded='true'] .dock-create-btn .icon {
+  transform: rotate(45deg);
+}
+@media (hover: hover) {
+  .dock-create:hover .dock-create-btn {
+    background: var(--primary-hover);
+  }
+}
+.dock-create:active .dock-create-btn {
+  transform: scale(0.94);
+}
+
+/* 사이드바 '+ 기록' · 내 정보 */
+.side-create {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .side-create:hover {
+    background: var(--primary-hover);
+  }
+}
+.side-profile {
+  position: relative;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.side-foot + .side-profile {
+  margin-top: 0;
+}
+.side-profile .pf-txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.side-profile .pf-txt strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  line-height: 22px;
+}
+.side-profile .pf-txt span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.side-profile .pf-gear {
+  flex: none;
+  color: var(--text-muted);
+}
+@media (hover: hover) {
+  .side-profile:hover {
+    background: var(--surface-subtle);
+  }
+}
+.side-profile.on {
+  background: var(--primary-subtle);
+}
+
 @media (min-width: 768px) {
   .shell {
     display: grid;
@@ -1850,17 +2032,30 @@ button.lrow {
   }
   .side-brand .name,
   .side-nav .lbl,
+  .side-create .lbl,
+  .side-profile .pf-txt,
+  .side-profile .pf-gear,
   .side-slot,
   .side-foot {
     display: none;
   }
-  .side-nav a {
+  .shell-top {
+    display: none;
+  }
+  .shell.has-top .shell-content {
+    padding-top: var(--space-8);
+  }
+  .side-nav a,
+  .side-create,
+  .side-profile {
     width: 56px;
     height: 56px;
     padding: 0;
     justify-content: center;
   }
-  .side-nav a .tip-label {
+  .side-nav a .tip-label,
+  .side-create .tip-label,
+  .side-profile .tip-label {
     position: absolute;
     left: calc(100% + var(--space-2));
     top: 50%;
@@ -1884,7 +2079,11 @@ button.lrow {
       transform var(--duration-fast) var(--ease-out);
   }
   .side-nav a:hover .tip-label,
-  .side-nav a:focus-visible .tip-label {
+  .side-nav a:focus-visible .tip-label,
+  .side-create:hover .tip-label,
+  .side-create:focus-visible .tip-label,
+  .side-profile:hover .tip-label,
+  .side-profile:focus-visible .tip-label {
     opacity: 1;
     transform: translateY(-50%);
   }
@@ -1908,9 +2107,33 @@ button.lrow {
   }
   .side-brand .name,
   .side-nav .lbl,
+  .side-create .lbl,
   .side-slot,
   .side-foot {
     display: revert;
+  }
+  .side-profile .pf-txt {
+    display: flex;
+  }
+  .side-profile .pf-gear {
+    display: revert;
+  }
+  .side-create,
+  .side-profile {
+    width: auto;
+  }
+  .side-create {
+    height: 44px;
+    padding: 0 var(--space-4);
+  }
+  .side-profile {
+    height: auto;
+    padding: var(--space-2);
+    justify-content: flex-start;
+  }
+  .side-create .tip-label,
+  .side-profile .tip-label {
+    display: none;
   }
   .side-slot {
     display: block;
@@ -2208,6 +2431,7 @@ button.lrow {
   }
   /* 눌림·떠오름도 끄고 최종 상태만 보여요 */
   .btn:active:not(:disabled),
+  .dock-create:active .dock-create-btn,
   .chip:active:not(:disabled),
   .pill button:active:not(:disabled),
   a.card:hover,

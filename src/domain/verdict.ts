@@ -65,7 +65,7 @@ export function judgeLiving(living: LivingStatus, categoryId: Id | null, amount:
         { label: '이번 달 쓴 돈', value: formatWon(item.spent) },
         { label: '사고 나면 넘는 돈', value: formatWon(item.spent + a - item.monthBudget) },
       ],
-      when: '설정에서 생활비 항목 예산을 정하면 알려 드려요',
+      when: '예산에서 생활비 항목을 정하면 알려 드려요',
       projectionAfter: null,
     };
   }
