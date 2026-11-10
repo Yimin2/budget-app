@@ -234,11 +234,12 @@ describe('planImport', () => {
     expect(plan.total).toBe(1);
   });
 
-  it('청구를 저수지 같은 통장에 적으면 가져오지 않게 막아요', () => {
+  it('청구를 저축투자 같은 통장에 적으면 가져오지 않게 막아요', () => {
     const raw = sample();
-    raw.expenses = [{ key: 'bad', date: '2026-11-01', amount: 5000, account: 'res', memo: '잘못', claim: { payer: '가람', status: 'pending' } }];
+    raw.accounts = [...(raw.accounts as object[]), { key: 'sav', name: '저축통장', role: 'savings', openingDate: '2026-11-09' }];
+    raw.expenses = [{ key: 'bad', date: '2026-11-01', amount: 5000, account: 'sav', memo: '잘못', claim: { payer: '가람', status: 'pending' } }];
     const plan = planImport(base(), parsed(raw), CTX);
-    expect(plan.errors).toEqual(["지출 '잘못' 는 청구인데 이벤트통장 · 고정지출통장이 아니에요"]);
+    expect(plan.errors).toEqual(["지출 '잘못' 는 청구인데 이벤트통장 · 고정지출통장 · 저수지통장이 아니에요"]);
   });
 
   it('일정과 여행에 함께 묶인 지출은 여행에만 묶어요', () => {
