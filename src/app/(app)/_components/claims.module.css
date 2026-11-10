@@ -564,3 +564,46 @@
   border-radius: var(--radius-md);
   background: var(--surface-subtle);
 }
+
+/* 펼치고 접기 (같은 화면 안에서) */
+.expandBtn {
+  flex: none;
+}
+.summaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.summaryText {
+  flex: 1 1 0;
+  min-width: min(12em, 100%);
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.expandBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: expandIn var(--duration-base) var(--ease-out) both;
+}
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .expandBody {
+    animation: none;
+  }
+}

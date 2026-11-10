@@ -1579,3 +1579,16 @@
     max-width: 240px;
   }
 }
+
+/* 같은 자리에서 펼친 칸 (예외 지출 빼기) */
+.expandBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  animation: rowIn var(--duration-base) var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .expandBody {
+    animation: none;
+  }
+}

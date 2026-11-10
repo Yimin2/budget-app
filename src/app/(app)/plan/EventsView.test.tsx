@@ -47,7 +47,7 @@ describe('EventsView — 체험 가계부', () => {
     expect(thisMonth.claims).toBe(300_000);
   });
 
-  it('저수지에 갚을 돈 카드: 펼치기 없이 갚을 돈 · 이번 달 갚기 [갚았어요] · 기록은 정산 화면 링크', async () => {
+  it('저수지에 갚을 돈 카드: 요약(빌린 돈 · 갚은 돈 · 남은 갚을 돈) · 이번 달 갚기 [갚았어요], [모두 보기]로 정산 화면 링크', async () => {
     const h = await renderEvents();
     expect(screen.queryByRole('region', { name: '저수지에 갚을 돈' })).toBeNull();
     await act(async () => {
@@ -61,11 +61,16 @@ describe('EventsView — 체험 가계부', () => {
       expect(card.textContent).toContain(`이번 달 ${formatMan(s.repay.amount)} 갚기`);
       expect(within(card).getByRole('button', { name: `저수지에 ${formatWon(s.repay.amount)} 갚았어요` })).toBeTruthy();
     }
-    // 펼치기 · 창 없이: 기록과 하나씩 바꾸기는 정산 화면 저수지 칸으로
+    expect(within(card).getByTestId('loan-summary').textContent).toBe('빌린 돈 30만 · 갚은 돈 0원 · 남은 갚을 돈 30만');
+    // 처음에는 접혀 있고, [모두 보기]로 같은 자리에서 펼쳐요 (창 · <details> 없음)
     expect(card.querySelector('details')).toBeNull();
+    expect(within(card).queryByRole('link')).toBeNull();
+    fireEvent.click(within(card).getByRole('button', { name: '저수지 기록 모두 보기' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(within(card).getByRole('link', { name: /빌리고 갚은 기록 1건/ }).getAttribute('href')).toBe('/plan/settle#loan');
     expect(card.textContent).not.toContain('민지에게 지급 · 제주 항공권');
+    fireEvent.click(within(card).getByRole('button', { name: '저수지 기록 접기' }));
+    expect(within(card).queryByRole('link')).toBeNull();
     // 정산 요약 카드에는 갚을 돈이 없어요
     expect(screen.getByRole('region', { name: '이번 달 정산' }).textContent).not.toContain('갚을 돈');
   });
@@ -102,6 +107,7 @@ describe('EventsView — 체험 가계부', () => {
     const before = { ...h.probe.ledger!.balances };
     const card = await screen.findByRole('region', { name: '저수지에 갚을 돈' });
     const name = '저수지에서 이미 지급한 이벤트 청구 2건 100,000원을 갚을 돈으로 바꾸기';
+    fireEvent.click(within(card).getByRole('button', { name: '저수지 기록 모두 보기' }));
     await act(async () => {
       fireEvent.click(within(card).getByRole('button', { name }));
     });
