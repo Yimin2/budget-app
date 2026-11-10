@@ -43,14 +43,10 @@ const expand = (id: string) => {
 };
 
 describe('통계 화면', () => {
-  it('[내역 · 통계]: 통계가 골라져 있고 내역을 누르면 /history 로', async () => {
+  it('제목은 통계, 맨 위 [내역 · 통계] 바꾸기는 없어요', async () => {
     await open();
     expect(screen.getByRole('heading', { level: 1, name: '통계' })).toBeTruthy();
-    const views = screen.getByRole('radiogroup', { name: '내역 · 통계' });
-    expect(within(views).getAllByRole('radio').map((r) => r.textContent)).toEqual(['내역', '통계']);
-    expect(within(views).getByRole('radio', { name: '통계' }).getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(within(views).getByRole('radio', { name: '내역' }));
-    expect(nav.router.push).toHaveBeenCalledWith('/history', { scroll: false });
+    expect(screen.queryByRole('radiogroup', { name: '내역 · 통계' })).toBeNull();
   });
 
   it('달 바꾸기: 이번 달에서는 ▶ 이 꺼지고, ◀ 로 지난 달 · [이번 달]로 돌아와요', async () => {

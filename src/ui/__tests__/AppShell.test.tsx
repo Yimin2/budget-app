@@ -46,7 +46,7 @@ describe('AppShell', () => {
     expect(within(dock).getByRole('link', { current: 'page' }).textContent).toContain('홈');
   });
 
-  it('기록 버튼은 하단 메뉴 가운데 · 사이드바 위, 내 정보 버튼은 머리 · 사이드바 아래', () => {
+  it('기록 버튼은 모바일 오른쪽 아래 떠 있는 + · 사이드바 위, 내 정보 버튼은 머리 · 사이드바 아래', () => {
     const items: NavItem[] = [
       { href: '/', label: '홈', icon: 'home' },
       { href: '/history', label: '내역', icon: 'receipt' },
@@ -66,11 +66,14 @@ describe('AppShell', () => {
       </AppShell>,
     );
     const [, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
-    // + 가 끼면 링크는 4개까지, + 는 가운데
-    expect(within(dock).getAllByRole('link')).toHaveLength(4);
-    const plus = within(dock).getByRole('button', { name: '기록' });
-    expect(plus.previousElementSibling?.textContent).toBe('내역');
+    // 하단 메뉴는 링크 다섯 칸 그대로, + 는 메뉴 밖 오른쪽 아래 버튼
+    expect(within(dock).getAllByRole('link')).toHaveLength(5);
+    expect(within(dock).queryByRole('button')).toBeNull();
+    const plus = document.querySelector('.fab') as HTMLButtonElement;
+    expect(plus.getAttribute('aria-label')).toBe('기록');
     expect(plus.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(plus.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('.shell')?.classList.contains('has-fab')).toBe(true);
     plus.click();
     (document.querySelector('.side-create') as HTMLButtonElement).click();
     expect(opened).toBe(2);
@@ -91,5 +94,36 @@ describe('AppShell', () => {
     expect(isNavActive('/', '/events')).toBe(false);
     expect(isNavActive('/events', '/events/1')).toBe(true);
     expect(isNavActive('/event', '/events')).toBe(false);
+  });
+
+  it('통계(/history/stats)에서는 내역이 아니라 통계 칸만 켜지고 알약은 그 칸으로 (--n: 5)', () => {
+    const items: NavItem[] = [
+      { href: '/', label: '홈', icon: 'home' },
+      { href: '/history', label: '내역', icon: 'receipt' },
+      { href: '/history/stats', label: '통계', icon: 'trending-up' },
+      { href: '/plan', label: '이벤트', icon: 'calendar' },
+      { href: '/budget', label: '예산', icon: 'piggy-bank' },
+    ];
+    render(
+      <AppShell nav={items} current="/history/stats" create={{ label: '기록', onClick: () => {} }}>
+        <p>본문</p>
+      </AppShell>,
+    );
+    const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
+    expect(within(dock).getAllByRole('link', { current: 'page' }).map((a) => a.textContent)).toEqual(['통계']);
+    expect(within(side).getAllByRole('link', { current: 'page' }).map((a) => a.getAttribute('href'))).toEqual(['/history/stats']);
+    expect(dock.style.getPropertyValue('--n')).toBe('5');
+    expect(dock.style.getPropertyValue('--i')).toBe('2');
+  });
+
+  it('create.fab 이 false 면 오른쪽 아래 + 는 숨기고 사이드바 + 기록은 그대로', () => {
+    render(
+      <AppShell nav={nav} current="/plan/settle" create={{ label: '기록', onClick: () => {}, fab: false }}>
+        <p>본문</p>
+      </AppShell>,
+    );
+    expect(document.querySelector('.fab')).toBeNull();
+    expect(document.querySelector('.shell')?.classList.contains('has-fab')).toBe(false);
+    expect(document.querySelector('.side-create')?.getAttribute('aria-label')).toBe('기록');
   });
 });

@@ -34,7 +34,6 @@ import { Badge, Button, Card, Donut, Icon, PageHeader, ProgressBar, SegmentedCon
 import { ExpandButton } from '../../_components/ExpandButton';
 import { PageSkeleton } from '../../_components/PageSkeleton';
 import { RequireLedger, type ReadyLedger } from '../../_components/RequireLedger';
-import { HistoryViewSwitch } from '../HistoryViewSwitch';
 import styles from './stats.module.css';
 
 const man = (n: Won) => formatManShort(n);
@@ -48,7 +47,6 @@ export function StatsScreen() {
   return (
     <>
       <PageHeader title="통계" subtitle="달마다 예산과 쓴 돈, 어디에 썼는지, 1년 흐름을 봐요" />
-      <HistoryViewSwitch value="stats" />
       <RequireLedger skeleton={<PageSkeleton withHeader={false} cards={4} label="통계를 불러오는 중이에요" />}>
         {(ledger) => <StatsView ledger={ledger} initialMonth={initial} />}
       </RequireLedger>

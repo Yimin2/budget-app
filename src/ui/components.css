@@ -1939,51 +1939,51 @@ button.lrow {
   padding-top: var(--space-2);
 }
 
-/* 하단 메뉴 가운데 + 기록 */
-.dock-create {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 52px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--on-primary);
-  cursor: pointer;
-  font: inherit;
-}
-.dock-create-btn {
+/* 모바일 오른쪽 아래 + 기록: 하단 메뉴 오른쪽 끝에 맞춰 그 위에 떠요 (태블릿 · 데스크톱은 숨기고 사이드바 '+ 기록') */
+.fab {
+  position: fixed;
+  right: max(var(--space-4), calc((100% - 480px) / 2));
+  bottom: calc(var(--space-4) + var(--dock-height) + var(--space-3) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-sticky);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: var(--fab-size);
+  height: var(--fab-size);
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-full);
   background: var(--primary);
   color: var(--on-primary);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-float);
+  cursor: pointer;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
   transition:
     transform var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-standard);
 }
-.dock-create-btn .icon {
+.fab .icon {
   transition: transform var(--duration-base) var(--ease-out);
 }
-.dock-create[aria-expanded='true'] .dock-create-btn .icon {
+.fab[aria-expanded='true'] .icon {
   transform: rotate(45deg);
 }
 @media (hover: hover) {
-  .dock-create:hover .dock-create-btn {
+  .fab:hover {
     background: var(--primary-hover);
   }
 }
-.dock-create:active .dock-create-btn {
+.fab:active {
   transform: scale(0.94);
+}
+.fab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+/* 마지막 줄이 + 에 가리지 않게 본문 아래를 + 높이만큼 더 비워요 */
+.shell.has-fab .shell-content {
+  padding-bottom: calc(var(--space-4) + var(--dock-height) + var(--space-3) + var(--fab-size) + var(--space-4) + env(safe-area-inset-bottom, 0px));
 }
 
 /* 사이드바 '+ 기록' · 내 정보 */
@@ -2078,7 +2078,8 @@ button.lrow {
     border-right: 1px solid var(--border);
     z-index: var(--z-sticky);
   }
-  .dock {
+  .dock,
+  .fab {
     display: none;
   }
   .shell-content {
@@ -2109,6 +2110,9 @@ button.lrow {
   }
   .shell.has-top .shell-content {
     padding-top: var(--space-8);
+  }
+  .shell.has-fab .shell-content {
+    padding-bottom: var(--space-12);
   }
   .side-nav a,
   .side-create,
@@ -2664,7 +2668,7 @@ button.lrow {
   }
   /* 눌림·떠오름도 끄고 최종 상태만 보여요 */
   .btn:active:not(:disabled),
-  .dock-create:active .dock-create-btn,
+  .fab:active,
   .chip:active:not(:disabled),
   .pill button:active:not(:disabled),
   a.card:hover,

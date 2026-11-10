@@ -15,13 +15,15 @@ export interface NavItem {
   match?: string[];
 }
 
-/** 기록 버튼: 모바일 하단 메뉴 가운데 + · 사이드바 메뉴 위 '+ 기록' */
+/** 기록 버튼: 모바일 오른쪽 아래 동그란 + (하단 메뉴 위에 떠요) · 사이드바 메뉴 위 '+ 기록' */
 export interface ShellCreate {
   /** 버튼 이름 (예: '기록') */
   label: string;
   onClick: () => void;
   /** 버튼이 연 창이 열려 있는지 (aria-expanded) */
   expanded?: boolean;
+  /** false 면 모바일 오른쪽 아래 + 를 숨겨요 (아래 고정 막대가 있는 화면 등). 사이드바 '+ 기록'은 그대로 */
+  fab?: boolean;
 }
 
 /** 내 정보 버튼: 사이드바 아래 (모바일 머리 오른쪽은 설정 톱니바퀴만). 누르면 설정으로 가요 */
@@ -58,7 +60,7 @@ export interface AppShellProps {
   footer?: ReactNode;
   /** 로고를 누르면 갈 곳 (기본 '/') */
   homeHref?: string;
-  /** 기록 버튼 (모바일 하단 메뉴 가운데 + · 사이드바 '+ 기록'). 있으면 하단 메뉴 링크는 4개까지 */
+  /** 기록 버튼 (모바일 오른쪽 아래 떠 있는 + · 사이드바 '+ 기록') */
   create?: ShellCreate;
   /** 내 정보 버튼 (사이드바 아래). 있으면 모바일 머리 오른쪽에 설정 톱니바퀴(href)도 보여요 */
   profile?: ShellProfile;
@@ -203,11 +205,11 @@ function RefreshButton({ refresh, className }: { refresh: ShellRefresh; classNam
 }
 
 /**
- * 앱 틀. 모바일(<768): 얇은 머리(로고 · 새로고침 · 설정 톱니바퀴) + 하단 플로팅 메뉴(가운데 + 기록) · 태블릿(768–1279): 80px 아이콘 사이드바 ·
+ * 앱 틀. 모바일(<768): 얇은 머리(로고 · 새로고침 · 설정 톱니바퀴) + 하단 플로팅 메뉴(다섯 칸) + 오른쪽 아래 + 기록 · 태블릿(768–1279): 80px 아이콘 사이드바 ·
  * 데스크톱(≥1280): 280px 사이드바. 사이드바는 메뉴 위에 '+ 기록', 아래에 내 정보 버튼이 있어요.
  */
 export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '/', create, profile, refresh, children }: AppShellProps) {
-  const dockItems = (mobileNav ?? nav).slice(0, create ? 4 : 5);
+  const dockItems = (mobileNav ?? nav).slice(0, 5);
   const sideActive = activeIndex(nav, current);
   const dockActive = activeIndex(dockItems, current);
   const bump = useBumpOnChange(dockActive);
@@ -219,10 +221,7 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
   const wide = useMediaQuery('(min-width: 768px)');
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const pull = usePullToRefresh(mainAreaRef, refresh ? refresh.onRefresh : null, !wide);
-  // + 버튼은 하단 메뉴 가운데 칸. 선택 알약은 칸 순서로 움직여요
-  const createAt = create ? Math.floor(dockItems.length / 2) : -1;
-  const slots = dockItems.length + (create ? 1 : 0);
-  const slotOf = (i: number) => (create && i >= createAt ? i + 1 : i);
+  const showFab = !!create && create.fab !== false;
 
   const dockLinks = dockItems.map((item, i) => {
     const on = i === dockActive;
@@ -233,28 +232,8 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
       </Link>
     );
   });
-  if (create) {
-    dockLinks.splice(
-      createAt,
-      0,
-      <button
-        key="__create"
-        type="button"
-        className="dock-create"
-        aria-label={create.label}
-        aria-haspopup="dialog"
-        aria-expanded={create.expanded ?? false}
-        onClick={create.onClick}
-      >
-        <span className="dock-create-btn" aria-hidden>
-          <Icon name="plus" size={26} />
-        </span>
-      </button>,
-    );
-  }
-
   return (
-    <div className={cx('shell', profile && 'has-top')}>
+    <div className={cx('shell', profile && 'has-top', showFab && 'has-fab')}>
       <a href="#main" className="skip-link">
         본문으로 건너뛰기
       </a>
@@ -322,14 +301,23 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
         </main>
       </div>
 
-      <nav
-        className={cx('dock', create && 'has-create')}
-        aria-label="주 메뉴"
-        style={{ '--n': slots, '--i': Math.max(slotOf(dockActive), 0) } as CSSProperties}
-      >
+      <nav className="dock" aria-label="주 메뉴" style={{ '--n': dockItems.length, '--i': Math.max(dockActive, 0) } as CSSProperties}>
         {dockActive >= 0 ? <span className="dock-pill" aria-hidden /> : null}
         {dockLinks}
       </nav>
+      {/* 모바일 오른쪽 아래 + 기록 (태블릿 · 데스크톱은 사이드바 '+ 기록') */}
+      {create && showFab ? (
+        <button
+          type="button"
+          className="fab"
+          aria-label={create.label}
+          aria-haspopup="dialog"
+          aria-expanded={create.expanded ?? false}
+          onClick={create.onClick}
+        >
+          <Icon name="plus" size={26} />
+        </button>
+      ) : null}
     </div>
   );
 }
