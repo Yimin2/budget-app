@@ -141,6 +141,11 @@ const yesFlag: Codec = {
   enc: (v) => (v === true ? '예' : ''),
   dec: (c) => (toBool(c) || (typeof c === 'string' && c.trim() === '예외') ? true : undefined),
 };
+/** 카테고리 '숨김' 칸: '예' · TRUE · '숨김'이면 숨김, 빈 칸 · 모르는 값은 보임(없음). 쓸 때는 '예' 또는 빈 칸 */
+const hiddenFlag: Codec = {
+  enc: (v) => (v === true ? '예' : ''),
+  dec: (c) => (toBool(c) || (typeof c === 'string' && c.trim() === '숨김') ? true : undefined),
+};
 const date: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toISODate(c) ?? '' };
 /**
  * 음력 월-일 칸 (일정 '음력', 나중에 더한 열). 쓸 때는 'MM-DD'. 읽을 때는 '8-15' · '08/15' · '8월 15일' · '음 8.15' ·
@@ -557,6 +562,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('id', 'id', str), c('name', '이름', str), c('icon', '아이콘', str, ['이모지']),
       c('defaultAccountRole', '기본통장', role), c('order', '순서', int),
       c('deleted', '삭제됨', bool, ['삭제']),
+      // 숨김 (기록 창 · 칩에서 빠짐). 나중에 더한 열이라 빈 칸 = 보임
+      c('hidden', '숨김', hiddenFlag, ['숨기기']),
     ],
   },
   favorites: {

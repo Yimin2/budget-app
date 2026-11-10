@@ -12,6 +12,7 @@ import {
 } from '@/ui';
 import { ClaimFields, claimToastSuffix } from '../../_components/ClaimFields';
 import { SpenderField } from '../../_components/SpenderField';
+import { CategoryPicker } from '../../_components/CategoryPicker';
 import { spenderKeyForAccount } from '@/domain';
 import { accountForCategory, errorText, expenseTitle, isISODate, linkableEvents } from './selectors';
 import styles from './expenses.module.css';
@@ -64,7 +65,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     null;
   const livingId = spenderLiving(spender);
 
-  // 지운 카테고리 · 통장이라도 지금 지출이 쓰고 있으면 고를 수 있게 보여 줘요
+  // 지운 · 숨긴 카테고리 · 통장이라도 지금 지출이 쓰고 있으면 이름을 찾을 수 있게 둬요 (칩은 CategoryPicker 가 숨긴 것을 빼요)
   const categories = useMemo(() => {
     const list = [...ledger.activeCategories];
     const cur = expense?.categoryId ? data?.categories.find((c) => c.id === expense.categoryId) : undefined;
@@ -360,18 +361,13 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           <legend className="label">
             카테고리 <span className="opt-text">(선택)</span>
           </legend>
-          <ChipGroup label="카테고리">
-            {categories.map((c) => (
-              <Chip
-                key={c.id}
-                icon={categoryIcon(c)}
-                selected={categoryId === c.id}
-                onClick={() => pickCategory(categoryId === c.id ? null : c.id)}
-              >
-                {c.name}
-              </Chip>
-            ))}
-          </ChipGroup>
+          <CategoryPicker
+            value={categoryId}
+            onChange={pickCategory}
+            accountId={accountId || null}
+            extra={expense?.categoryId ? (data?.categories.find((c) => c.id === expense.categoryId) ?? null) : null}
+            disabled={!!saving}
+          />
         </fieldset>
 
         <SpenderField

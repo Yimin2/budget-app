@@ -670,3 +670,18 @@
   color: var(--text-muted);
   font-size: 14px;
 }
+
+/* 기록 확인 시트: 카테고리 칩 묶음 */
+.sheetFieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sheetFieldset > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}

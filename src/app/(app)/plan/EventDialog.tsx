@@ -86,8 +86,8 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
   const [saving, setSaving] = useState(false);
   const [reverting, setReverting] = useState(false);
 
-  const categories = eventCategories(ledger.activeCategories);
-  // 지운 카테고리를 쓰던 일정이면 고른 값을 그대로 보여 주려고 목록에 더해요
+  const categories = eventCategories(ledger.pickableCategories);
+  // 지운 · 숨긴 카테고리를 쓰던 일정이면 고른 값을 그대로 보여 주려고 목록에 더해요
   const missing =
     categoryId && !categories.some((c) => c.id === categoryId)
       ? (ledger.data?.categories.find((c) => c.id === categoryId) ?? null)

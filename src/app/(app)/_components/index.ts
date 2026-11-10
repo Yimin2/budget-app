@@ -11,3 +11,4 @@ export { ClaimFields, claimToastSuffix, type ClaimFieldsProps } from './ClaimFie
 export { SpenderField, type SpenderFieldProps } from './SpenderField';
 export { PersonPicker, peopleOptions, personOptionLabel, type PersonPickerProps, type PersonChoice, type PersonOption } from './PersonPicker';
 export { ExpandButton } from './ExpandButton';
+export { CategoryPicker, type CategoryPickerProps } from './CategoryPicker';

@@ -127,7 +127,8 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const rows = visibleFixed(data.fixedExpenses, month)
     .filter((f) => f.kind === 'living' && !isLivingOverride(f))
     .sort((a, b) => (accountOrder.get(a.accountId) ?? 999) - (accountOrder.get(b.accountId) ?? 999) || catRank(a) - catRank(b));
-  const categories = ledger.activeCategories.filter((c) => c.defaultAccountRole !== 'event');
+  // 고르는 목록은 숨긴 카테고리를 빼요 (이미 있는 항목의 예산은 그대로 계산)
+  const categories = ledger.pickableCategories.filter((c) => c.defaultAccountRole !== 'event');
   const legacy = hasLegacyLivingRow(data, month);
   const legacyRows = rows.filter((f) => f.categoryId === null && isMonthActive(month, f.startMonth, f.endMonth));
   // 이번 달 실제로 쓰는 금액 ('이 달만 다른 금액'이 있으면 그 금액)
@@ -306,6 +307,9 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const categoryOptions = [
     ...(editing && editing.categoryId === null ? [{ value: '', label: '카테고리 없음 (예전 생활비 한 줄)' }] : []),
     ...categories.map((c) => ({ value: c.id, label: c.name })),
+    ...(draft?.categoryId && !categories.some((c) => c.id === draft.categoryId) && catById.get(draft.categoryId)
+      ? [{ value: draft.categoryId, label: `${catById.get(draft.categoryId)!.name} (숨김)` }]
+      : []),
   ];
   const splitTotal = split ? livingTotal(split) : 0;
   const legacyTotal = legacyRows.reduce((s, f) => s + f.amount, 0);

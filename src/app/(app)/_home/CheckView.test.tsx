@@ -140,7 +140,7 @@ describe('CheckView — 사도 돼?', () => {
 
     const dialog = await screen.findByRole('dialog', { name: '지출로 기록할게요' });
     expect((within(dialog).getByLabelText(/날짜/) as HTMLInputElement).value).toBe('2026-11-20');
-    expect((within(dialog).getByLabelText(/카테고리/) as HTMLSelectElement).value).toBe('demo-cat-shopping');
+    expect(within(within(dialog).getByRole('group', { name: '카테고리' })).getByRole('button', { name: '쇼핑' }).getAttribute('aria-pressed')).toBe('true');
     expect((within(dialog).getByLabelText(/통장/) as HTMLSelectElement).value).toBe('demo-acc-fixed');
     fireEvent.change(within(dialog).getByLabelText(/내용/), { target: { value: '양말' } });
 

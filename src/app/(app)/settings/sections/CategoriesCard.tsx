@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { hasBatchim } from '@/domain';
+import { directionParticle, hasBatchim, mergeCountsText, objectParticle, planCategoryMerge, unusedCategories } from '@/domain';
 import type { AccountRole, Category } from '@/domain/types';
-import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Select, TextInput, cx, focusFirstInvalid, useToast } from '@/ui';
+import { Button, Card, Chip, ChipGroup, ConfirmDialog, Dialog, EmptyState, Field, Icon, ListRow, Select, TextInput, cx, focusFirstInvalid, isIconName, useToast } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { ROLE_TEXT, categoryRoleOptions } from '../helpers';
 import { useRunner } from '../useRunner';
@@ -30,6 +30,8 @@ interface KeyDrag {
 /** 화면 끝에서 이만큼(px) 안으로 오면 저절로 스크롤해요 */
 const EDGE = 64;
 
+const withTopicName = (name: string) => `'${name}'${hasBatchim(name) ? '은' : '는'}`;
+
 /** 손잡이 (점 여섯 개) */
 function Grip() {
   return (
@@ -42,6 +44,13 @@ function Grip() {
       ))}
     </svg>
   );
+}
+
+/** 줄 아래 정리 칸: 고르기 · 합칠 카테고리 고르기(targetId 가 있으면 미리 보기) */
+interface Tidy {
+  id: string;
+  mode: 'menu' | 'merge';
+  targetId: string | null;
 }
 
 interface Draft {
@@ -61,7 +70,16 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
   /** 화면 읽기 프로그램에 옮긴 결과를 알려요 */
   const [announce, setAnnounce] = useState('');
   const toast = useToast();
-  const categories = ledger.activeCategories;
+  // 순서 목록은 보이는 카테고리만 (숨긴 카테고리는 아래 '숨긴 카테고리 보기'에서)
+  const categories = ledger.pickableCategories;
+  const hidden = ledger.activeCategories.filter((c) => c.hidden === true);
+  const unused = unusedCategories(ledger.data, ledger.today);
+  const unusedIds = new Set(unused.map((c) => c.id));
+  const [tidy, setTidy] = useState<Tidy | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [working, setWorking] = useState<'hide' | 'merge' | null>(null);
+  const tidyBase = useId().replace(/:/g, '');
+  const hiddenListId = `${tidyBase}-hidden`;
   const accounts = ledger.activeAccounts;
   const editing = draft?.id ? ledger.data.categories.find((c) => c.id === draft.id) : undefined;
 
@@ -116,13 +134,18 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
   /** from → to 로 옮겨 저장. 화면에 바로 반영되고, 저장이 실패하면 되돌려요. 옮긴 뒤 '되돌리기'로 제자리에 */
   async function commit(c: Category, from: number, to: number) {
     if (from === to) return;
+    // 보이는 목록의 자리 → 숨긴 카테고리까지 든 전체 순서의 자리
+    const full = ledger.activeCategories;
+    const fullFrom = full.findIndex((x) => x.id === c.id);
+    const fullTo = full.findIndex((x) => x.id === categories[to]?.id);
+    if (fullFrom < 0 || fullTo < 0) return;
     setMoving(true);
     try {
-      const moved = await ledger.moveCategoryTo(c.id, to);
+      const moved = await ledger.moveCategoryTo(c.id, fullTo);
       if (!moved) return;
       setAnnounce(`${nameWithObject(c.name)} ${to + 1}번째로 옮겼어요`);
       toast.show(`${c.name} 순서를 바꿨어요`, {
-        action: { label: '되돌리기', onClick: () => void ledger.moveCategoryTo(c.id, from).catch(() => toast.error('되돌리지 못했어요')) },
+        action: { label: '되돌리기', onClick: () => void ledger.moveCategoryTo(c.id, fullFrom).catch(() => toast.error('되돌리지 못했어요')) },
       });
     } catch (e) {
       toast.error(e instanceof Error && e.message ? e.message : '카테고리 순서를 바꾸지 못했어요');
@@ -198,6 +221,7 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
       h,
       lastY: e.clientY,
     };
+    setTidy(null);
     setDrag({ id: c.id, from: index, over: index, dy: 0, rowH: h });
     setAnnounce(`${nameWithObject(c.name)} 집었어요`);
     autoScroll();
@@ -228,6 +252,7 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
     if (!keyDrag) {
       if (!pick || moving) return;
       e.preventDefault();
+      setTidy(null);
       setKeyDrag({ id: c.id, from: index, over: index });
       setAnnounce(`${nameWithObject(c.name)} 집었어요. 지금 ${index + 1}번째예요. 위아래 화살표로 옮기고 스페이스로 놓아요. Esc 는 그대로 두기예요`);
       return;
@@ -274,13 +299,133 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
     return 0;
   }
 
+  /** 숨기기 · 다시 보기 (여럿 한 번에). 알림에서 되돌리기 */
+  async function setHidden(list: Category[], hide: boolean) {
+    if (list.length === 0 || working) return;
+    setWorking('hide');
+    try {
+      const n = await ledger.setCategoriesHidden(list.map((c) => c.id), hide);
+      if (n === 0) return;
+      setTidy(null);
+      const what = list.length === 1 ? `${list[0]!.name}${objectParticle(list[0]!.name)}` : `카테고리 ${list.length}개를`;
+      toast.success(hide ? `${what} 숨겼어요. 예전 기록과 예산은 그대로예요` : `${what} 다시 보이게 했어요`, {
+        action: {
+          label: '되돌리기',
+          onClick: () => void ledger.setCategoriesHidden(list.map((c) => c.id), !hide).catch(() => toast.error('되돌리지 못했어요')),
+        },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : '카테고리를 바꾸지 못했어요');
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function merge(sourceId: string, targetId: string) {
+    if (working) return;
+    setWorking('merge');
+    try {
+      const plan = await ledger.mergeCategory(sourceId, targetId);
+      setTidy(null);
+      setAnnounce(`${plan.source.name}${objectParticle(plan.source.name)} ${plan.target.name}${directionParticle(plan.target.name)} 합쳤어요`);
+      toast.success(`${plan.source.name}${objectParticle(plan.source.name)} '${plan.target.name}'${directionParticle(plan.target.name)} 합쳤어요`, {
+        action: {
+          label: '되돌리기',
+          onClick: () =>
+            void ledger.undoCategoryMerge(plan).then(
+              () => toast.show('합치기를 되돌렸어요'),
+              () => toast.error('되돌리지 못했어요'),
+            ),
+        },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : '카테고리를 합치지 못했어요');
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  /** 줄 아래 정리 칸 (같은 자리에서 펼침) */
+  function tidyPanel(c: Category) {
+    if (!tidy || tidy.id !== c.id) return null;
+    const panelId = `${tidyBase}-${c.id}`;
+    const targets = ledger.activeCategories.filter((x) => x.id !== c.id);
+    let body;
+    if (tidy.mode === 'menu') {
+      body = (
+        <div className="st-tidy-actions">
+          <Button variant="outline" icon="arrow-right" onClick={() => setTidy({ ...tidy, mode: 'merge', targetId: null })} disabled={targets.length === 0 || !!working}>
+            다른 카테고리로 합치기
+          </Button>
+          <Button variant="outline" onClick={() => void setHidden([c], true)} loading={working === 'hide'} disabled={!!working}>
+            숨기기
+          </Button>
+        </div>
+      );
+    } else {
+      const target = tidy.targetId ? targets.find((x) => x.id === tidy.targetId) : undefined;
+      let preview: string | null = null;
+      if (target) {
+        try {
+          const counts = mergeCountsText(planCategoryMerge(ledger.data, c.id, target.id).counts);
+          preview = `${counts}${objectParticle(counts)} '${target.name}'${directionParticle(target.name)} 옮겨요`;
+        } catch (e) {
+          preview = e instanceof Error ? e.message : null;
+        }
+      }
+      body = (
+        <>
+          <p className="st-tidy-q">
+            {c.name}
+            {objectParticle(c.name)} 어느 카테고리로 합칠까요?
+          </p>
+          <ChipGroup label="합칠 카테고리">
+            {targets.map((x) => (
+              <Chip
+                key={x.id}
+                icon={isIconName(x.icon) ? x.icon : 'dots'}
+                selected={tidy.targetId === x.id}
+                disabled={!!working}
+                onClick={() => setTidy({ ...tidy, targetId: x.id })}
+              >
+                {x.name}
+                {x.hidden ? ' (숨김)' : ''}
+              </Chip>
+            ))}
+          </ChipGroup>
+          {target && preview ? (
+            <div className="st-tidy-preview" role="status">
+              <p>{preview}</p>
+              <p className="muted">
+                {withTopicName(c.name)} 목록에서 빠져요. 합친 뒤 알림에서 되돌릴 수 있어요.
+              </p>
+            </div>
+          ) : null}
+          <div className="st-tidy-actions">
+            <Button icon="check" onClick={() => target && void merge(c.id, target.id)} disabled={!target || (!!working && working !== 'merge')} loading={working === 'merge'}>
+              합치기
+            </Button>
+            <Button variant="ghost" onClick={() => setTidy(null)} disabled={!!working}>
+              취소
+            </Button>
+          </div>
+        </>
+      );
+    }
+    return (
+      <li id={panelId} className="st-tidy" key={`${c.id}-tidy`}>
+        {body}
+      </li>
+    );
+  }
+
   async function remove(c: Category) {
     const ok = await run('delete', () => ledger.saveCategory({ ...c, deleted: true }), '카테고리를 지웠어요');
     if (ok) setConfirmDelete(null);
   }
 
   return (
-    <Card id="st-categories" title="카테고리" aside={<span className="muted">{categories.length}개</span>}>
+    <Card id="st-categories" title="카테고리" aside={<span className="muted">{categories.length}개{hidden.length > 0 ? ` · 숨김 ${hidden.length}개` : ''}</span>}>
       <p className="st-desc">
         지출을 기록할 때 카테고리를 고르면 정해 둔 통장이 자동으로 골라져요. 손잡이를 끌어 정한 순서를 기록 · 사도 돼? · 내역 · 생활비 항목이 모두 따라요.
       </p>
@@ -290,6 +435,17 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
       <p className="sr-only" role="status" aria-live="polite">
         {announce}
       </p>
+      {unused.length > 0 ? (
+        <div className="st-cat-suggest">
+          <p>
+            <strong>최근 3개월 동안 안 쓴 카테고리 {unused.length}개</strong>
+            <span className="muted"> · {unused.map((c) => c.name).join(' · ')}</span>
+          </p>
+          <Button variant="outline" onClick={() => void setHidden(unused, true)} loading={working === 'hide' && !tidy} disabled={!!working}>
+            모두 숨기기
+          </Button>
+        </div>
+      ) : null}
       {categories.length === 0 ? (
         <EmptyState icon="tag" headingLevel={3} title="카테고리가 없어요" description="식비·카페처럼 지출을 나눌 카테고리를 추가해 주세요." />
       ) : (
@@ -299,7 +455,8 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
             const style: CSSProperties | undefined = drag
               ? { transform: `translateY(${drag.id === c.id ? drag.dy : shiftOf(i)}px)` }
               : undefined;
-            return (
+            const open = tidy?.id === c.id;
+            return [
               <li
                 key={c.id}
                 ref={(el) => {
@@ -329,9 +486,26 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
                 >
                   <Grip />
                 </button>
-                <ListRow icon={c.icon} title={c.name} subtitle={roleText(c.defaultAccountRole)} onClick={() => (drag || keyDrag ? undefined : openEdit(c))} />
-              </li>
-            );
+                <ListRow
+                  icon={c.icon}
+                  title={c.name}
+                  subtitle={unusedIds.has(c.id) ? `${roleText(c.defaultAccountRole)} · 3개월 동안 안 썼어요` : roleText(c.defaultAccountRole)}
+                  onClick={() => (drag || keyDrag ? undefined : openEdit(c))}
+                />
+                <button
+                  type="button"
+                  className="st-cat-more"
+                  aria-label={`${c.name} 정리하기 (합치기 · 숨기기)`}
+                  aria-expanded={open}
+                  aria-controls={open ? `${tidyBase}-${c.id}` : undefined}
+                  disabled={!!drag || !!keyDrag}
+                  onClick={() => setTidy(open ? null : { id: c.id, mode: 'menu', targetId: null })}
+                >
+                  <Icon name={open ? 'x' : 'dots'} size={20} />
+                </button>
+              </li>,
+              tidyPanel(c),
+            ];
           })}
         </ul>
       )}
@@ -339,7 +513,37 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
         <Button variant="outline" icon="plus" onClick={openNew}>
           카테고리 추가
         </Button>
+        {hidden.length > 0 ? (
+          <Button
+            variant="ghost"
+            iconRight={showHidden ? 'chevron-up' : 'chevron-down'}
+            aria-expanded={showHidden}
+            aria-controls={hiddenListId}
+            onClick={() => setShowHidden((v) => !v)}
+          >
+            {showHidden ? '숨긴 카테고리 접기' : `숨긴 카테고리 보기 (${hidden.length})`}
+          </Button>
+        ) : null}
       </div>
+      {hidden.length > 0 ? (
+        <div id={hiddenListId} hidden={!showHidden}>
+          {showHidden ? (
+            <>
+              <p className="st-cat-hint">숨긴 카테고리는 기록 창 · 사도 돼?에 안 보여요. 예전 기록의 이름과 예산은 그대로예요.</p>
+              <ul className="list st-cats-hidden">
+                {hidden.map((c) => (
+                  <li key={c.id} className="st-cat-row">
+                    <ListRow icon={c.icon} title={c.name} subtitle={`${roleText(c.defaultAccountRole)} · 숨김`} chevron={false} />
+                    <Button variant="outline" icon="eye" onClick={() => void setHidden([c], false)} disabled={!!working} aria-label={`${c.name} 다시 보기`}>
+                      다시 보기
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       <Dialog
         open={draft !== null}

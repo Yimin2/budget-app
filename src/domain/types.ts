@@ -324,6 +324,11 @@ export interface Category {
   defaultAccountRole: AccountRole;
   order: number;
   deleted: boolean;
+  /**
+   * 숨김 (기록 창 · 사도 돼? 칩 · 고르는 목록에서 빠짐). 예전 기록의 이름과 예산 계산은 그대로.
+   * 시트 '숨김' 빈 셀 = 보임 (예전 시트는 고칠 것 없음)
+   */
+  hidden?: boolean;
 }
 
 export interface Favorite {

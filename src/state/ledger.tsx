@@ -34,6 +34,11 @@ import {
   memberName,
   moveCategoryTo as moveCategoryToDomain,
   orderedCategories,
+  categoryUseScores,
+  setHiddenRows,
+  planCategoryMerge,
+  applyMergeRows,
+  type CategoryMergeRows,
   mergeMembers,
   type MemberSelf,
   type SharingList,
@@ -686,6 +691,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
 
   const activeAccounts = useMemo(() => (data ? sortedActive(data.accounts) : []), [data]);
   const activeCategories = useMemo(() => (data ? sortedActive(data.categories) : []), [data]);
+  const pickableCategories = useMemo(() => activeCategories.filter((c) => c.hidden !== true), [activeCategories]);
+  const categoryScores = useMemo(() => (data ? categoryUseScores(data.expenses, today) : new Map<Id, number>()), [data, today]);
   const accountByRole = useCallback(
     (role: Account['role']) => activeAccounts.find((a) => a.role === role) ?? null,
     [activeAccounts],
@@ -2263,6 +2270,53 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, mutate],
   );
 
+  const setCategoriesHidden = useCallback<LedgerApi['setCategoriesHidden']>(
+    async (ids, hidden) => {
+      const { data: d } = requireData();
+      const changed = setHiddenRows(d.categories, ids, hidden);
+      if (changed.length === 0) return 0;
+      const byId = new Map(changed.map((c) => [c.id, c]));
+      await mutate(
+        (cur) => ({ ...cur, categories: cur.categories.map((c) => byId.get(c.id) ?? c) }),
+        (repo) => repo.upsertMany('categories', changed),
+        hidden ? '카테고리를 숨기지 못했어요' : '카테고리를 다시 보이게 하지 못했어요',
+      );
+      return changed.length;
+    },
+    [requireData, mutate],
+  );
+
+  /** 합치기 · 되돌리기 행 쓰기: 다시 해도 같은 옮기기를 먼저, 금액을 더하는 예산 행은 한 번에, 카테고리 지우기는 마지막에 */
+  const writeMergeRows = useCallback(
+    (rows: CategoryMergeRows, failMessage: string) =>
+      mutate(
+        (cur) => applyMergeRows(cur, rows),
+        async (repo) => {
+          if (rows.expenses.length > 0) await repo.upsertMany('expenses', rows.expenses);
+          if (rows.events.length > 0) await repo.upsertMany('events', rows.events);
+          if (rows.favorites.length > 0) await repo.upsertMany('favorites', rows.favorites);
+          if (rows.fixedExpenses.length > 0) await repo.upsertMany('fixedExpenses', rows.fixedExpenses);
+          if (rows.categories.length > 0) await repo.upsertMany('categories', rows.categories);
+        },
+        failMessage,
+        { multiStep: true },
+      ),
+    [mutate],
+  );
+  const mergeCategory = useCallback<LedgerApi['mergeCategory']>(
+    async (sourceId, targetId) => {
+      const { data: d } = requireData();
+      const plan = planCategoryMerge(d, sourceId, targetId);
+      await writeMergeRows(plan, '카테고리를 합치지 못했어요');
+      return plan;
+    },
+    [requireData, writeMergeRows],
+  );
+  const undoCategoryMerge = useCallback<LedgerApi['undoCategoryMerge']>(
+    (plan) => writeMergeRows(plan.undo, '합치기를 되돌리지 못했어요'),
+    [writeMergeRows],
+  );
+
   /** 한 칸씩 옮기기 (-1 위로 · +1 아래로) = 지금 자리 + delta 로 옮기기 */
   const moveCategory = useCallback<LedgerApi['moveCategory']>(
     async (id, delta) => {
@@ -2513,6 +2567,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       pendingMonthEnd,
       activeAccounts,
       activeCategories,
+      pickableCategories,
+      categoryScores,
       accountByRole,
       incomeAccounts,
       judge,
@@ -2583,6 +2639,9 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       moveCategory,
       moveCategoryTo,
       addCategory,
+      setCategoriesHidden,
+      mergeCategory,
+      undoCategoryMerge,
       saveFavorite,
       addFavorite,
       recordFavorite,
@@ -2598,14 +2657,14 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [
       status, error, needsReconnect, ref, data, today, savingCount, reload, sync, deps.now, living, livingViews, myLivingId, meChoices, claimOwner, notice, dismissNotice, livingFor, spenders,
       mySpender, addIncomePlan, saveIncomePlan, balances, eventProjection, shortageFix,
-      pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
+      pendingMonthEnd, activeAccounts, activeCategories, pickableCategories, categoryScores, accountByRole, incomeAccounts, judge, claims, claimPayers,
       previewClaimDue, settleClaims, unsettleClaims, settlement, loanCandidates, borrowAndSettleClaims, repayLoan,
       undoRepayLoan, convertToLoan, unconvertLoan, saveSettleDay, saveDaysOff, saveDismissedRecurring, borrowReservoirClaims, convertSettledReservoirClaims, undoReservoirClaims, undoClaimPayments, cancelClaimLoans, cancelLoanTransfer, updateLoanAmount, restoreRows, installments, installmentHint, addInstallment,
       reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,
       restoreTrip, addExpense, updateExpense,
       deleteExpense, setExpenseExclusions, addEvent, registerAnnualEvents, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, changeFixedAmount, endFixedSeries, saveLivingItem, setLivingOverride, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
+      changeRuleAmount, changeFixedAmount, endFixedSeries, saveLivingItem, setLivingOverride, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, setCategoriesHidden, mergeCategory, undoCategoryMerge, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );

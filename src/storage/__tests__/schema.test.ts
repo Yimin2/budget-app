@@ -243,6 +243,26 @@ describe('schema', () => {
     expect(decodeSettings(encodeSettings(d.settings)).settings).toEqual(d.settings);
   });
 
+  it('카테고리 숨김 열: 없거나 비면 보임, 예 · TRUE · 숨김이면 숨김, 쓸 때는 예 또는 빈 칸', () => {
+    const old = decodeTable('categories', [['id', '이름', '아이콘', '기본통장', '순서', '삭제됨'], ['c', '식비', 'dots', '고정지출통장', 0, '']]);
+    expect(old[0]!.hidden).toBeUndefined();
+    const rows = decodeTable('categories', [
+      ['id', '이름', '아이콘', '기본통장', '순서', '삭제됨', '숨김'],
+      ['a', 'A', 'dots', '', 0, '', '예'],
+      ['b', 'B', 'dots', '', 1, '', ''],
+      ['c', 'C', 'dots', '', 2, '', true],
+      ['d', 'D', 'dots', '', 3, '', '숨김'],
+      ['e', 'E', 'dots', '', 4, '', '아니오'],
+    ]);
+    expect(rows.map((r) => r.hidden)).toEqual([true, undefined, true, true, undefined]);
+    const headers = canonicalHeaders('categories');
+    expect(headers[headers.length - 1]).toBe('숨김');
+    const cat = sampleLedger().categories[0]!;
+    expect(encodeRow('categories', { ...cat, hidden: true })[headers.indexOf('숨김')]).toBe('예');
+    expect(encodeRow('categories', cat)[headers.indexOf('숨김')]).toBe('');
+    expect(decodeTable('categories', encodeTable('categories', [{ ...cat, hidden: true }]))[0]!.hidden).toBe(true);
+  });
+
   it('예외 열: 없거나 비면 평소 지출, 예 · TRUE · 예외면 예외, 쓸 때는 예 또는 빈 칸', () => {
     const old = decodeTable('expenses', [['id', '날짜', '금액', '통장'], ['x', '2026-11-01', 1000, 'a']]);
     expect(old[0]!.excluded).toBeUndefined();

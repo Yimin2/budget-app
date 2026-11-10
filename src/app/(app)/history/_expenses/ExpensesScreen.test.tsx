@@ -69,6 +69,12 @@ describe('지출 화면', () => {
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '230000' } });
     const account = within(dialog).getByLabelText(/^통장/) as HTMLSelectElement;
     expect(account.value).toBe('demo-acc-fixed');
+    // 생활비 통장이면 생활비 카테고리 6개가 먼저, 이벤트 카테고리는 [더 보기] 안에
+    expect(within(dialog).queryByRole('button', { name: '여행' })).toBeNull();
+    const more = within(dialog).getByRole('button', { name: /더 보기/ });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(within(dialog).getByRole('button', { name: '여행' }));
     expect(account.value).toBe('demo-acc-event');
     expect(within(dialog).getByText('여행 카테고리에 맞춰 골랐어요')).toBeTruthy();

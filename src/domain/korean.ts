@@ -17,3 +17,17 @@ export function withSubject(name: string): string {
 export function withTopic(name: string): string {
   return `${name}${hasBatchim(name) ? '은' : '는'}`;
 }
+
+/** '식비' → '로', '쇼핑' → '으로', '술' → '로' (ㄹ 받침은 '로') */
+export function directionParticle(name: string): string {
+  const ch = name.trim().slice(-1);
+  const code = ch ? ch.charCodeAt(0) - 0xac00 : -1;
+  if (code < 0 || code > 11171) return '로';
+  const jong = code % 28;
+  return jong === 0 || jong === 8 ? '로' : '으로';
+}
+
+/** '카페' → '를', '쇼핑' → '을' */
+export function objectParticle(word: string): string {
+  return hasBatchim(word) ? '을' : '를';
+}
