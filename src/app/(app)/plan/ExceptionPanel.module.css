@@ -1,4 +1,4 @@
-/* ExceptionCard — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+/* ExceptionPanel — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
 
 /* 되돌리기 · 저장을 한데 묶어 오른쪽 끝에 (저장이 맨 끝) */
 .applyBtns {
@@ -7,11 +7,6 @@
   gap: var(--space-2);
 }
 /* ───────── 예외 지출 빼기 ───────── */
-.exceptionOn {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
-  transition: box-shadow var(--duration-base) var(--ease-standard);
-}
 .exceptionMsg {
   margin: 0;
   font-size: 17px;

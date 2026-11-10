@@ -11,6 +11,7 @@ import {
   increaseChoiceText,
   initialMonth,
   aheadInflowText,
+  compromiseHeadline,
   aheadMonthItems,
   aheadMonthLine,
   aheadOutflow,
@@ -314,5 +315,24 @@ describe('앞으로 12개월: 고른 달 항목', () => {
         { name: '여행', amount: 124_400 },
       ]),
     ).toBe('경조사 35만 · 선물 15만 · 여행 12.4만');
+  });
+});
+
+describe('compromiseHeadline', () => {
+  it("'적립 70만 + 선물 −5만' (가장 크게 줄일 카테고리, 여럿이면 '외 N개')", () => {
+    expect(compromiseHeadline({ recommended: 700_000, cut: { cuts: [{ name: '선물', amount: 50_000 }] } })).toBe('적립 70만 + 선물 −5만');
+    expect(
+      compromiseHeadline({
+        recommended: 550_000,
+        cut: {
+          cuts: [
+            { name: '외식', amount: 12_000 },
+            { name: '경조사', amount: 30_000 },
+            { name: '선물', amount: 0 },
+          ],
+        },
+      }),
+    ).toBe('적립 55만 + 경조사 −3만 외 1개');
+    expect(compromiseHeadline({ recommended: 300_000, cut: { cuts: [] } })).toBe('적립 30만');
   });
 });

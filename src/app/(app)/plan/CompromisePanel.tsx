@@ -1,10 +1,8 @@
 'use client';
 
-import { useId, useState } from 'react';
 import { REPAY_MONTH_OPTIONS, formatMan, manWon, normalizeRepayMonths, type CompromisePlan, type RepayMonths } from '@/domain';
 import { REPAY_MONTHS_KEY } from '@/state';
 import { Chip, ChipGroup, cx } from '@/ui';
-import { ExpandButton } from '../_components/ExpandButton';
 import shared from './events.module.css';
 import styles from './CompromisePanel.module.css';
 
@@ -27,8 +25,9 @@ export function writeRepayMonths(months: RepayMonths): void {
 }
 
 /**
- * 평소 쓰는 돈과 적립 카드 안의 '추천 타협안' (정보만, 자동으로 바꾸는 버튼 없음).
- * 처음에는 한 줄 요약 + 적립이 모자라면 올리라는 안내만. [자세히]로 같은 자리에서 셈 · 갚는 개월 수 칩 · 카테고리별 줄일 금액
+ * '평소 쓰는 돈' 카드의 ② 추천 타협안 단계 (정보만, 자동으로 바꾸는 버튼 없음).
+ * 한 줄 요약 · 적립이 모자라면 올리라는 안내 · 셈 · 갚는 개월 수 칩 · 카테고리별 줄일 금액 · 12개월 확인.
+ * 카드의 단계 칩([② 추천 타협안 적립 70만 + 선물 −5만])을 누르면 같은 자리에서 펼쳐져요
  */
 export function CompromisePanel({
   plan,
@@ -39,8 +38,6 @@ export function CompromisePanel({
   months: RepayMonths;
   onMonths: (m: RepayMonths) => void;
 }) {
-  const bodyId = useId();
-  const [open, setOpen] = useState(false);
   const hasDebt = plan.monthlyRepay > 0;
   return (
     <div className={shared.compromise} data-testid="compromise">
@@ -48,13 +45,6 @@ export function CompromisePanel({
         <p className={cx(styles.compromiseSummary, plan.shortages.length > 0 && shared.bad)} data-testid="compromise-summary">
           {plan.summary}
         </p>
-        <ExpandButton
-          open={open}
-          onToggle={() => setOpen((o) => !o)}
-          controls={bodyId}
-          openLabel="자세히"
-          label="추천 타협안"
-        />
       </div>
       {plan.raiseMessage ? (
         <p className={cx(styles.compromiseLine, shared.bad)} data-testid="compromise-raise">
@@ -62,9 +52,8 @@ export function CompromisePanel({
         </p>
       ) : null}
 
-      <div id={bodyId} hidden={!open} className={styles.compromiseBody}>
-        {open ? (
-          <>
+      <div className={styles.compromiseBody}>
+        <>
             <dl className={shared.insightFacts}>
               <div>
                 <dt>평소 쓰는 돈 (예외 뺀 최근 평균)</dt>
@@ -135,8 +124,7 @@ export function CompromisePanel({
               <span className={shared.subNote}>다음 달부터 적립 · 줄인 쓰는 돈 · 갚을 돈을 넣어 다시 예측했어요</span>
             </p>
             <p className={shared.foot}>바꾸는 건 예산의 매달 배분과 평소 지출에서 직접 해요</p>
-          </>
-        ) : null}
+        </>
       </div>
     </div>
   );

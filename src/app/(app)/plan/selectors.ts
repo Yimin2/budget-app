@@ -87,6 +87,20 @@ export function settleLineText(u: EventMonthUsage, sum: SettlementSummary): { te
   return { text: parts.join(' · '), carry };
 }
 
+/* ───────── 평소 쓰는 돈 카드 ───────── */
+
+/**
+ * ② 추천 타협안 칩의 짧은 머리말: '적립 70만 + 선물 −5만' (줄일 카테고리가 여럿이면 가장 큰 것 + '외 2개'),
+ * 줄일 것이 없으면 '적립 70만'
+ */
+export function compromiseHeadline(plan: { recommended: Won; cut: { cuts: { name: string; amount: Won }[] } }): string {
+  const head = `적립 ${formatMan(plan.recommended)}`;
+  const cuts = plan.cut.cuts.filter((c) => c.amount > 0);
+  if (cuts.length === 0) return head;
+  const top = cuts.reduce((a, b) => (b.amount > a.amount ? b : a), cuts[0]!);
+  return `${head} + ${top.name} −${formatMan(top.amount)}${cuts.length > 1 ? ` 외 ${cuts.length - 1}개` : ''}`;
+}
+
 /* ───────── 앞으로 12개월 카드: 고른 달 항목 ───────── */
 
 /** 평소 쓰는 돈 근거 (예측 usualBasis) */

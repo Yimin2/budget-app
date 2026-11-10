@@ -20,40 +20,57 @@ async function renderEvents() {
 }
 
 describe('EventsView — 체험 가계부', () => {
-  it('평소 쓰는 돈: 일정에 묶지 않은 지난 지출이 있으면 안내 카드와 예측 줄이 보여요', async () => {
+  it('평소 쓰는 돈: 기록이 없으면 안내 한 줄, 일정에 묶지 않은 지난 지출이 생기면 도넛 · 막대 · 단계 칩과 예측 줄이 보여요', async () => {
     const h = await renderEvents();
-    expect(screen.queryByRole('region', { name: '평소 쓰는 돈과 적립' })).toBeNull();
+    const card = screen.getByRole('region', { name: '평소 쓰는 돈' });
+    expect(within(card).getByTestId('usual-empty')).toBeTruthy();
+    expect(within(card).queryByRole('button')).toBeNull();
     await act(async () => {
       await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 900_000, accountId: 'demo-acc-event', categoryId: null });
     });
-    const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
-    expect(card.textContent).toMatch(/평소 매달 .+만원을 쓰는데 적립은 .+이에요. 이대로면 매달 .+씩 줄어요/);
+    await waitFor(() => expect(within(card).queryByTestId('usual-empty')).toBeNull());
+    expect(within(card).getByTestId('savings-status').textContent).toMatch(/^.+만 넘어요/);
+    expect(within(card).getByTestId('usual-step-table')).toBeTruthy();
     const chart = screen.getByRole('region', { name: '앞으로 12개월' });
     expect(within(chart).getByText(/작년 같은 달 기록 30%와 최근 12개월 평균 70%를 섞어요 \(작년 기록이 없으면 최근 12개월 평균\)/)).toBeTruthy();
     expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
   });
 
-  it('평소 쓰는 돈과 적립: 처음에는 한 줄 요약 + 작은 도넛, [자세히]로 같은 자리에서 막대 · 도넛 · 항목별 표', async () => {
+  it('평소 쓰는 돈: 접힌 요약은 작은 도넛 + 범례 · 적립 대비 막대 · 단계 칩, [자세히]나 ① 칩으로 같은 자리에서 항목별 표', async () => {
     const h = await renderEvents();
     await act(async () => {
       await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 900_000, accountId: 'demo-acc-event', categoryId: null, memo: '갑작스런 경조사' });
     });
-    const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
-    expect(within(card).getByTestId('usual-summary').textContent).toMatch(/이대로면 매달 .+씩 줄어요/);
+    const card = await screen.findByRole('region', { name: '평소 쓰는 돈' });
+    await waitFor(() => expect(within(card).getByTestId('usual-donut-small')).toBeTruthy());
     expect(within(card).getByTestId('usual-donut-small').getAttribute('aria-label')).toMatch(/^평소 쓰는 돈 월 .+만: /);
+    expect(within(card).getByRole('list', { name: '평소 쓰는 돈 항목 (한 달 평균)' }).textContent).toContain('분류 없음');
+    expect(within(card).getByTestId('savings-bar')).toBeTruthy();
     expect(within(card).queryByRole('table')).toBeNull();
-    expect(within(card).queryByTestId('savings-bar')).toBeNull();
+    expect(within(card).queryByTestId('usual-summary')).toBeNull();
+    const chipTable = within(card).getByRole('button', { name: /항목별 평균 표/ });
+    expect(chipTable.textContent).toMatch(/^① 항목별 평균 표월 .+만 · 1개 항목$/);
     const toggle = within(card).getByRole('button', { name: '평소 쓰는 돈 자세히' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(chipTable.getAttribute('aria-controls')).toBe(toggle.getAttribute('aria-controls'));
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(chipTable.getAttribute('aria-expanded')).toBe('true');
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(within(card).getByTestId('savings-status').textContent).toMatch(/^.+만 넘어요/);
-    expect(within(card).getByTestId('usual-donut').textContent).toMatch(/^월.+만$/);
-    const table = within(card).getByRole('table');
-    const row = within(table).getByRole('button', { name: '분류 없음 지출' });
-    fireEvent.click(row);
-    expect(within(card).getByRole('list', { name: '분류 없음 지출 (최근 것 먼저)' }).textContent).toContain('갑작스런 경조사');
+    const panel = within(card).getByRole('region', { name: '항목별 평균 표' });
+    expect(within(panel).getByTestId('usual-summary').textContent).toMatch(/이대로면 매달 .+씩 줄어요/);
+    expect(within(panel).getByTestId('usual-donut').textContent).toMatch(/^월.+만$/);
+    // 막대는 요약에 하나만
+    expect(within(card).getAllByTestId('savings-bar')).toHaveLength(1);
+    const table = within(panel).getByRole('table');
+    fireEvent.click(within(table).getByRole('button', { name: '분류 없음 지출' }));
+    expect(within(panel).getByRole('list', { name: '분류 없음 지출 (최근 것 먼저)' }).textContent).toContain('갑작스런 경조사');
+    // 같은 칩을 다시 누르면 접혀요
+    fireEvent.click(chipTable);
+    expect(within(card).queryByRole('table')).toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(chipTable);
+    expect(within(card).getByRole('table')).toBeTruthy();
     fireEvent.click(within(card).getByRole('button', { name: '평소 쓰는 돈 접기' }));
     expect(within(card).queryByRole('table')).toBeNull();
   });
@@ -297,22 +314,24 @@ describe('EventsView — 체험 가계부', () => {
 describe('EventsView — 추천 타협안', () => {
   afterEach(() => window.localStorage.clear());
 
-  it('접힌 요약 한 줄 + [자세히]로 셈 · 개월 칩 · 카테고리별 줄일 금액, 고른 개월 수는 이 기기에 저장', async () => {
+  it('② 칩(머리말) → 같은 자리에서 요약 · 셈 · 개월 칩 · 카테고리별 줄일 금액, 고른 개월 수는 이 기기에 저장', async () => {
     const h = await renderEvents();
     await act(async () => {
       await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 900_000, accountId: 'demo-acc-event', categoryId: null });
       await h.probe.ledger!.borrowAndSettleClaims(['demo-claim-jeju']);
     });
-    const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
-    const summary = within(card).getByTestId('compromise-summary');
-    expect(summary.textContent).toMatch(/^추천: 적립 월 .+ · 쓰는 돈 월 .+ 줄이기 → .+ · 저수지 빚 30만을 24개월에 갚아요$/);
-    // 적립이 모자라면 접혀 있어도 올리라는 안내가 보여요
-    expect(within(card).getByTestId('compromise-raise').textContent).toMatch(/^적립이 실제 필요보다 월 .+원 적어요 → 월 .+원으로 올려야 해요$/);
-    expect(within(card).queryByTestId('compromise-cut')).toBeNull();
-    const toggle = within(card).getByRole('button', { name: '추천 타협안 자세히' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const card = await screen.findByRole('region', { name: '평소 쓰는 돈' });
+    // 접힌 칩에 짧은 머리말: '적립 ○ + 카테고리 −○'
+    const chip = await within(card).findByRole('button', { name: /추천 타협안/ });
+    expect(chip.textContent).toMatch(/^② 추천 타협안적립 .+만 \+ .+ −.+$/);
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    expect(within(card).queryByTestId('compromise-summary')).toBeNull();
+    fireEvent.click(chip);
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+    const panel = within(card).getByRole('region', { name: '추천 타협안' });
+    expect(within(panel).getByTestId('compromise-summary').textContent).toMatch(/^추천: 적립 월 .+ · 쓰는 돈 월 .+ 줄이기 → .+ · 저수지 빚 30만을 24개월에 갚아요$/);
+    // 적립이 모자라면 올리라는 안내
+    expect(within(panel).getByTestId('compromise-raise').textContent).toMatch(/^적립이 실제 필요보다 월 .+원 적어요 → 월 .+원으로 올려야 해요$/);
     expect(within(card).getByTestId('compromise-cut').textContent).toContain('저수지 빚을 24개월에 갚으려면 쓰는 돈을 월 1.3만원 줄여야 해요');
     expect(within(card).getByRole('list', { name: '카테고리별 줄일 금액' })).toBeTruthy();
     expect(within(card).getByTestId('compromise-check').textContent).toMatch(/추천대로|모자라요/);
@@ -323,6 +342,8 @@ describe('EventsView — 추천 타협안', () => {
     expect(within(card).getByTestId('compromise-cut').textContent).toContain('저수지 빚을 12개월에 갚으려면 쓰는 돈을 월 2.5만원 줄여야 해요');
     expect(within(card).getByTestId('compromise-summary').textContent).toMatch(/저수지 빚 30만을 12개월에 갚아요$/);
     expect(window.localStorage.getItem('budget:repayMonths')).toBe('12');
+    // '이번 달' 카드의 저수지 줄도 같은 개월 수를 따라요
+    expect(within(screen.getByRole('region', { name: '이번 달 · 11월' })).getByTestId('loan-line').textContent).toContain('매달 2.5만씩');
     // 자동으로 바꾸는 버튼은 없어요
     expect(within(card).queryByRole('button', { name: /적용|바꾸기|올리기/ })).toBeNull();
   });

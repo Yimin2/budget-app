@@ -92,24 +92,28 @@ describe('예외 지출 빼기', () => {
       }
       await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 1_000_000, accountId: 'demo-acc-event', categoryId: null, memo: '친구 결혼식' });
     });
-    const card = await screen.findByRole('region', { name: '예외 지출 빼기' });
-    // 처음에는 접힌 요약 한 줄만, [펼치기]로 같은 자리에서 펼쳐요
+    const usual = screen.getByRole('region', { name: '평소 쓰는 돈' });
+    // 처음에는 '평소 쓰는 돈' 카드의 ③ 칩 '후보 1건'만, 누르면 같은 자리에서 펼쳐요
+    const chip = await within(usual).findByRole('button', { name: /예외 지출 빼기/ });
+    expect(chip.textContent).toBe('③ 예외 지출 빼기후보 1건');
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('region', { name: '예외 지출 빼기' })).toBeNull();
+    fireEvent.click(chip);
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+    const card = screen.getByRole('region', { name: '예외 지출 빼기' });
     expect(within(card).getByTestId('exception-summary').textContent).toBe('예외 0건 · 후보 1건');
-    expect(within(card).queryAllByRole('listitem')).toHaveLength(0);
-    const toggle = within(card).getByRole('button', { name: '예외 지출 빼기 펼치기' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(toggle);
-    return { h, card };
+    return { h, card, usual, chip };
   }
 
-  it('예전 해 보기 카드는 없고, 기록이 없으면 예외 카드도 보이지 않아요', async () => {
+  it('예전 해 보기 카드는 없고, 기록이 없으면 예외 지출 빼기 칸 · 칩도 보이지 않아요', async () => {
     await renderEvents();
     expect(screen.queryByRole('region', { name: '해 보기' })).toBeNull();
     expect(screen.queryByRole('region', { name: '예외 지출 빼기' })).toBeNull();
+    expect(within(screen.getByRole('region', { name: '평소 쓰는 돈' })).queryByRole('button', { name: /예외 지출 빼기/ })).toBeNull();
   });
 
   it('체크하면 평소 쓰는 돈과 예측이 바로 바뀌고, [되돌리기]는 아무것도 저장하지 않아요', async () => {
-    const { h, card } = await withHistory();
+    const { h, card, usual, chip } = await withHistory();
     expect(within(card).getAllByRole('listitem')).toHaveLength(1);
     expect(card.textContent).toContain('친구 결혼식');
     const before = h.probe.ledger!.eventProjection!;
@@ -122,8 +126,12 @@ describe('예외 지출 빼기', () => {
     expect(within(chart()).queryByTestId('shortage-panel')).toBeNull();
     expect(card.textContent).toMatch(/평소 쓰는 돈 한 달 평균 [\d.]+만원 → [\d.]+만원/);
     expect(card.textContent).toContain('1건을 바꿔 봤어요');
-    // 미리 보는 중에는 접을 수 없어요
-    expect((within(card).getByRole('button', { name: '예외 지출 빼기 접기' }) as HTMLButtonElement).disabled).toBe(true);
+    // 미리 보는 중에는 접을 수 없고 다른 단계로 바꿀 수도 없어요, 칩에도 바꾼 대로
+    expect((within(usual).getByRole('button', { name: '평소 쓰는 돈 접기' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(usual).getByRole('button', { name: /항목별 평균 표/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(chip);
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+    expect(chip.textContent).toBe('③ 예외 지출 빼기예외 1건 · 후보 0건');
     // 아직 저장하지 않았어요
     expect(h.probe.ledger!.data!.expenses.find((e) => e.memo === '친구 결혼식')!.excluded).toBeUndefined();
     expect(h.probe.ledger!.eventProjection).toBe(before);
@@ -134,8 +142,9 @@ describe('예외 지출 빼기', () => {
     expect(box.checked).toBe(false);
     expect(h.probe.ledger!.data!.expenses.find((e) => e.memo === '친구 결혼식')!.excluded).toBeUndefined();
     // 미리 보기가 끝나면 [접기]로 다시 접혀요
-    fireEvent.click(within(card).getByRole('button', { name: '예외 지출 빼기 접기' }));
-    expect(within(card).queryAllByRole('listitem')).toHaveLength(0);
+    fireEvent.click(within(usual).getByRole('button', { name: '평소 쓰는 돈 접기' }));
+    expect(screen.queryByRole('region', { name: '예외 지출 빼기' })).toBeNull();
+    expect(within(usual).queryByRole('checkbox')).toBeNull();
   });
 
   it('[저장]을 누르면 그때 예외 칸이 저장되고, 잔액은 그대로예요', async () => {

@@ -16,14 +16,13 @@ import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import type { EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
 import { EmptyEvents } from './EmptyEvents';
-import { ExceptionCard } from './ExceptionCard';
 import { NoEventAccount } from './NoEventAccount';
 import { AheadCard } from './AheadCard';
 import { RecurringCard } from './RecurringCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
 import { ThisMonthCard } from './ThisMonthCard';
 import { TripsCard } from './trips/TripsCard';
-import { UsualInsightCard } from './UsualInsightCard';
+import { UsualCard } from './UsualCard';
 import styles from './EventsBody.module.css';
 
 export interface EventsBodyProps {
@@ -71,19 +70,20 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
       {projection && hasEventAccount ? (
         <>
           <ThisMonthCard projection={projection} repayMonths={repayMonths} className={styles.half} />
-          {insight ? (
-            <div className={styles.half}>
-              <UsualInsightCard
-                data={data}
-                projection={projection}
-                insight={insight}
-                today={today}
-                compromise={compromise}
-                repayMonths={repayMonths}
-                onRepayMonths={chooseMonths}
-              />
-            </div>
-          ) : null}
+          <UsualCard
+            data={data}
+            projection={projection}
+            insight={insight}
+            today={today}
+            compromise={compromise}
+            repayMonths={repayMonths}
+            onRepayMonths={chooseMonths}
+            candidates={candidates}
+            tried={tried}
+            draft={draft}
+            onDraft={setDraft}
+            className={styles.half}
+          />
           <HashTarget />
           <AheadCard
             projection={shown ?? projection}
@@ -92,15 +92,6 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
             badge={tried ? '미리 보는 중' : undefined}
             fix={ledger.shortageFix}
             showShortage={!tried}
-          />
-          <ExceptionCard
-            data={data}
-            today={today}
-            candidates={candidates}
-            before={projection}
-            after={tried}
-            draft={draft}
-            onChange={setDraft}
           />
           <AnnualCard data={data} today={today} onEdit={onEdit} />
           <RecurringCard data={data} today={today} categories={data.categories} />
