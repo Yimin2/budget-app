@@ -55,8 +55,8 @@ export function sampleLedger(): LedgerData {
       { id: 'v2', name: '택시', amount: 10000, categoryId: null, accountId: null, order: 1, deleted: true },
     ],
     members: [
-      { email: 'minji@example.com', displayName: '민지' },
-      { email: 'junho@example.com', displayName: '준호' },
+      { email: 'minji@example.com', displayName: '민지', shared: true, role: 'owner' },
+      { email: 'junho@example.com', displayName: '준호', shared: false, role: null },
     ],
     trips: [
       { id: 'tr1', name: '제주 여행', startDate: '2027-02-20', endDate: '2027-02-23', budget: 900000, items: { flight: 300000, stay: 250000 }, memo: '', ...audit },

@@ -20,7 +20,11 @@ import {
   canClaimOnAccount,
   claimAccountFor,
   linkAccountsToEmail,
-  personByEmail,
+  memberName,
+  moveCategory as moveCategoryDomain,
+  mergeMembers,
+  type MemberSelf,
+  type SharingList,
   claimPayers as claimPayersDomain,
   claimTransferId,
   compareMonth,
@@ -194,6 +198,9 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const { deps, backendFor, updateRecent } = useSessionInternals();
   const author = session.user?.email ?? 'demo';
   const ref = session.status === 'signedIn' ? session.activeLedger : null;
+  /** 구글로 로그인한 나 (멤버에 언제나 넣어요). 체험 모드는 null — 체험 멤버는 그대로 */
+  const self: MemberSelf | null =
+    session.mode === 'google' && session.user ? { email: session.user.email, name: session.user.name } : null;
 
   const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [savingCount, setSavingCount] = useState(0);
@@ -209,6 +216,9 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const repoRef = useRef(repository);
   const todayRef = useRef(today);
   const authorRef = useRef(author);
+  const selfRef = useRef(self);
+  /** 마지막 불러오기에서 공유 목록을 읽었는지 (공유 목록 새로고침 결과) */
+  const sharingRef = useRef<'synced' | 'unavailable'>('unavailable');
   const dataRef = useRef<{ repo: LedgerRepository; data: LedgerData } | null>(null);
   const loadToken = useRef(0);
   /** 쓰기·불러오기 순서를 재는 시계와, 아직 불러온 데이터에 들어 있지 않을 수 있는 쓰기 목록 */
@@ -219,6 +229,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     repoRef.current = repository;
     todayRef.current = today;
     authorRef.current = author;
+    selfRef.current = self;
   });
 
   const current = repository && loaded && loaded.repo === repository ? loaded : null;
@@ -316,13 +327,45 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [backendFor, nowIso],
   );
 
+  /**
+   * 멤버를 구글 시트 공유 목록 · 로그인한 나에 맞춘다 (PLAN 4-8). 구글 시트 가계부만.
+   * 공유 목록을 못 읽으면(보기 · 댓글 권한 403, 연결 오류) 나만 확인하고, 바뀐 행이 있을 때만 한 번에 쓴다.
+   * 쓰기가 실패해도(보기 권한) 화면에는 합친 멤버를 보여 준다
+   */
+  const syncMembers = useCallback(
+    async (repo: LedgerRepository, loaded: LedgerData): Promise<LedgerData> => {
+      sharingRef.current = 'unavailable';
+      if (repo.ref.source !== 'sheets') return loaded;
+      const me = selfRef.current;
+      const backend = backendFor(repo.ref);
+      let sharing: SharingList | null = null;
+      if (backend.listSharing) {
+        try {
+          sharing = await backend.listSharing(repo.ref);
+          sharingRef.current = 'synced';
+        } catch {
+          sharing = null;
+        }
+      }
+      const merged = mergeMembers(loaded.members, sharing, me);
+      if (merged.changed.length === 0) return loaded;
+      try {
+        await repo.upsertMany('members', merged.changed);
+      } catch {
+        // 다음에 열 때 다시 맞춘다
+      }
+      return { ...loaded, members: merged.members };
+    },
+    [backendFor],
+  );
+
   const loadAll = useCallback(async () => {
     const repo = repoRef.current;
     if (!repo) return;
     const token = ++loadToken.current;
     const loadStart = ++clock.current;
     try {
-      const fresh = await repo.load();
+      const fresh = await syncMembers(repo, await repo.load());
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
       setDataBoth(withPendingWrites(synced, loadStart));
@@ -334,7 +377,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       // 이미 보이는 데이터가 있으면 그대로 두고 오류만 알린다
       setLoaded({ repo, status: prev ? 'ready' : 'error', error: message, data: prev, needsReconnect: reconnect });
     }
-  }, [setDataBoth, syncAutoRecords, withPendingWrites]);
+  }, [setDataBoth, syncMembers, syncAutoRecords, withPendingWrites]);
 
   // 가계부가 바뀌면 다시 읽기
   useEffect(() => {
@@ -461,9 +504,18 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income'), [activeAccounts]);
   const living = useMemo(() => (data ? computeLiving(data, today) : null), [data, today]);
   // 사람별 생활비 (PLAN 4-14): 생활비 통장마다, 로그인한 사람의 통장, '누가 썼나요?'에서 고를 사람
-  const livingViews = useMemo(() => (data ? livingByAccount(data, today) : []), [data, today]);
   const myLivingId = useMemo(() => (data ? myLivingAccountId(data, monthOf(today), author) : null), [data, today, author]);
-  const spenders = useMemo(() => (data ? spenderOptions(data, monthOf(today)) : []), [data, today]);
+  // 로그인한 사람(나)을 맨 앞(왼쪽)에, 나머지는 원래 순서대로
+  const livingViews = useMemo(() => {
+    const views = data ? livingByAccount(data, today) : [];
+    return myLivingId ? [...views.filter((v) => v.accountId === myLivingId), ...views.filter((v) => v.accountId !== myLivingId)] : views;
+  }, [data, today, myLivingId]);
+  const spenders = useMemo(() => {
+    const list = data ? spenderOptions(data, monthOf(today)) : [];
+    return myLivingId
+      ? [...list.filter((x) => x.livingAccountId === myLivingId), ...list.filter((x) => x.livingAccountId !== myLivingId)]
+      : list;
+  }, [data, today, myLivingId]);
   const mySpender = useMemo(() => mySpenderKey(spenders, author, myLivingId), [spenders, author, myLivingId]);
   const livingFor = useCallback<LedgerApi['livingFor']>(
     (accountId) => {
@@ -534,14 +586,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [data, livingFor, today],
   );
 
-  const displayName = useCallback(
-    (email: string) => {
-      const person = data ? personByEmail(data, email) : null;
-      if (person?.name) return person.name;
-      return email.split('@')[0] || email;
-    },
-    [data],
-  );
+  const displayName = useCallback((email: string) => memberName(data, email), [data]);
 
   /* ---------- 지출 ---------- */
 
@@ -1403,6 +1448,23 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, insertRows],
   );
 
+  const moveCategory = useCallback<LedgerApi['moveCategory']>(
+    async (id, delta) => {
+      const { data: d } = requireData();
+      const changed = moveCategoryDomain(d.categories, id, delta);
+      if (changed.length === 0) return false;
+      const byId = new Map(changed.map((c) => [c.id, c]));
+      // 화면에 먼저 반영하고, 바뀐 행만 한 번에 저장해요. 실패하면 되돌려요
+      await mutate(
+        (cur) => ({ ...cur, categories: cur.categories.map((c) => byId.get(c.id) ?? c) }),
+        (repo) => repo.upsertMany('categories', changed),
+        '카테고리 순서를 바꾸지 못했어요',
+      );
+      return true;
+    },
+    [requireData, mutate],
+  );
+
   const saveFavorite = useCallback(
     (favorite: Favorite) => upsertRow('favorites', favorite, '자주 쓰는 지출을 저장하지 못했어요'),
     [upsertRow],
@@ -1522,7 +1584,14 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         throw new Error(koreanMessage(e, '초대하지 못했어요. 잠시 뒤 다시 시도해 주세요'));
       }
-      const member: Member = { email: clean, displayName: name.trim() || clean.split('@')[0] || clean };
+      const existing = requireData().data.members.find((m) => m.email.toLowerCase() === clean.toLowerCase());
+      // 구글 이름은 다음 공유 목록 읽기에서 채워져요 (적은 이름은 그때까지만)
+      const member: Member = {
+        email: existing?.email ?? clean,
+        displayName: name.trim() || existing?.displayName || clean.split('@')[0] || clean,
+        shared: true,
+        role: repo.ref.source === 'sheets' ? 'writer' : (existing?.role ?? null),
+      };
       await upsertRow('members', member, '멤버를 저장하지 못했어요');
       if (incomeAccountId) await linkMemberAccount(clean, incomeAccountId);
     },
@@ -1579,6 +1648,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   );
 
   const reload = useCallback(() => loadAll(), [loadAll]);
+  const refreshSharing = useCallback(async () => {
+    await loadAll();
+    return sharingRef.current;
+  }, [loadAll]);
 
   const api = useMemo<LedgerApi>(
     () => ({
@@ -1646,6 +1719,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       saveFixed,
       addFixed,
       saveCategory,
+      moveCategory,
       addCategory,
       saveFavorite,
       addFavorite,
@@ -1653,6 +1727,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       decideMonthEnd,
       inviteMember,
       linkMemberAccount,
+      refreshSharing,
       renameLedger,
       previewImport,
       importFile,
@@ -1667,8 +1742,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       restoreTrip, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, saveFixed, addFixed, saveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,
-      decideMonthEnd, inviteMember, linkMemberAccount, renameLedger, displayName, previewImport, importFile,
+      changeRuleAmount, saveFixed, addFixed, saveCategory, moveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,
+      decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );
 

@@ -1,3 +1,4 @@
+import type { SharingList } from '@/domain/members';
 import type {
   Account, AllocationRule, Category, Expense, Favorite, FixedExpense, LedgerData, LedgerKind,
   IncomePlan, LedgerSettings, Member, MonthEnd, PlannedEvent, Transfer, Trip,
@@ -38,6 +39,8 @@ export interface LedgerRepository {
   insert<T extends TableName>(table: T, rows: TableRows[T][]): Promise<void>;
   /** 키(id / month / email)로 찾아 행 전체 교체. 없으면 추가 */
   upsert<T extends TableName>(table: T, row: TableRows[T]): Promise<void>;
+  /** 여러 행을 한꺼번에 upsert (탭을 한 번 읽고, 있는 행은 한 번의 batchUpdate, 없는 행은 한 번의 append) */
+  upsertMany<T extends TableName>(table: T, rows: TableRows[T][]): Promise<void>;
   updateSettings(patch: Partial<LedgerSettings>): Promise<void>;
 }
 
@@ -49,6 +52,11 @@ export interface LedgerBackend {
   open(ref: LedgerRef): LedgerRepository;
   /** 멤버 초대 (sheets: Drive 공유 writer / local: members 행만 추가) */
   share(ref: LedgerRef, email: string): Promise<void>;
+  /**
+   * 구글 시트를 공유받은 사람 목록 (sheets: Drive permissions.list). 로컬은 없음.
+   * 볼 권한이 없거나(보기 · 댓글 권한) 연결이 안 되면 던진다 — 부르는 쪽이 조용히 건너뛴다
+   */
+  listSharing?(ref: LedgerRef): Promise<SharingList>;
   /** 이름과 종류만 빠르게 읽기 (목록 표시용) */
   describe(id: string): Promise<LedgerRef>;
 }

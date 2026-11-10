@@ -3,6 +3,7 @@
  * 가계부 하나 = 스프레드시트 하나. 탭·머리글은 schema.ts.
  * 쓰기: valueInputOption=RAW / 읽기: valueRenderOption=UNFORMATTED_VALUE.
  */
+import { memberRoleOf, type SharedUser, type SharingList } from '@/domain/members';
 import type { LedgerData, LedgerSettings } from '@/domain/types';
 import {
   ALL_TABS, SETTINGS_HEADERS, SETTINGS_TAB, TABLE_NAMES, TAB_NAMES, canonicalHeaders, decodeKeyCell,
@@ -409,6 +410,21 @@ export class SheetsRepository implements LedgerRepository {
   async upsert<T extends TableName>(table: T, row: TableRows[T]): Promise<void> {
     const k = keyOf(table, row);
     if (!k) throw new Error(`${SCHEMAS[table].tab} 항목의 키가 비어 있어요`);
+    await this.upsertMany(table, [row]);
+  }
+
+  /**
+   * 여러 행 upsert: 탭을 한 번 읽고, 있는 행은 한 번의 batchUpdate 로 고치고, 없는 행은 한 번의 append 로 붙인다.
+   * 같은 키가 여럿이면 마지막 행을 쓴다
+   */
+  async upsertMany<T extends TableName>(table: T, rows: TableRows[T][]): Promise<void> {
+    const byKey = new Map<string, TableRows[T]>();
+    for (const row of rows) {
+      const k = keyOf(table, row);
+      if (!k) throw new Error(`${SCHEMAS[table].tab} 항목의 키가 비어 있어요`);
+      byKey.set(k, row);
+    }
+    if (byKey.size === 0) return;
     const values = await this.readTab(table);
     const snap = this.snapshotFrom(table, values);
     const headers = snap.headers;
@@ -422,45 +438,56 @@ export class SheetsRepository implements LedgerRepository {
       start = 0;
     }
     // 같은 키 행이 여럿이면(동시에 쓴 중복) 모두 고친다 — 지우기가 남은 한 줄 때문에 무시되지 않게
-    const rowIndexes: number[] = [];
+    const rowIndexes = new Map<string, number[]>();
     if (keyCol >= 0) {
       for (let i = start; i < values.length; i++) {
-        if (decodeKeyCell(table, values[i]?.[keyCol]) === k) rowIndexes.push(i);
+        const k = decodeKeyCell(table, values[i]?.[keyCol]);
+        if (!byKey.has(k)) continue;
+        rowIndexes.set(k, [...(rowIndexes.get(k) ?? []), i]);
       }
-    }
-    if (rowIndexes.length === 0) {
-      await this.appendRows(table, [row], headers);
-      snap.keys.add(k);
-      return;
     }
     const tab = quoteTab(TAB_NAMES[table]);
     const data: { range: string; majorDimension: 'ROWS'; values: CellValue[][] }[] = [];
-    for (const rowIndex of rowIndexes) {
-      const sheetRow = rowIndex + 1;
-      if (headerless) {
-        const cells = encodeRow(table, row);
-        data.push({ range: `${tab}!A${sheetRow}:${columnLetter(cells.length - 1)}${sheetRow}`, majorDimension: 'ROWS', values: [cells] });
+    const missing: TableRows[T][] = [];
+    for (const [k, row] of byKey) {
+      const indexes = rowIndexes.get(k);
+      if (!indexes) {
+        missing.push(row);
         continue;
       }
-      // 앱이 아는 열만 쓴다 (사용자가 추가한 열 · 수식은 건드리지 않는다)
-      const cells = encodeRowForHeaders(table, row, headers);
-      let i = 0;
-      while (i < mapping.length) {
-        if (!mapping[i]) {
-          i++;
+      for (const rowIndex of indexes) {
+        const sheetRow = rowIndex + 1;
+        if (headerless) {
+          const cells = encodeRow(table, row);
+          data.push({ range: `${tab}!A${sheetRow}:${columnLetter(cells.length - 1)}${sheetRow}`, majorDimension: 'ROWS', values: [cells] });
           continue;
         }
-        let j = i;
-        while (j + 1 < mapping.length && mapping[j + 1]) j++;
-        data.push({
-          range: `${tab}!${columnLetter(i)}${sheetRow}:${columnLetter(j)}${sheetRow}`,
-          majorDimension: 'ROWS',
-          values: [cells.slice(i, j + 1)],
-        });
-        i = j + 1;
+        // 앱이 아는 열만 쓴다 (사용자가 추가한 열 · 수식은 건드리지 않는다)
+        const cells = encodeRowForHeaders(table, row, headers);
+        let i = 0;
+        while (i < mapping.length) {
+          if (!mapping[i]) {
+            i++;
+            continue;
+          }
+          let j = i;
+          while (j + 1 < mapping.length && mapping[j + 1]) j++;
+          data.push({
+            range: `${tab}!${columnLetter(i)}${sheetRow}:${columnLetter(j)}${sheetRow}`,
+            majorDimension: 'ROWS',
+            values: [cells.slice(i, j + 1)],
+          });
+          i = j + 1;
+        }
       }
     }
-    await this.client.request('POST', `${this.base}/values:batchUpdate`, { valueInputOption: 'RAW', data });
+    if (data.length > 0) {
+      await this.client.request('POST', `${this.base}/values:batchUpdate`, { valueInputOption: 'RAW', data });
+    }
+    if (missing.length > 0) {
+      await this.appendRows(table, missing, headers);
+      for (const r of missing) snap.keys.add(keyOf(table, r));
+    }
   }
 
   /**
@@ -511,6 +538,18 @@ export class SheetsRepository implements LedgerRepository {
 }
 
 /* ---------- 백엔드 ---------- */
+
+interface DrivePermissionList {
+  nextPageToken?: string;
+  permissions?: {
+    id?: string;
+    type?: string;
+    role?: string;
+    emailAddress?: string;
+    displayName?: string;
+    deleted?: boolean;
+  }[];
+}
 
 export class SheetsBackend implements LedgerBackend {
   readonly source = 'sheets' as const;
@@ -567,6 +606,37 @@ export class SheetsBackend implements LedgerBackend {
       if (e instanceof StorageError && e.status === 400) throw new StorageError(MESSAGES.shareFailed, 400);
       throw e;
     }
+  }
+
+  /**
+   * 공유받은 사람 목록 — Drive v3 permissions.list (drive.file 로도 앱이 만들었거나 파일 선택 창에서 고른 파일이면 된다).
+   * 사람(type=user)만 모으고, 그룹 · 도메인 · 링크 공유가 있으면 complete=false. 지워진 계정 · 모르는 권한은 뺀다.
+   * 보기 · 댓글 권한이면 구글이 403 으로 거절할 수 있다 (그대로 던진다)
+   */
+  async listSharing(ref: LedgerRef): Promise<SharingList> {
+    const users: SharedUser[] = [];
+    let complete = true;
+    let pageToken: string | undefined;
+    const fields = enc('nextPageToken,permissions(id,type,role,emailAddress,displayName,deleted)');
+    for (let page = 0; page < 20; page++) {
+      const url =
+        `${DRIVE_API}/files/${enc(ref.id)}/permissions?supportsAllDrives=true&pageSize=100&fields=${fields}` +
+        (pageToken ? `&pageToken=${enc(pageToken)}` : '');
+      const res = await this.client.request<DrivePermissionList>('GET', url);
+      for (const p of res.permissions ?? []) {
+        if (p.type !== 'user') {
+          if (p.type) complete = false;
+          continue;
+        }
+        const email = (p.emailAddress ?? '').trim();
+        const role = memberRoleOf(p.role);
+        if (!email || p.deleted || !role) continue;
+        users.push({ email, displayName: (p.displayName ?? '').trim(), role });
+      }
+      pageToken = res.nextPageToken || undefined;
+      if (!pageToken) break;
+    }
+    return { users, complete };
   }
 
   async describe(id: string): Promise<LedgerRef> {

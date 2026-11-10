@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { hasBatchim } from '@/domain';
 import type { AccountRole, Category } from '@/domain/types';
-import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Select, TextInput, focusFirstInvalid } from '@/ui';
+import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Select, TextInput, focusFirstInvalid, useToast } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { ROLE_TEXT, categoryRoleOptions } from '../helpers';
 import { useRunner } from '../useRunner';
@@ -21,6 +22,10 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [nameError, setNameError] = useState<string | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<Category | null>(null);
+  const [moving, setMoving] = useState(false);
+  /** 화면 읽기 프로그램에 옮긴 결과를 알려요 */
+  const [announce, setAnnounce] = useState('');
+  const toast = useToast();
   const categories = ledger.activeCategories;
   const accounts = ledger.activeAccounts;
   const editing = draft?.id ? ledger.data.categories.find((c) => c.id === draft.id) : undefined;
@@ -62,6 +67,23 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
     if (ok) setDraft(null);
   }
 
+  /** 위로(-1) · 아래로(+1). 화면에 바로 반영되고, 저장이 실패하면 되돌려요. 옮긴 뒤 '되돌리기'로 제자리에 */
+  async function move(c: Category, delta: number) {
+    setMoving(true);
+    try {
+      const moved = await ledger.moveCategory(c.id, delta);
+      if (!moved) return;
+      setAnnounce(`${c.name}${hasBatchim(c.name) ? '을' : '를'} ${delta < 0 ? '위로' : '아래로'} 옮겼어요`);
+      toast.show(`${c.name} 순서를 바꿨어요`, {
+        action: { label: '되돌리기', onClick: () => void ledger.moveCategory(c.id, -delta).catch(() => toast.error('되돌리지 못했어요')) },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : '카테고리 순서를 바꾸지 못했어요');
+    } finally {
+      setMoving(false);
+    }
+  }
+
   async function remove(c: Category) {
     const ok = await run('delete', () => ledger.saveCategory({ ...c, deleted: true }), '카테고리를 지웠어요');
     if (ok) setConfirmDelete(null);
@@ -69,14 +91,37 @@ export function CategoriesCard({ ledger }: { ledger: ReadyLedger }) {
 
   return (
     <Card id="st-categories" title="카테고리" aside={<span className="muted">{categories.length}개</span>}>
-      <p className="st-desc">지출을 기록할 때 카테고리를 고르면 정해 둔 통장이 자동으로 골라져요.</p>
+      <p className="st-desc">
+        지출을 기록할 때 카테고리를 고르면 정해 둔 통장이 자동으로 골라져요. 위로 · 아래로 버튼으로 정한 순서를 기록 · 사도 돼? · 내역 · 생활비 항목이 모두 따라요.
+      </p>
+      <p className="sr-only" role="status" aria-live="polite">
+        {announce}
+      </p>
       {categories.length === 0 ? (
         <EmptyState icon="tag" headingLevel={3} title="카테고리가 없어요" description="식비·카페처럼 지출을 나눌 카테고리를 추가해 주세요." />
       ) : (
         <ul className="list st-cats">
-          {categories.map((c) => (
-            <li key={c.id}>
+          {categories.map((c, i) => (
+            <li key={c.id} className="st-cat-row">
               <ListRow icon={c.icon} title={c.name} subtitle={roleText(c.defaultAccountRole)} onClick={() => openEdit(c)} />
+              <div className="st-cat-move">
+                <Button
+                  variant="ghost"
+                  iconOnly
+                  icon="chevron-up"
+                  aria-label={`${c.name} 위로`}
+                  disabled={i === 0 || moving}
+                  onClick={() => void move(c, -1)}
+                />
+                <Button
+                  variant="ghost"
+                  iconOnly
+                  icon="chevron-down"
+                  aria-label={`${c.name} 아래로`}
+                  disabled={i === categories.length - 1 || moving}
+                  onClick={() => void move(c, 1)}
+                />
+              </div>
             </li>
           ))}
         </ul>

@@ -58,7 +58,8 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   // 사람별로 나눠 보기: 용돈은 받는 사람, 고정비는 나가는 통장 주인
   const keyOf = (f: FixedExpense) =>
     f.kind === 'allowance' && f.targetEmail ? f.targetEmail.trim().toLowerCase() : ownerKeyOf(accounts.find((a) => a.id === f.accountId));
-  const owners = useOwnerFilter(items.map(keyOf), ledger.data);
+  const myKey = ledger.myLivingAccountId ? ownerKeyOf(ledger.activeAccounts.find((a) => a.id === ledger.myLivingAccountId)) : null;
+  const owners = useOwnerFilter(items.map(keyOf), ledger.data, undefined, myKey);
   const shown = items.filter((f) => owners.matches(keyOf(f)));
 
   function defaultAccountId(): string {

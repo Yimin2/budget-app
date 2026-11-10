@@ -56,6 +56,50 @@ describe('HomeView — 체험 가계부', () => {
     expect(within(card).getByRole('link', { name: /예산 바꾸기/ }).getAttribute('href')).toBe('/budget#st-living');
   });
 
+  it('하루 예산: 오늘 안 썼으면 써도 되는 돈만, 쓰면 오늘 쓴 돈과 함께, 넘으면 넘은 돈을 경고 색으로', async () => {
+    const h = await renderHome();
+    await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
+    const ledger = () => h.probe.ledger!;
+    const dailyIds = new Set(ledger().living!.items.filter((i) => i.spread === 'daily').map((i) => i.categoryId));
+    // 오늘 하루 항목 지출을 모두 지워 '0원' 상태로
+    for (const e of ledger().data!.expenses.filter((x) => x.date === '2026-11-20' && !x.deleted && dailyIds.has(x.categoryId))) {
+      await act(async () => {
+        await ledger().deleteExpense(e.id);
+      });
+    }
+    await waitFor(() => expect(ledger().living!.items.filter((i) => i.spread === 'daily').every((i) => i.spentToday === 0)).toBe(true));
+    let hero = screen.getByRole('region', { name: '오늘 써도 되는 돈' });
+    expect(within(hero).queryByText(/오늘 쓴 돈/)).toBeNull();
+    let card = screen.getByRole('region', { name: '항목별 생활비' });
+    const foodRow = () => within(card).getByRole('progressbar', { name: '식비 사용' }).closest('li') as HTMLElement;
+    expect(within(foodRow()).queryByText(/오늘 쓴 돈/)).toBeNull();
+    expect(within(foodRow()).getByText(/오늘 써도 되는 돈/)).toBeTruthy();
+
+    const food = ledger().living!.items.find((i) => i.name === '식비')!;
+    await act(async () => {
+      await ledger().addExpense({ date: '2026-11-20', amount: 3_000, accountId: ledger().living!.livingAccountId!, categoryId: food.categoryId });
+    });
+    hero = screen.getByRole('region', { name: '오늘 써도 되는 돈' });
+    expect(within(hero).getByText('오늘 쓴 돈').textContent).toContain('3,000원');
+    card = screen.getByRole('region', { name: '항목별 생활비' });
+    const after = ledger().living!.items.find((i) => i.name === '식비')!;
+    expect(foodRow().textContent).toContain(`오늘 쓴 돈 ${formatWon(3_000)}·써도 되는 돈 ${formatWon(after.todayAvailable!)}`);
+    // 다른 하루 항목(카페)은 안 썼으니 '오늘 써도 되는 돈'만
+    const cafeRow = within(card).getByRole('progressbar', { name: '카페 사용' }).closest('li') as HTMLElement;
+    expect(within(cafeRow).queryByText(/오늘 쓴 돈/)).toBeNull();
+
+    // 넘으면 '오늘 ○원 넘었어요' (경고 색)
+    await act(async () => {
+      await ledger().addExpense({ date: '2026-11-20', amount: 500_000, accountId: ledger().living!.livingAccountId!, categoryId: food.categoryId });
+    });
+    card = screen.getByRole('region', { name: '항목별 생활비' });
+    const overItem = ledger().living!.items.find((i) => i.name === '식비')!;
+    expect(overItem.todayAvailable!).toBeLessThan(0);
+    const warn = within(foodRow()).getByText(`오늘 ${formatWon(-overItem.todayAvailable!)} 넘었어요`);
+    expect(warn.className).toMatch(/warn/);
+    expect(foodRow().textContent).toContain(`오늘 쓴 돈 ${formatWon(503_000)}`);
+  });
+
   it('이벤트통장 부족 알림 · 다가오는 일정 3개 · 최근 지출 5개', async () => {
     await renderHome();
     await screen.findByRole('region', { name: '오늘 써도 되는 돈' });

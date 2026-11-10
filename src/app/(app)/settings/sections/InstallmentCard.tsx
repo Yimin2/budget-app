@@ -91,7 +91,8 @@ export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
     (p) => !p.ended || compareMonth(p.endMonth, addMonths(month, -ENDED_VISIBLE_MONTHS)) >= 0,
   );
   const keyOf = (p: InstallmentPlan) => ownerKeyOf(accounts.find((a) => a.id === p.accountId));
-  const owners = useOwnerFilter(plans.map(keyOf), ledger.data);
+  const myKey = ledger.myLivingAccountId ? ownerKeyOf(ledger.activeAccounts.find((a) => a.id === ledger.myLivingAccountId)) : null;
+  const owners = useOwnerFilter(plans.map(keyOf), ledger.data, undefined, myKey);
   const shown = plans.filter((p) => owners.matches(keyOf(p)));
   const plan = edit ? (ledger.installments.find((p) => p.id === edit.planId) ?? null) : null;
   const viewing = viewId ? (ledger.installments.find((p) => p.id === viewId) ?? null) : null;

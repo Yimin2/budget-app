@@ -34,6 +34,7 @@ function fakeSheets(allowed: Set<string>, opts: { notLedger?: boolean } = {}): L
       load: () => new Promise(() => {}),
       insert: async () => {},
       upsert: async () => {},
+      upsertMany: async () => {},
       updateSettings: async () => {},
     }),
     share: async () => {},

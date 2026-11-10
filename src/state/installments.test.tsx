@@ -38,6 +38,7 @@ class FlakyLocal extends LocalBackend {
       load: () => repo.load(),
       insert: <T extends TableName>(t: T, rows: TableRows[T][]) => run(`insert:${t}`, () => repo.insert(t, rows)),
       upsert: <T extends TableName>(t: T, row: TableRows[T]) => run(`upsert:${t}`, () => repo.upsert(t, row)),
+      upsertMany: <T extends TableName>(t: T, rows: TableRows[T][]) => run(`upsertMany:${t}`, () => repo.upsertMany(t, rows)),
       updateSettings: repo.updateSettings.bind(repo),
     };
   }

@@ -8,6 +8,8 @@ export * from './living';
 export * from './events';
 export * from './claims';
 export * from './people';
+export * from './members';
+export * from './categories';
 export * from './income';
 export * from './household';
 export * from './installments';

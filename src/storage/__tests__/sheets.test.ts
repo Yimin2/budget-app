@@ -450,3 +450,41 @@ describe('검증된 결함 회귀', () => {
     expect(g.tabs.get('즐겨찾기')!.map((r) => r[0])).toEqual(['id', 'v1', 'v9']);
   });
 });
+
+describe('SheetsRepository.upsertMany', () => {
+  it('탭을 한 번 읽고, 있는 행은 batchUpdate 한 번 · 없는 행은 append 한 번', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    const repo = backend.open(ref);
+    await repo.load();
+    g.calls.length = 0;
+    await repo.upsertMany('members', [
+      { email: 'minji@example.com', displayName: '김민지', shared: true, role: 'owner' },
+      { email: 'junho@example.com', displayName: '준호', shared: false, role: null },
+      { email: 'new@example.com', displayName: '새 사람', shared: true, role: 'reader' },
+    ]);
+    const kinds = g.calls.map((c) => `${c.method} ${decodeURIComponent(c.url.pathname).split('/').pop()}`);
+    expect(kinds).toEqual(['GET values:batchGet', 'POST values:batchUpdate', "POST '멤버':append"]);
+    const rows = g.tabs.get('멤버')!;
+    expect(rows[0]).toEqual(['이메일', '표시이름', '공유', '권한']);
+    expect(rows.slice(1)).toEqual([
+      ['minji@example.com', '김민지', '예', '소유자'],
+      ['junho@example.com', '준호', '아니오', ''],
+      ['new@example.com', '새 사람', '예', '뷰어'],
+    ]);
+  });
+
+  it('예전 멤버 탭(이메일 · 표시이름만)은 공유 · 권한 머리글을 더하고, 빈 칸은 공유됨으로 읽어요', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    g.tabs.set('멤버', [['이메일', '표시이름'], ['old@example.com', '예전 사람']]);
+    const repo = backend.open(ref);
+    const data = await repo.load();
+    expect(data.members).toEqual([{ email: 'old@example.com', displayName: '예전 사람', shared: true, role: null }]);
+    await repo.upsertMany('members', [{ email: 'old@example.com', displayName: '예전 사람', shared: true, role: 'writer' }]);
+    expect(g.tabs.get('멤버')).toEqual([
+      ['이메일', '표시이름', '공유', '권한'],
+      ['old@example.com', '예전 사람', '예', '편집자'],
+    ]);
+  });
+});

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { ledgerPeople } from '@/domain';
+import { isSharedMember, ledgerPeople } from '@/domain';
 import type { LedgerData } from '@/domain/types';
 import { Field, Select, TextInput } from '@/ui';
 import './screens.css';
@@ -63,7 +63,8 @@ export function peopleOptions(data: LedgerData | null, extra: PersonOption[] = [
     out.push({ name: p.name.trim() || email.split('@')[0] || email, email });
   };
   for (const p of data ? ledgerPeople(data) : []) push(p);
-  for (const m of data?.members ?? []) push({ name: m.displayName, email: m.email });
+  // 공유가 풀린 멤버는 고를 수 없어요 (예전 기록의 이름은 그대로 읽혀요)
+  for (const m of data?.members ?? []) if (isSharedMember(m)) push({ name: m.displayName, email: m.email });
   for (const p of extra) push(p);
   return out;
 }

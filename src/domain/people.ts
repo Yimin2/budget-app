@@ -6,8 +6,10 @@
  *   (b) (a)가 없을 때만: 주인 이메일이 빈 통장의 주인 이름 = 멤버 표시 이름, 또는 표시 이름이 주인 이름으로 끝남
  *       ('김가람' ↔ '가람'). 그 통장에 맞는 멤버가 딱 한 명일 때만 잇는다
  * - 어느 멤버와도 이어지지 않은 통장 주인은 사람으로 치지 않는다 (청구 낸 사람으로 고를 수 없음)
+ * - 공유가 풀린 멤버(공유 = 아니오)는 사람으로 치지 않는다. 예전 기록의 이름은 memberName 으로 읽는다
  */
 import { activeAccountsSorted } from './internal';
+import { isSharedMember } from './members';
 import type { Account, AccountRole, Id, LedgerData } from './types';
 
 export interface LedgerPerson {
@@ -43,7 +45,7 @@ export function ledgerPeople(data: LedgerData): LedgerPerson[] {
   const members: { email: string; displayName: string }[] = [];
   for (const m of data.members) {
     const email = (m.email ?? '').trim();
-    if (!email || members.some((x) => lower(x.email) === lower(email))) continue;
+    if (!email || !isSharedMember(m) || members.some((x) => lower(x.email) === lower(email))) continue;
     members.push({ email, displayName: (m.displayName ?? '').trim() });
   }
 
@@ -95,6 +97,19 @@ export function personByEmail(data: LedgerData, email: string): LedgerPerson | n
   const key = lower(email);
   if (!key) return null;
   return ledgerPeople(data).find((p) => lower(p.email) === key) ?? null;
+}
+
+/**
+ * 기록에 보일 이름: 가계부의 사람이면 부를 이름, 공유가 풀린 멤버면 멤버 표시 이름, 아니면 이메일 앞부분.
+ * (공유가 풀려도 예전 기록의 이름은 그대로 읽혀요)
+ */
+export function memberName(data: LedgerData | null, email: string): string {
+  const person = data ? personByEmail(data, email) : null;
+  if (person?.name) return person.name;
+  const key = lower(email);
+  const row = key ? data?.members.find((m) => lower(m.email) === key && (m.displayName ?? '').trim()) : undefined;
+  if (row) return row.displayName.trim();
+  return email.split('@')[0] || email;
 }
 
 /** 이름(부를 이름 또는 멤버 표시 이름)으로 사람 찾기 */
