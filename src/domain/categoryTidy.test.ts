@@ -131,7 +131,7 @@ describe('카테고리 합치기', () => {
     const d = ledger();
     const plan = planCategoryMerge(d, 'cafe', 'food');
     expect(plan.counts).toEqual({ expenses: 2, budgets: 2, fixed: 1, favorites: 1, events: 1 });
-    expect(mergeCountsText(plan.counts)).toBe('지출 2건 · 예산 2개 · 고정비 1개 · 자주 쓰는 지출 1개 · 일정 1개');
+    expect(mergeCountsText(plan.counts)).toBe('지출 2건 · 예산 2개 · 고정비 1개 · 일정 1개');
     const after = applyMergeRows(d, plan);
     expect(after.expenses.filter((e) => !e.deleted && e.categoryId === 'cafe')).toEqual([]);
     expect(after.expenses.find((e) => e.id === 'e4')!.categoryId).toBe('cafe');

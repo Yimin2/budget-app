@@ -1,15 +1,14 @@
 'use client';
 
-import Link from 'next/link';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import {
   ledgerPeople, formatDateKo, formatMan, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, livingDayNote, scheduleLabel,
-  withSubject,
+  suggestExpenses, withSubject,
 } from '@/domain';
-import type { Favorite, LivingItem, LivingStatus, LivingView } from '@/domain';
+import type { ExpenseSuggestion, LivingItem, LivingStatus, LivingView } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import {
-  AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
+  AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Field, Icon, ListRow, Money, MoneyInput, PageHeader, ProgressBar,
   SegmentedControl, useToast, cx, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
 } from '@/ui';
 import { ClaimsCard, LedgerSwitcher, SettlementCard } from '../_components';
@@ -100,7 +99,7 @@ function HomeBody() {
         <Button href="/check" size="lg" block icon="cart" className={styles.oCta}>
           사도 돼? 확인하기
         </Button>
-        <FavoriteChips favorites={data.favorites} />
+        <QuickSuggestions />
         {/* 모두 합친 화면(나를 고르기 전)에서는 항목이 사람마다 겹쳐 보여서 빼요 */}
         {living && living.items.length > 0 && (!multi || selected) ? <LivingItemsCard living={living} owner={selected?.name ?? null} /> : null}
         {wide ? null : spentCard}
@@ -493,14 +492,55 @@ function LivingSetupCard() {
   );
 }
 
-/* ───────── 자주 쓰는 지출 ───────── */
+/* ───────── 자주 쓰는 지출 (자동 추천) ───────── */
 
-function FavoriteChips({ favorites }: { favorites: Favorite[] }) {
+/**
+ * 내가 최근 3개월 동안 자주 쓴 지출 칩 (domain/suggestions.ts). 따로 등록하지 않아요.
+ * 칩을 누르면 창 없이 그 아래에 금액 칸이 펼쳐지고(가장 최근 금액), [기록하기]로 오늘 날짜 · 나(내 통장)로 기록해요
+ */
+function QuickSuggestions() {
   const ledger = useLedger();
   const toast = useToast();
   const titleId = useId();
-  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
-  const list = favorites.filter((f) => !f.deleted).sort((a, b) => a.order - b.order);
+  const editId = useId();
+  const amountId = `quick-amount-${useId().replace(/:/g, '')}`;
+  const data = ledger.data;
+  const suggestions = useMemo(
+    () => (data ? suggestExpenses(data, { today: ledger.today, meKey: ledger.mySpenderKey, myLivingId: ledger.myLivingAccountId }) : []),
+    [data, ledger.today, ledger.mySpenderKey, ledger.myLivingAccountId],
+  );
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [amount, setAmount] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const open = suggestions.find((s) => s.key === openKey) ?? null;
+
+  // 펼치면 금액 칸으로 (휴대폰은 숫자 키패드가 바로 떠요)
+  useEffect(() => {
+    if (!openKey) return;
+    const el = document.getElementById(amountId);
+    if (el instanceof HTMLInputElement) {
+      el.focus();
+      el.select();
+    }
+  }, [openKey, amountId]);
+
+  function toggle(s: ExpenseSuggestion) {
+    if (saving) return;
+    if (openKey === s.key) {
+      setOpenKey(null);
+      return;
+    }
+    setOpenKey(s.key);
+    setAmount(s.amount);
+    setError(null);
+  }
+
+  function close() {
+    if (saving) return;
+    setOpenKey(null);
+    setError(null);
+  }
 
   async function undo(expenseId: string) {
     try {
@@ -511,51 +551,103 @@ function FavoriteChips({ favorites }: { favorites: Favorite[] }) {
     }
   }
 
-  async function record(fav: Favorite) {
-    if (pending.has(fav.id)) return;
-    setPending((s) => new Set(s).add(fav.id));
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!open || saving) return;
+    if (!amount || amount <= 0) {
+      setError('금액을 입력해 주세요');
+      return;
+    }
+    setSaving(true);
     try {
-      const expense = await ledger.recordFavorite(fav.id);
-      toast.success(`${fav.name} ${formatWon(fav.amount)} 기록했어요`, {
+      const expense = await ledger.addExpense({
+        date: ledger.today,
+        amount,
+        accountId: open.accountId,
+        categoryId: open.categoryId,
+        memo: open.memo,
+      });
+      toast.success(`${open.label} ${formatWon(amount)} 기록했어요`, {
         action: { label: '되돌리기', onClick: () => void undo(expense.id) },
       });
-    } catch (e) {
-      toast.error(errorMessage(e, '지출을 기록하지 못했어요'));
+      setOpenKey(null);
+      setError(null);
+    } catch (err) {
+      toast.error(errorMessage(err, '지출을 기록하지 못했어요'));
     } finally {
-      setPending((s) => {
-        const next = new Set(s);
-        next.delete(fav.id);
-        return next;
-      });
+      setSaving(false);
     }
   }
+
+  const category = open?.categoryId ? data?.categories.find((c) => c.id === open.categoryId) : undefined;
+  const account = open ? data?.accounts.find((a) => a.id === open.accountId) : undefined;
 
   return (
     <section className={cx(styles.section, styles.oFav)} aria-labelledby={titleId}>
       <h2 id={titleId} className="section-title">
         자주 쓰는 지출
       </h2>
-      <ChipGroup>
-        {list.map((fav) => {
-          const busy = pending.has(fav.id);
-          return (
-            <Chip
-              key={fav.id}
-              onClick={() => void record(fav)}
-              disabled={busy}
-              aria-busy={busy || undefined}
-              aria-label={`${fav.name} ${formatWon(fav.amount)} 바로 기록하기`}
+      {suggestions.length === 0 ? (
+        <p className={styles.hintText}>지출을 기록하면 자주 쓴 것을 여기에서 한 번에 기록할 수 있어요.</p>
+      ) : (
+        <>
+          <ChipGroup>
+            {suggestions.map((s) => {
+              const on = s.key === openKey;
+              return (
+                <Chip
+                  key={s.key}
+                  className={on ? 'on' : undefined}
+                  onClick={() => toggle(s)}
+                  disabled={saving && !on}
+                  aria-expanded={on}
+                  aria-controls={on ? editId : undefined}
+                  aria-label={`${s.label} ${formatWon(s.amount)} 기록하기`}
+                >
+                  {s.label} {formatNumber(s.amount)}
+                </Chip>
+              );
+            })}
+          </ChipGroup>
+          {open ? (
+            <form
+              id={editId}
+              className={styles.quickEdit}
+              aria-label={`${open.label} 기록`}
+              onSubmit={(e) => void submit(e)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  close();
+                }
+              }}
             >
-              {fav.name} {formatNumber(fav.amount)}
-            </Chip>
-          );
-        })}
-        <Link href="/settings#st-favorites" className={cx('chip', styles.chipLink)} aria-label="자주 쓰는 지출 추가">
-          <Icon name="plus" size={16} strokeWidth={2.4} />
-          {list.length === 0 ? '추가하기' : null}
-        </Link>
-      </ChipGroup>
-      {list.length === 0 ? <p className={styles.hintText}>자주 사는 걸 등록해 두면 한 번 눌러 기록해요.</p> : null}
+              <p className={styles.quickMeta}>
+                {[category?.name, account?.name, '오늘'].filter(Boolean).join(' · ')}
+              </p>
+              <Field id={amountId} label="금액" error={error ?? undefined}>
+                <MoneyInput
+                  value={amount}
+                  onChange={(v) => {
+                    setAmount(v);
+                    if (error) setError(null);
+                  }}
+                  enterKeyHint="done"
+                  disabled={saving}
+                />
+              </Field>
+              <div className={styles.quickActions}>
+                <Button type="button" variant="ghost" onClick={close} disabled={saving}>
+                  취소
+                </Button>
+                <Button type="submit" loading={saving}>
+                  기록하기
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
@@ -654,7 +746,7 @@ function RecentExpenses() {
       className={cx(styles.cardGap, styles.oRecent, styles.half)}
     >
       {rows.length === 0 ? (
-        <p className={styles.emptyLine}>아직 기록한 지출이 없어요. 사도 돼? 화면이나 자주 쓰는 지출로 기록해 보세요.</p>
+        <p className={styles.emptyLine}>아직 기록한 지출이 없어요. 사도 돼? 화면에서 기록해 보세요.</p>
       ) : (
         <ul className={cx('list', styles.listTop)}>
           {presence.map(({ item: e, key, state }) => {

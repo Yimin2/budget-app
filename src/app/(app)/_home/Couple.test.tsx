@@ -2,7 +2,7 @@
 /* 사람별 생활비 (PLAN 4-13 · 4-14): 부부 체험 예시로 홈 · 사도 돼? · 누가 썼나요 */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatWon } from '@/domain';
+import { expenseSpender, formatWon } from '@/domain';
 import { useLedger } from '@/state';
 import { ExpenseDialog } from '../history/_expenses/ExpenseDialog';
 import { CheckView } from './CheckView';
@@ -65,15 +65,25 @@ describe('홈 — 사람별 오늘 써도 되는 돈', () => {
     expect(screen.getByRole('region', { name: '항목별 생활비 · 준호' })).toBeTruthy();
   });
 
-  it('통장을 비워 둔 자주 쓰는 지출은 누른 사람(나)의 생활비 통장에서 나가요', async () => {
+  it('자주 쓰는 지출은 로그인한 사람(민지)이 쓴 지출에서만 추천하고, 누르면 민지 생활비 통장으로 기록해요', async () => {
     const h = await renderWith(<HomeView />);
     await screen.findByRole('region', { name: '오늘 내가 써도 되는 돈' });
+    const section = screen.getByRole('region', { name: '자주 쓰는 지출' });
+    const labels = within(section).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(labels[0]).toBe('커피 4,500원 기록하기');
+    // 준호만 쓴 지출(라테 · 마트 · 영화 · 약국)은 나오지 않아요
+    for (const name of ['라테', '마트', '영화', '약국']) expect(labels.some((l) => l!.startsWith(`${name} `))).toBe(false);
+    fireEvent.click(within(section).getByRole('button', { name: '커피 4,500원 기록하기' }));
+    const form = within(section).getByRole('form', { name: '커피 기록' });
+    fireEvent.change(within(form).getByLabelText('금액'), { target: { value: '4800' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '커피 4,500원 바로 기록하기' }));
+      fireEvent.click(within(form).getByRole('button', { name: '기록하기' }));
     });
-    await screen.findByText('커피 4,500원 기록했어요');
-    const rows = h.probe.ledger!.data!.expenses.filter((e) => e.memo === '커피' && e.date === '2026-11-20');
-    expect(rows.at(-1)!.accountId).toBe(MINJI);
+    await screen.findByText('커피 4,800원 기록했어요');
+    const row = h.probe.ledger!.data!.expenses.find((e) => !e.id.startsWith('demo-') && e.memo === '커피')!;
+    expect(row).toMatchObject({ accountId: MINJI, date: '2026-11-20', amount: 4_800 });
+    // 쓴 사람 = 민지 (생활비 통장 주인)
+    expect(expenseSpender(h.probe.ledger!.data!, row).name).toBe('민지');
   });
 });
 

@@ -110,7 +110,6 @@ import type {
   AllocationRule,
   Category,
   Expense,
-  Favorite,
   FixedExpense,
   Id,
   IncomePlan,
@@ -2501,47 +2500,6 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, moveCategoryTo],
   );
 
-  const saveFavorite = useCallback(
-    (favorite: Favorite) => upsertRow('favorites', favorite, '자주 쓰는 지출을 저장하지 못했어요'),
-    [upsertRow],
-  );
-  const addFavorite = useCallback(
-    async (input: Omit<Favorite, 'id' | 'deleted' | 'order'>): Promise<Favorite> => {
-      const { data: d } = requireData();
-      if (!input.name.trim()) throw new Error('이름을 입력해 주세요');
-      const row: Favorite = { ...input, name: input.name.trim(), id: newId(), order: nextOrder(d.favorites), deleted: false };
-      await insertRows('favorites', [row], '자주 쓰는 지출을 추가하지 못했어요');
-      return row;
-    },
-    [requireData, insertRows],
-  );
-
-  const recordFavorite = useCallback(
-    async (id: Id): Promise<Expense> => {
-      const { data: d } = requireData();
-      const fav = d.favorites.find((f) => f.id === id && !f.deleted);
-      if (!fav) throw new Error('자주 쓰는 지출을 찾을 수 없어요');
-      const category = fav.categoryId ? d.categories.find((c) => c.id === fav.categoryId) : undefined;
-      // 통장을 비워 둔 즐겨찾기: 생활비 카테고리는 누른 사람(나)의 생활비 통장에서 (PLAN 4-14)
-      const mine = myLivingId ?? living?.livingAccountId ?? null;
-      const accountId =
-        fav.accountId ??
-        (category ? (category.defaultAccountRole === 'fixed' ? (mine ?? undefined) : undefined) : undefined) ??
-        (category ? accountByRole(category.defaultAccountRole)?.id : undefined) ??
-        mine ??
-        activeAccounts[0]?.id;
-      if (!accountId) throw new Error('지출을 기록할 통장이 없어요');
-      return addExpense({
-        date: todayRef.current,
-        amount: fav.amount,
-        accountId,
-        categoryId: fav.categoryId,
-        memo: fav.name,
-      });
-    },
-    [requireData, accountByRole, living, myLivingId, activeAccounts, addExpense],
-  );
-
   /* ---------- 월말 ---------- */
 
   const decideMonthEnd = useCallback(
@@ -2818,9 +2776,6 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       setCategoriesHidden,
       mergeCategory,
       undoCategoryMerge,
-      saveFavorite,
-      addFavorite,
-      recordFavorite,
       decideMonthEnd,
       inviteMember,
       linkMemberAccount,
@@ -2840,7 +2795,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       restoreTrip, addExpense, updateExpense,
       deleteExpense, setExpenseExclusions, addEvent, registerAnnualEvents, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, changeFixedAmount, endFixedSeries, saveLivingItem, setLivingOverride, saveFixed, addFixed, prepareNextMonth, resetNextMonth, splitForNextMonth, saveCategory, moveCategory, moveCategoryTo, addCategory, setCategoriesHidden, mergeCategory, undoCategoryMerge, saveFavorite, addFavorite, recordFavorite,
+      changeRuleAmount, changeFixedAmount, endFixedSeries, saveLivingItem, setLivingOverride, saveFixed, addFixed, prepareNextMonth, resetNextMonth, splitForNextMonth, saveCategory, moveCategory, moveCategoryTo, addCategory, setCategoriesHidden, mergeCategory, undoCategoryMerge,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );

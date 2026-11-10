@@ -38,11 +38,13 @@ export interface CategoryMergePlan extends CategoryMergeRows {
 
 const isActiveIn = (f: Pick<FixedExpense, 'startMonth' | 'endMonth'>, m: YearMonth) => f.startMonth <= m && (!f.endMonth || f.endMonth >= m);
 
-/** 미리 보기 문구의 앞부분: '지출 3건 · 예산 1개 · 자주 쓰는 지출 1개' (0 인 것은 빼고, 지출 · 예산 · 자주 쓰는 지출은 늘) */
+/**
+ * 미리 보기 문구의 앞부분: '지출 3건 · 예산 1개' (0 인 것은 빼고, 지출 · 예산은 늘).
+ * 예전에 등록한 자주 쓰는 지출(즐겨찾기)은 화면에 없어서 문구에 넣지 않아요 (행은 그대로 옮겨요)
+ */
 export function mergeCountsText(c: CategoryMergeCounts): string {
   const parts = [`지출 ${c.expenses}건`, `예산 ${c.budgets}개`];
   if (c.fixed > 0) parts.push(`고정비 ${c.fixed}개`);
-  parts.push(`자주 쓰는 지출 ${c.favorites}개`);
   if (c.events > 0) parts.push(`일정 ${c.events}개`);
   return parts.join(' · ');
 }

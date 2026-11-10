@@ -33,3 +33,4 @@ export * from './exceptions';
 export * from './annual';
 export * from './compromise';
 export * from './budgetMonth';
+export * from './suggestions';

@@ -2,7 +2,7 @@ import type { LivingView } from '@/domain/living';
 import type { Spender } from '@/domain/household';
 import type { AnnualDraft } from '@/domain/annual';
 import type {
-  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id, IncomePlan,
+  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, FixedExpense, Id, IncomePlan,
   InstallmentHint, InstallmentPlan, ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer,
   Trip, TripItem, TripStatus, Verdict, Won, YearMonth,
 } from '@/domain/types';
@@ -370,10 +370,6 @@ export interface LedgerApi {
    */
   mergeCategory(sourceId: Id, targetId: Id): Promise<CategoryMergePlan>;
   undoCategoryMerge(plan: CategoryMergePlan): Promise<void>;
-  saveFavorite(favorite: Favorite): Promise<void>;
-  addFavorite(input: Omit<Favorite, 'id' | 'deleted' | 'order'>): Promise<Favorite>;
-  /** 즐겨찾기 한 번에 기록 */
-  recordFavorite(id: Id): Promise<Expense>;
   // 월말
   decideMonthEnd(choice: 'reservoir' | 'carryover'): Promise<void>;
   // 멤버
