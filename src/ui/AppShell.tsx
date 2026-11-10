@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { cx } from './cx';
 import { Icon, LogoMark, type IconName } from './Icon';
+import { PullIndicator, usePullToRefresh } from './PullToRefresh';
+import { useMediaQuery } from './useMediaQuery';
 
 export interface NavItem {
   href: string;
@@ -35,6 +37,15 @@ export interface ShellProfile {
   label?: string;
 }
 
+/** 새로고침: 모바일 머리 · 사이드바 아래 버튼(마지막으로 맞춘 시각) + 모바일 본문 맨 위에서 당겨서 새로고침 */
+export interface ShellRefresh {
+  onRefresh: () => unknown;
+  /** 지금 맞추는 중인지 (아이콘이 돌아요) */
+  busy: boolean;
+  /** 버튼 옆 상태 글 (예: '방금 맞췄어요', '맞추는 중…') */
+  status: string;
+}
+
 export interface AppShellProps {
   nav: NavItem[];
   /** 지금 경로 (usePathname()) */
@@ -51,6 +62,8 @@ export interface AppShellProps {
   create?: ShellCreate;
   /** 내 정보 버튼 (모바일 머리 오른쪽 · 사이드바 아래) */
   profile?: ShellProfile;
+  /** 새로고침 버튼 · 당겨서 새로고침 */
+  refresh?: ShellRefresh;
   children: ReactNode;
 }
 
@@ -155,11 +168,35 @@ function ProfileLink({ profile, current, className }: { profile: ShellProfile; c
   );
 }
 
+/** 새로고침 버튼 (모바일 머리 · 사이드바 아래가 같은 모양을 써요) */
+function RefreshButton({ refresh, className }: { refresh: ShellRefresh; className: string }) {
+  const label = refresh.status ? `새로 맞추기 · ${refresh.status}` : '새로 맞추기';
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-label={label}
+      aria-busy={refresh.busy || undefined}
+      onClick={() => {
+        if (!refresh.busy) void refresh.onRefresh();
+      }}
+    >
+      <Icon name="refresh" size={20} className={cx('rf-ic', refresh.busy && 'rf-spin')} />
+      <span className="rf-txt" aria-hidden>
+        {refresh.status}
+      </span>
+      <span className="tip-label" aria-hidden>
+        {label}
+      </span>
+    </button>
+  );
+}
+
 /**
  * 앱 틀. 모바일(<768): 얇은 머리(내 정보) + 하단 플로팅 메뉴(가운데 + 기록) · 태블릿(768–1279): 80px 아이콘 사이드바 ·
  * 데스크톱(≥1280): 280px 사이드바. 사이드바는 메뉴 위에 '+ 기록', 아래에 내 정보 버튼이 있어요.
  */
-export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '/', create, profile, children }: AppShellProps) {
+export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '/', create, profile, refresh, children }: AppShellProps) {
   const dockItems = (mobileNav ?? nav).slice(0, create ? 4 : 5);
   const sideActive = activeIndex(nav, current);
   const dockActive = activeIndex(dockItems, current);
@@ -169,6 +206,9 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
   const mainRef = useRef<HTMLElement>(null);
   useNavIndicator(navRef, indRef, sideActive);
   useRouteEnter(mainRef, current);
+  const wide = useMediaQuery('(min-width: 768px)');
+  const mainAreaRef = useRef<HTMLDivElement>(null);
+  const pull = usePullToRefresh(mainAreaRef, refresh ? refresh.onRefresh : null, !wide);
   // + 버튼은 하단 메뉴 가운데 칸. 선택 알약은 칸 순서로 움직여요
   const createAt = create ? Math.floor(dockItems.length / 2) : -1;
   const slots = dockItems.length + (create ? 1 : 0);
@@ -214,7 +254,10 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
             <LogoMark className="logo" />
             <span className="name">가계부</span>
           </Link>
-          <ProfileLink profile={profile} current={current} className="top-profile" />
+          <div className="top-right">
+            {refresh ? <RefreshButton refresh={refresh} className="top-refresh" /> : null}
+            <ProfileLink profile={profile} current={current} className="top-profile" />
+          </div>
         </header>
       ) : null}
       <div className="shell-side">
@@ -257,11 +300,13 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
             })}
           </nav>
           {footer ? <div className="side-foot">{footer}</div> : null}
+          {refresh ? <RefreshButton refresh={refresh} className="side-refresh" /> : null}
           {profile ? <ProfileLink profile={profile} current={current} className="side-profile" /> : null}
         </aside>
       </div>
 
-      <div className="shell-main">
+      <div className="shell-main" ref={mainAreaRef}>
+        {refresh && !wide ? <PullIndicator distance={pull.distance} state={pull.state} busy={refresh.busy} /> : null}
         <main id="main" className="shell-content" tabIndex={-1} ref={mainRef}>
           {children}
         </main>

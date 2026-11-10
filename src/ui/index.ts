@@ -24,7 +24,8 @@ export { StatTile, type StatTileProps } from './StatTile';
 export { ListRow, type ListRowProps } from './ListRow';
 export { Avatar, AvatarGroup, initialsOf, type AvatarProps } from './Avatar';
 export { PageHeader, type PageHeaderProps } from './PageHeader';
-export { AppShell, FocusShell, isNavActive, type AppShellProps, type FocusShellProps, type NavItem } from './AppShell';
+export { AppShell, FocusShell, isNavActive, type AppShellProps, type FocusShellProps, type NavItem, type ShellRefresh } from './AppShell';
+export { holdRefresh, isRefreshHeld, useRefreshHold } from './refreshGate';
 export { useMediaQuery, WIDE_QUERY } from './useMediaQuery';
 export {
   MOTION_MS, motionAllowed, useMotionAllowed, useAnimatedNumber, usePresence, presenceClass, useChanged,

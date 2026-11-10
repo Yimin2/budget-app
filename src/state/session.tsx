@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createDefaultLedger, createDemoLedger, toISODate } from '@/domain';
 import * as googleModule from '@/google';
-import { LocalBackend, SheetsBackend } from '@/storage';
+import { createLedgerCache, LocalBackend, SheetsBackend, type LedgerCache } from '@/storage';
 import type { LedgerBackend, LedgerRef } from '@/storage/types';
 import { openInvitedLedger as runInviteOpen, type InviteOpenResult } from './invite';
 import { DEMO_LEDGER_ID, REMEMBER_KEY, SESSION_KEY, browserStorage, readJson, removeKey, writeJson, type SessionStorageLike } from './storageKeys';
@@ -54,6 +54,11 @@ export interface StateDeps {
    * 기본 true. 예전 예시(사람별 수입통장)의 숫자에 기대는 테스트는 false
    */
   demoCouple: boolean;
+  /**
+   * 구글 시트 가계부의 마지막 내용 보관 (PLAN 7). 기본은 IndexedDB(안 되면 메모리). null 이면 보관하지 않아요.
+   * 로그아웃 · 계정이 바뀌면 지워요
+   */
+  cache: LedgerCache | null;
 }
 
 const defaultGoogle: GoogleDeps = {
@@ -97,6 +102,7 @@ function buildDeps(partial?: Partial<StateDeps>): StateDeps {
     storage: partial && 'storage' in partial ? (partial.storage ?? null) : browserStorage(),
     restoreTimeoutMs: partial?.restoreTimeoutMs ?? 3000,
     demoCouple: partial?.demoCouple ?? true,
+    cache: partial && 'cache' in partial ? (partial.cache ?? null) : createLedgerCache(),
   };
 }
 
@@ -214,6 +220,8 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       const remembered = readJson<unknown>(deps.storage, REMEMBER_KEY);
       const back = isRemembered(remembered) && sameEmail(remembered.email, user.email) ? remembered : null;
       if (isRemembered(remembered)) removeKey(deps.storage, REMEMBER_KEY);
+      // 다른 계정이 남긴 가계부 보관 내용은 지워요
+      void deps.cache?.retainOnly(user.email);
       update((s) => {
         const same = s.mode === 'google' && sameEmail(s.user?.email, user.email);
         return {
@@ -358,6 +366,7 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
         }
       }
       removeKey(deps.storage, REMEMBER_KEY);
+      void deps.cache?.clear();
       update(() => SIGNED_OUT);
     },
     [deps, update],

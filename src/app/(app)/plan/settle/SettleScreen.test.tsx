@@ -153,4 +153,25 @@ describe('정산 화면', () => {
     await waitFor(() => expect(L(h).settlement!.loan.balance).toBe(0));
     expect(L(h).data!.expenses.find((e) => e.id === id)!.accountId).toBe('demo-acc-reservoir');
   });
+
+  it("맨 아래 '저수지' 칸(#loan): 빌리고 갚은 기록과 저수지에서 쓴 이벤트 지출 하나씩 바꾸기가 펼치기 없이 보여요", async () => {
+    const { h } = await renderScreen();
+    expect(screen.queryByRole('region', { name: /^저수지 · 갚을 돈/ })).toBeNull();
+    await act(async () => {
+      await L(h).borrowAndSettleClaims(['demo-claim-jeju']);
+      await L(h).addExpense({ date: '2026-10-05', amount: 200_000, accountId: 'demo-acc-reservoir', categoryId: eventCat(h), memo: '돌잔치' });
+    });
+    const loan = await screen.findByRole('region', { name: '저수지 · 갚을 돈 30만' });
+    expect(loan.id).toBe('loan');
+    expect(loan.querySelector('details')).toBeNull();
+    const history = within(loan).getByRole('list', { name: '빌리고 갚은 기록' });
+    expect(history.textContent).toContain('민지에게 지급 · 제주 항공권');
+    expect(history.textContent).toContain('저수지에서 지급');
+    await act(async () => {
+      fireEvent.click(within(loan).getByRole('button', { name: '돌잔치 200,000원 이벤트통장이 갚을 돈으로 바꾸기' }));
+    });
+    await screen.findByText('200,000원을 이벤트통장이 갚을 돈으로 바꿨어요');
+    expect(L(h).settlement!.loan.balance).toBe(500_000);
+    await waitFor(() => expect(within(loan).getByRole('button', { name: '돌잔치 저수지 지출로 되돌리기' })).toBeTruthy());
+  });
 });
