@@ -280,4 +280,31 @@ describe('HomeView — 이번 달 쓴 돈 (부부 예시)', () => {
     expect(allowance.getAttribute('href')).toBe('/history?tab=accounts&id=demo-acc-allowance-junho');
     expect(within(his).getByRole('link', { name: /이벤트통장/ }).textContent).toContain('45만 썼어요');
   });
+
+  it('고정비 한 줄: 낸 돈 / 이번 달 전체 · 남은 결제 N건, 예산 고정 지출로 가고 사람을 따라가요', async () => {
+    const h = makeHarness({ couple: true });
+    await act(async () => {
+      render(<HomeView />, { wrapper: h.Wrapper });
+    });
+    const card = await screen.findByRole('region', { name: '이번 달 쓴 돈 · 민지' });
+    // 민지 11월: 회비 3만 · 통신비 6만 · 보험 12만 모두 오늘(20일)까지 결제
+    const fixed = within(card).getByRole('link', { name: /고정비/ });
+    expect(fixed.textContent).toContain('21만 / 21만 · 남은 결제 없어요');
+    expect(fixed.getAttribute('href')).toBe('/budget#st-fixed');
+    // 줄 순서: 고정비가 맨 위
+    expect(within(card).getAllByRole('link')[0]).toBe(fixed);
+
+    // 민지 통장에 28일 결제 고정비를 더하면 전체만 늘고 남은 결제 1건
+    await act(async () => {
+      await h.probe.ledger!.addFixed({
+        name: '구독', amount: 15_000, accountId: 'demo-acc-living-minji', categoryId: null, dayOfMonth: 28, kind: 'bill',
+        targetEmail: null, spread: 'daily', startMonth: '2026-11', endMonth: null,
+      });
+    });
+    expect(within(card).getByRole('link', { name: /고정비/ }).textContent).toContain('21만 / 22.5만 · 남은 결제 1건');
+
+    fireEvent.click(screen.getByRole('radio', { name: '준호' }));
+    const his = await screen.findByRole('region', { name: '이번 달 쓴 돈 · 준호' });
+    expect(within(his).getByRole('link', { name: /고정비/ }).textContent).toContain('83.5만 / 83.5만 · 남은 결제 없어요');
+  });
 });

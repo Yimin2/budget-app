@@ -403,9 +403,9 @@ function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner
   );
 }
 
-/* ───────── 이번 달 쓴 돈 (기타 · 용돈 · 이벤트통장) ───────── */
+/* ───────── 이번 달 쓴 돈 (고정비 · 기타 · 용돈 · 이벤트통장) ───────── */
 
-/** 보이는 사람(사람 선택을 따라가요, 선택이 없으면 모두 합쳐)의 기타(예산 없음) · 용돈과 이벤트통장. 보일 줄이 없으면 카드도 없어요 */
+/** 보이는 사람(사람 선택을 따라가요, 선택이 없으면 모두 합쳐)의 고정비 · 기타(예산 없음) · 용돈과 이벤트통장. 보일 줄이 없으면 카드도 없어요 */
 function MonthSpentCard({
   statuses,
   livingAccountId,
@@ -424,10 +424,22 @@ function MonthSpentCard({
     eventProjection: ledger.eventProjection,
   });
   if (!hasMonthSpent(summary)) return null;
-  const { etc, allowance, event } = summary;
+  const { fixed, etc, allowance, event } = summary;
   return (
     <Card as="section" {...heading} className={cx(styles.cardGap, styles.oSpent)}>
       <ul className={cx('list', styles.listTop)}>
+        {fixed ? (
+          <li>
+            <ListRow
+              icon="receipt"
+              href={fixed.href}
+              title="고정비"
+              subtitle={`${formatMan(fixed.paid)} / ${formatMan(fixed.total)} · ${
+                fixed.remainingCount > 0 ? `남은 결제 ${fixed.remainingCount}건` : '남은 결제 없어요'
+              }`}
+            />
+          </li>
+        ) : null}
         {etc ? (
           <li>
             <ListRow
