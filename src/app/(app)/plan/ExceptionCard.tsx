@@ -7,7 +7,8 @@ import { useLedger } from '@/state';
 import { Button, Card, Icon, cx, useToast } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
 import { dateLabel, errorText, monthLabel } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './ExceptionCard.module.css';
 
 export interface ExceptionCardProps {
   data: LedgerData;
@@ -73,14 +74,14 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
   const markedCount = candidates.filter((c) => checkedOf(c)).length;
   const shortages = (after ?? before).shortages;
   return (
-    <Card as="section" className={cx(styles.exception, previewing && styles.exceptionOn)} aria-labelledby={titleId}>
-      <div className={styles.insightHead}>
+    <Card as="section" className={cx(shared.exception, previewing && styles.exceptionOn)} aria-labelledby={titleId}>
+      <div className={shared.insightHead}>
         <Icon name="sliders" size={20} />
-        <div className={styles.txt}>
-          <h2 id={titleId} className={styles.insightTitle}>
+        <div className={shared.txt}>
+          <h2 id={titleId} className={shared.insightTitle}>
             예외 지출 빼기
           </h2>
-          <p className={styles.recurringSub} data-testid="exception-summary">
+          <p className={shared.recurringSub} data-testid="exception-summary">
             예외 {markedCount}건 · 후보 {candidates.length - markedCount}건
           </p>
         </div>
@@ -96,17 +97,17 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
 
       {open ? (
         <div id={bodyId} className={styles.expandBody}>
-          <p className={styles.recurringSub}>
+          <p className={shared.recurringSub}>
             결혼식 축의금처럼 한 번뿐이었던 큰 지출을 빼면 ‘평소 쓰는 돈’과 예상 잔액을 다시 계산해요. 잔액에는 그대로 쓴 돈으로 들어가요
           </p>
 
-          <ul className={styles.exceptionList}>
+          <ul className={shared.exceptionList}>
             {candidates.map((c) => {
               const checked = checkedOf(c);
               const id = `${ids}-${c.expense.id}`;
               const changed = draft[c.expense.id] !== undefined;
               return (
-                <li key={c.expense.id} className={cx(styles.exceptionRow, checked && styles.exceptionChecked, changed && styles.exceptionChanged)}>
+                <li key={c.expense.id} className={cx(shared.exceptionRow, checked && styles.exceptionChecked, changed && styles.exceptionChanged)}>
                   <input
                     id={id}
                     type="checkbox"
@@ -133,7 +134,7 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
             {previewing ? (
               <>
                 <p className={styles.exceptionMsg}>{message}</p>
-                <p className={styles.recurringSub}>
+                <p className={shared.recurringSub}>
                   모자라는 달:{' '}
                   {shortages.length === 0
                     ? '없어요'
@@ -141,11 +142,11 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
                 </p>
               </>
             ) : (
-              <p className={styles.recurringSub}>체크하면 위 예측이 바로 바뀌어요. 저장하기 전까지는 그대로예요</p>
+              <p className={shared.recurringSub}>체크하면 위 예측이 바로 바뀌어요. 저장하기 전까지는 그대로예요</p>
             )}
           </div>
 
-          <div className={styles.applyRow}>
+          <div className={shared.applyRow}>
             <div className={styles.applyBtns}>
               <Button variant="outline" onClick={() => onChange({})} disabled={busy || !previewing}>
                 되돌리기
@@ -154,7 +155,7 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
                 저장
               </Button>
             </div>
-            <p className={styles.applyNote}>
+            <p className={shared.applyNote}>
               {previewing ? `${changes.length}건을 바꿔 봤어요. 누르기 전에는 저장하지 않아요` : '아직 바꾼 것이 없어요'}
             </p>
           </div>

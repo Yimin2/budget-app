@@ -1,0 +1,202 @@
+/* MonthlyCostCard — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+/* ───────── 월별 이벤트 비용 ───────── */
+.monthCost {
+  gap: var(--space-3);
+}
+.monthCostList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* 지난 달(썼어요) = 회색 면 + 진한 회색 실선, 이번 달 = 파란 면 + 파란 실선, 앞으로(예정) = 흰 면 + 파란 점선 */
+.monthCostRow {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+.monthCost_past {
+  background: var(--surface-subtle);
+  border-left-color: var(--border-strong);
+}
+.monthCost_current {
+  background: var(--brand-surface);
+  border-left-color: var(--primary);
+}
+.monthCost_future {
+  border-left-style: dashed;
+  border-left-color: var(--primary);
+}
+.monthCostHead {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.monthCostHead:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+@media (hover: hover) {
+.monthCostHead:hover .monthCostLabel strong:first-child {
+    text-decoration: underline;
+  }
+}
+.monthCostTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.monthCostLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.monthCostTotal {
+  font-variant-numeric: tabular-nums;
+}
+.monthCostChevron {
+  flex: none;
+  color: var(--text-muted);
+}
+.monthCostItems,
+.monthCostSplit {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.monthCostSplit {
+  font-size: 13px;
+  line-height: 20px;
+}
+.monthCostPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--border);
+  animation: rowIn var(--duration-base) var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+.monthCostPanel {
+    animation: none;
+  }
+}
+.monthCostDetail {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.monthCostItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+}
+.monthCostItem + .monthCostItem {
+  border-top: 1px solid var(--border);
+}
+.monthCostItemHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.monthCostItemName {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.monthCostItemMeta {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.monthCostItemAmount {
+  flex: none;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.monthCostExpenses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.monthCostExpense {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-button);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.monthCostExpense > span:nth-child(2) {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.monthCostExpense:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+.monthCostExpense:hover {
+    background: var(--surface-subtle);
+  }
+}
+.monthCostSum {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  text-align: right;
+}
+.monthCostSum strong {
+  color: var(--text);
+}
+.monthCostMore {
+  display: flex;
+  justify-content: center;
+}

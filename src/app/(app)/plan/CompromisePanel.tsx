@@ -5,7 +5,8 @@ import { REPAY_MONTH_OPTIONS, formatMan, manWon, normalizeRepayMonths, type Comp
 import { REPAY_MONTHS_KEY } from '@/state';
 import { Chip, ChipGroup, cx } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './CompromisePanel.module.css';
 
 /** 이 기기에 저장한 저수지 빚 갚는 개월 수 (없거나 못 읽으면 24) */
 export function readRepayMonths(): RepayMonths {
@@ -42,9 +43,9 @@ export function CompromisePanel({
   const [open, setOpen] = useState(false);
   const hasDebt = plan.monthlyRepay > 0;
   return (
-    <div className={styles.compromise} data-testid="compromise">
+    <div className={shared.compromise} data-testid="compromise">
       <div className={styles.compromiseRow}>
-        <p className={cx(styles.compromiseSummary, plan.shortages.length > 0 && styles.bad)} data-testid="compromise-summary">
+        <p className={cx(styles.compromiseSummary, plan.shortages.length > 0 && shared.bad)} data-testid="compromise-summary">
           {plan.summary}
         </p>
         <ExpandButton
@@ -56,7 +57,7 @@ export function CompromisePanel({
         />
       </div>
       {plan.raiseMessage ? (
-        <p className={cx(styles.compromiseLine, styles.bad)} data-testid="compromise-raise">
+        <p className={cx(styles.compromiseLine, shared.bad)} data-testid="compromise-raise">
           {plan.raiseMessage}
         </p>
       ) : null}
@@ -64,7 +65,7 @@ export function CompromisePanel({
       <div id={bodyId} hidden={!open} className={styles.compromiseBody}>
         {open ? (
           <>
-            <dl className={styles.insightFacts}>
+            <dl className={shared.insightFacts}>
               <div>
                 <dt>평소 쓰는 돈 (예외 뺀 최근 평균)</dt>
                 <dd>매달 {manWon(plan.monthlyUsual)}</dd>
@@ -85,12 +86,12 @@ export function CompromisePanel({
 
             {hasDebt ? (
               <>
-                <p className={styles.foot}>
+                <p className={shared.foot}>
                   적립을 필요보다 더 올리면 배분의 ‘남는 돈 → 저수지’가 그만큼 줄어서, 저수지 돈으로 저수지 빚을 갚는 것과 같아요. 그래서
                   갚을 돈은 쓰는 돈을 줄여서 마련해요
                 </p>
                 <div className={styles.compromiseMonths}>
-                  <span className={styles.foot}>저수지 빚 {formatMan(plan.loanBalance)}을 몇 개월에 갚을까요?</span>
+                  <span className={shared.foot}>저수지 빚 {formatMan(plan.loanBalance)}을 몇 개월에 갚을까요?</span>
                   <ChipGroup label="저수지 빚 갚는 기간">
                     {REPAY_MONTH_OPTIONS.map((m) => (
                       <Chip key={m} selected={m === months} onClick={() => onMonths(m)}>
@@ -101,7 +102,7 @@ export function CompromisePanel({
                 </div>
                 <p className={styles.compromiseLine} data-testid="compromise-cut">
                   {plan.cutMessage}
-                  <span className={styles.subNote}>
+                  <span className={shared.subNote}>
                     {formatMan(plan.loanBalance)} ÷ {plan.repayMonths}개월 = 월 {manWon(plan.monthlyRepay)} (천 원 단위 올림)
                   </span>
                 </p>
@@ -111,7 +112,7 @@ export function CompromisePanel({
                       <li key={c.categoryId ?? '_none'}>
                         <span className={styles.compromiseCat}>
                           {c.name}
-                          <span className={styles.subNote}>
+                          <span className={shared.subNote}>
                             {c.over > 0
                               ? `최근 3개월이 1년 평균보다 월 ${manWon(c.over)} 많아요`
                               : `평소 월 ${manWon(c.usual)}`}
@@ -122,18 +123,18 @@ export function CompromisePanel({
                     ))}
                   </ul>
                 ) : null}
-                {plan.cutGapMessage ? <p className={cx(styles.compromiseLine, styles.bad)}>{plan.cutGapMessage}</p> : null}
-                <p className={styles.foot}>평소보다 많이 쓰는 카테고리를 먼저, 나머지는 평소 쓰는 돈에 비례해 천 원 단위로 나눴어요</p>
+                {plan.cutGapMessage ? <p className={cx(styles.compromiseLine, shared.bad)}>{plan.cutGapMessage}</p> : null}
+                <p className={shared.foot}>평소보다 많이 쓰는 카테고리를 먼저, 나머지는 평소 쓰는 돈에 비례해 천 원 단위로 나눴어요</p>
               </>
             ) : (
-              <p className={styles.foot}>저수지에 갚을 돈이 없어서 쓰는 돈을 줄이지 않아도 돼요</p>
+              <p className={shared.foot}>저수지에 갚을 돈이 없어서 쓰는 돈을 줄이지 않아도 돼요</p>
             )}
 
-            <p className={cx(styles.compromiseLine, plan.shortageMessage && styles.bad)} data-testid="compromise-check">
+            <p className={cx(styles.compromiseLine, plan.shortageMessage && shared.bad)} data-testid="compromise-check">
               {plan.shortageMessage ?? `추천대로 하면 앞으로 ${plan.horizon}개월 동안 모자라는 달이 없어요`}
-              <span className={styles.subNote}>다음 달부터 적립 · 줄인 쓰는 돈 · 갚을 돈을 넣어 다시 예측했어요</span>
+              <span className={shared.subNote}>다음 달부터 적립 · 줄인 쓰는 돈 · 갚을 돈을 넣어 다시 예측했어요</span>
             </p>
-            <p className={styles.foot}>바꾸는 건 예산의 매달 배분과 평소 지출에서 직접 해요</p>
+            <p className={shared.foot}>바꾸는 건 예산의 매달 배분과 평소 지출에서 직접 해요</p>
           </>
         ) : null}
       </div>

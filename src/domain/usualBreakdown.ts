@@ -12,7 +12,8 @@
 import { addMonths, monthOf } from './dates';
 import { ledgerPeople, type LedgerPerson } from './people';
 import { expenseSpender } from './spender';
-import { asEventRecord, isUsualEventExpense, recentHistoryMonths, usualHistory } from './usual';
+import { eventRecords } from './eventRecords';
+import { recentHistoryMonths, usualHistory } from './usual';
 import type { Id, ISODate, LedgerData, Shortage, Won, YearMonth } from './types';
 
 /** 도넛에서 색으로 보이는 항목 수 (나머지는 '기타') */
@@ -85,10 +86,7 @@ export function usualBreakdown(
   const names = new Map(data.categories.map((c) => [c.id, c.name]));
 
   const groups = new Map<Id | null, { items: UsualBreakdownItem[]; last: Won }>();
-  for (const raw of data.expenses) {
-    const e = asEventRecord(data, raw, eventAccountId);
-    if (!e || !isUsualEventExpense(e, eventAccountId)) continue;
-    const m = monthOf(e.date);
+  for (const { expense: raw, record: e, month: m } of eventRecords(data, eventAccountId, { scope: 'usual' })) {
     if (!inPeriod.has(m)) continue;
     const who = expenseSpender(data, raw, people);
     if (spenderKey && who.key !== spenderKey) continue;

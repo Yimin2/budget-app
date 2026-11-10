@@ -14,6 +14,7 @@ import { accountCharges } from './allocation';
 import { accountBalance, isCountedTransfer } from './balances';
 import { addDays, addMonths, compareMonth, dateInMonth, daysInMonth, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
 import { earliestBudgetMonth } from './budgetMonth';
+import { eventPlanGroup, eventRecordNames, eventRecords } from './eventRecords';
 import { isComputedRule } from './income';
 import { isAutoFixedRecord } from './installments';
 import { activeAccountsSorted, firstAccountByRole } from './internal';
@@ -298,7 +299,8 @@ export function eventYearReview(data: LedgerData, endMonth: YearMonth, today: IS
   const until = today < lastDay ? (today < startDate ? startDate : today) : lastDay;
   const inRange = (d: ISODate) => d >= startDate && d <= until;
 
-  const expenses = data.expenses.filter((e) => !e.deleted && e.accountId === acc.id && inRange(e.date));
+  // 통장에 실제로 기록된 이벤트통장 지출만 (저수지 이벤트 청구는 저수지에서 빌린 돈으로 따로 보여요)
+  const expenses = eventRecords(data, acc.id, { reservoirClaims: false, from: startDate, to: until }).map((r) => r.record);
   const spent = expenses.reduce((s, e) => s + e.amount, 0);
   const claimSpent = expenses.reduce((s, e) => (typeof e.paidBy === 'string' && e.paidBy.trim() !== '' ? s + e.amount : s), 0);
 
@@ -321,23 +323,15 @@ export function eventYearReview(data: LedgerData, endMonth: YearMonth, today: IS
     else if (t.fromAccountId === acc.id && !isClaimTransferId(t.id)) movedOut += t.amount;
   }
 
-  const eventNames = new Map(data.events.map((e) => [e.id, e.name]));
-  const tripNames = new Map(data.trips.map((t) => [t.id, t.name]));
+  const names = eventRecordNames(data, { includeDeleted: true });
   const groups = new Map<string, EventReviewItem>();
   for (const e of expenses) {
-    const trip = e.tripId ? e.tripId : null;
-    const key = trip ? `trip:${trip}` : e.eventId ? `event:${e.eventId}` : null;
-    if (!key) continue;
-    const g = groups.get(key) ?? {
-      key,
-      kind: trip ? ('trip' as const) : ('event' as const),
-      name: (trip ? tripNames.get(trip) : eventNames.get(e.eventId!))?.trim() || (trip ? '여행' : '일정'),
-      amount: 0,
-      firstDate: e.date,
-    };
+    const group = eventPlanGroup(e, names);
+    if (!group) continue;
+    const g = groups.get(group.key) ?? { key: group.key, kind: group.kind, name: group.label, amount: 0, firstDate: e.date };
     g.amount += e.amount;
     if (e.date < g.firstDate) g.firstDate = e.date;
-    groups.set(key, g);
+    groups.set(group.key, g);
   }
   const topEvents = [...groups.values()]
     .filter((g) => g.amount > 0)

@@ -6,6 +6,7 @@ export * from './ids';
 export * from './balances';
 export * from './living';
 export * from './events';
+export * from './eventRecords';
 export * from './eventMonths';
 export * from './usual';
 export * from './claims';

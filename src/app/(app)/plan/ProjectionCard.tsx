@@ -16,7 +16,8 @@ import type { EventProjection, ISODate, ProjectionMonth, ProjectionRangeMonth, Y
 import { Badge, Button, Card, Icon, cx, useMediaQuery } from '@/ui';
 import { barsGeometry, compactWon, hasRange, hasUsual, initialMonth, monthDetailRows, monthLabel, rangeNote, yOf } from './selectors';
 import { tripHref } from './trips/selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './ProjectionCard.module.css';
 
 export interface ProjectionCardProps {
   projection: EventProjection;
@@ -228,24 +229,24 @@ export function ProjectionCard({ projection, today, badge }: ProjectionCardProps
             })}
           </div>
 
-          <figcaption className={cx(styles.caption, shortages.length > 0 ? styles.bad : styles.ok)}>
+          <figcaption className={cx(styles.caption, shortages.length > 0 ? shared.bad : shared.ok)}>
             <Icon name={shortages.length > 0 ? 'alert-triangle' : 'check-circle'} size={16} />
             <span>{caption}</span>
           </figcaption>
           {highOnly ? (
-            <p className={cx(styles.caption, styles.warn)} role="note">
+            <p className={cx(styles.caption, shared.warn)} role="note">
               <Icon name="alert-circle" size={16} />
               <span>{highOnly}</span>
             </p>
           ) : null}
-          {banded ? <p className={styles.foot}>{rangeNote(projection)}</p> : null}
+          {banded ? <p className={shared.foot}>{rangeNote(projection)}</p> : null}
           {withUsual ? (
-            <p className={styles.foot}>
+            <p className={shared.foot}>
               등록한 일정 말고도 늘 나가는 ‘평소 쓰는 돈’을 빼고 계산했어요. 작년 같은 달 기록 30%와 최근 12개월 평균 70%를 섞어요 (작년 기록이 없으면 최근 12개월 평균)
             </p>
           ) : null}
           {transfersIn > 0 ? (
-            <p className={styles.foot}>저수지 등에서 옮겨 올 예정인 {formatWon(transfersIn)}을 넣어서 계산했어요</p>
+            <p className={shared.foot}>저수지 등에서 옮겨 올 예정인 {formatWon(transfersIn)}을 넣어서 계산했어요</p>
           ) : null}
 
           {/* 표는 width: 1px 로 줄어들지 않아서, 숨김 상자로 한 번 감싸요 (가로 스크롤 방지) */}
@@ -327,18 +328,18 @@ function MonthDetail({
   const short = month.endBalance < 0;
   return (
     <div className={styles.detail}>
-      <div className={styles.detailHead}>
-        <div className={styles.txt}>
+      <div className={shared.detailHead}>
+        <div className={shared.txt}>
           <h3 className={styles.detailTitle}>
             {monthLabel(month.month, today)}
             {isThis ? ' · 이번 달' : ''}
           </h3>
-          <span className={cx(styles.statusLine, styles.detailStatus, short ? styles.bad : styles.ok)}>
+          <span className={cx(shared.statusLine, styles.detailStatus, short ? shared.bad : shared.ok)}>
             <Icon name={short ? 'alert-triangle' : 'check-circle'} size={16} />
             {short ? `${formatWon(-month.endBalance)} 모자라요` : '모자라지 않아요'}
           </span>
         </div>
-        <div className={styles.nav}>
+        <div className={shared.nav}>
           <Button
             variant="ghost"
             plain
@@ -371,13 +372,13 @@ function MonthDetail({
         ))}
         <div className={cx(styles.calcRow, styles.calcTotal)}>
           <dt>달 말 예상 잔액</dt>
-          <dd className={short ? styles.bad : undefined}>{formatWon(month.endBalance)}</dd>
+          <dd className={short ? shared.bad : undefined}>{formatWon(month.endBalance)}</dd>
         </div>
         {range ? (
           <div className={cx(styles.calcRow, styles.calcMuted)}>
             <dt>아끼면 · 많이 쓰면</dt>
             <dd>
-              {formatWon(range.endLow)} · <span className={range.endHigh < 0 ? styles.bad : undefined}>{formatWon(range.endHigh)}</span>
+              {formatWon(range.endLow)} · <span className={range.endHigh < 0 ? shared.bad : undefined}>{formatWon(range.endHigh)}</span>
             </dd>
           </div>
         ) : null}

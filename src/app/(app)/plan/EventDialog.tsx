@@ -20,7 +20,8 @@ import {
   useToast,
 } from '@/ui';
 import { dateLabel, errorText, eventCategories, REPEAT_OPTIONS } from './selectors';
-import styles from './events.module.css';
+import shared from './events.module.css';
+import styles from './EventDialog.module.css';
 
 /** 새 일정 창을 열 때 미리 채울 값 (빈 상태 예시 등) */
 export interface EventPreset {
@@ -256,7 +257,7 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
         </>
       }
     >
-      <form id={formId} className={styles.form} onSubmit={submit} noValidate>
+      <form id={formId} className={shared.form} onSubmit={submit} noValidate>
         <div className={styles.formRow}>
           <Field label="이름" required error={errors.name} id={`${ids}-name`}>
             <TextInput
@@ -317,7 +318,7 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
             <span className="label">날짜 기준</span>
             <SegmentedControl options={CALENDAR_OPTIONS} value={calendar} onChange={changeCalendar} ariaLabel="양력 또는 음력" />
             {calendar === 'lunar' ? (
-              <div className={styles.annualMonthDay}>
+              <div className={shared.annualMonthDay}>
                 <Select
                   value={lunarMd.month}
                   onChange={(v) => changeLunar({ ...lunarMd, month: v })}

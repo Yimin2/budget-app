@@ -1,0 +1,65 @@
+/* RecurringCard — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+.recurringRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  animation: rowIn var(--duration-base) var(--ease-out) both;
+}
+.recurringIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--primary-subtle);
+  color: var(--primary-text);
+}
+.recurringText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.recurringText p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.recurringMeta {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.recurringActions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+@media (min-width: 768px) {
+.recurringRow {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+.recurringActions {
+    grid-column: auto;
+  }
+}
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+.recurringRow {
+    animation: none;
+  }
+}

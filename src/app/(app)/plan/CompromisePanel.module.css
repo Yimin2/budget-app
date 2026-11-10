@@ -1,0 +1,65 @@
+/* CompromisePanel — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+
+.compromiseRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.compromiseSummary {
+  flex: 1 1 0;
+  min-width: min(14em, 100%);
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.compromiseLine {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.compromiseBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.compromiseBody[hidden] {
+  display: none;
+}
+.compromiseMonths {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.compromiseCuts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.compromiseCuts > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.compromiseCat {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.compromiseAmt {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

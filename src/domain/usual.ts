@@ -11,10 +11,9 @@
  * - 카테고리별로 따로 셈하고, 그달 등록한 일정 · 그달 이미 기록한(미리 기록한 포함) 평소 지출을 같은 카테고리에서 먼저 뺀다
  *   (예: 5월 경조사 평소 쓰는 돈 추정 30만, 올해 5월 결혼식 일정 20만 등록 → 경조사 평소 쓰는 돈 10만). 0 아래로는 내려가지 않는다
  */
-import { isClaimExpense } from './balances';
-import { isReservoirEventExpense } from './claims';
 import { addMonths, compareMonth, monthOf, monthRange } from './dates';
-import type { Expense, Id, LedgerData, ProjectionMonth, Won, YearMonth } from './types';
+import { eventRecords, inEventRecordScope, sumByMonthAndCategory } from './eventRecords';
+import type { Id, LedgerData, ProjectionMonth, Won, YearMonth } from './types';
 
 /** 최근 평균에 쓰는 달 수 */
 export const USUAL_RECENT_MONTHS = 12;
@@ -37,41 +36,15 @@ export interface UsualEstimate {
   total: Won;
 }
 
-/** 이벤트통장의 계획하지 않은 지출(일정 · 여행 · 고정 지출 자동 기록이 아닌 지출)인지. 예외 표시는 보지 않는다 */
-export function isUnplannedEventExpense(e: Expense, eventAccountId: Id): boolean {
-  return !e.deleted && e.accountId === eventAccountId && !e.eventId && !e.tripId && !e.fixedExpenseId && e.amount > 0;
-}
-
-/** 이벤트통장의 평소 지출(계획하지 않았고 예외로 표시하지 않은 지출)인지 */
-export function isUsualEventExpense(e: Expense, eventAccountId: Id): boolean {
-  return isUnplannedEventExpense(e, eventAccountId) && e.excluded !== true;
-}
-
-/**
- * 이벤트통장 기록으로 세는 지출을 이벤트통장 지출로 본 모양 (저수지에서 빌려 낸 이벤트 청구 포함). 아니면 null
- */
-export function asEventRecord(data: LedgerData, e: Expense, eventAccountId: Id): Expense | null {
-  if (e.deleted || !e.date) return null;
-  if (e.accountId === eventAccountId) return e;
-  // 저수지에서 빌려 낸(낼) 이벤트 청구도 이벤트통장 기록으로 센다 (PLAN 4-9)
-  return isClaimExpense(e) && isReservoirEventExpense(data, e) ? { ...e, accountId: eventAccountId } : null;
-}
-
-/** 이벤트통장 평소 지출 기록 (달별 · 카테고리별) */
+/** 이벤트통장 평소 지출 기록 (달별 · 카테고리별). 기록 시작 달은 평소 지출이 아닌 이벤트통장 기록까지 보고 정한다 */
 export function usualHistory(data: LedgerData, eventAccountId: Id): UsualHistory {
   const account = data.accounts.find((a) => a.id === eventAccountId);
   let start: YearMonth | null = account?.openingDate ? monthOf(account.openingDate) : null;
-  const byMonth = new Map<YearMonth, Map<CategoryKey, Won>>();
-  for (const raw of data.expenses) {
-    const e = asEventRecord(data, raw, eventAccountId);
-    if (!e) continue;
-    const m = monthOf(e.date);
-    if (start === null || compareMonth(m, start) < 0) start = m;
-    if (!isUsualEventExpense(e, eventAccountId)) continue;
-    const cats = byMonth.get(m) ?? new Map<CategoryKey, Won>();
-    cats.set(e.categoryId ?? null, (cats.get(e.categoryId ?? null) ?? 0) + e.amount);
-    byMonth.set(m, cats);
+  const records = eventRecords(data, eventAccountId);
+  for (const { month } of records) {
+    if (start === null || compareMonth(month, start) < 0) start = month;
   }
+  const byMonth = sumByMonthAndCategory(records.filter((r) => inEventRecordScope(r.record, eventAccountId, 'usual')));
   return { start, byMonth };
 }
 

@@ -11,7 +11,8 @@
 import { addMonths, compareMonth, formatMonthKo, monthOf } from './dates';
 import { projectEventAccount } from './events';
 import { firstAccountByRole } from './internal';
-import { asEventRecord, isUnplannedEventExpense, manWon, percentile } from './usual';
+import { eventRecords } from './eventRecords';
+import { manWon, percentile } from './usual';
 import type { EventProjection, Expense, Id, ISODate, LedgerData, Won, YearMonth } from './types';
 
 /** 카테고리 한 달 중앙값의 몇 배부터 후보인지 */
@@ -47,12 +48,8 @@ export function findExceptionCandidates(data: LedgerData, today: ISODate): Excep
   const acc = firstAccountByRole(data, 'event');
   if (!acc) return [];
   const since = addMonths(monthOf(today), -EXCEPTION_LOOKBACK_MONTHS);
-  const all: Expense[] = [];
-  for (const raw of data.expenses) {
-    const e = asEventRecord(data, raw, acc.id);
-    if (e && isUnplannedEventExpense(e, acc.id)) all.push(e);
-  }
-  const recent = all.filter((e) => e.date <= today && compareMonth(monthOf(e.date), since) >= 0);
+  const all = eventRecords(data, acc.id, { scope: 'unplanned' });
+  const recent = all.filter((r) => r.record.date <= today && compareMonth(r.month, since) >= 0).map((r) => r.record);
 
   // 카테고리별 기준: 한 달 합의 중앙값(쓴 달만) · 한 건 P90 · 한 건 중앙값
   const byCat = new Map<Id | null, Expense[]>();
@@ -92,7 +89,7 @@ export function findExceptionCandidates(data: LedgerData, today: ISODate): Excep
     .filter((c) => c.reason !== 'marked')
     .sort(byAmount)
     .slice(0, EXCEPTION_LIMIT);
-  const marked = all.filter(isMarked).map(describe);
+  const marked = all.map((r) => r.record).filter(isMarked).map(describe);
   return [...found, ...marked].sort(byAmount);
 }
 

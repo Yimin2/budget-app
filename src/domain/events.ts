@@ -3,6 +3,7 @@ import { pendingClaims } from './claims';
 import { addMonths, compareMonth, dateInMonth, formatMonthKo, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
 import { autoTransferId } from './ids';
 import { projectionMonthOf, unrecordedInstallmentPayments } from './installments';
+import { isLiveTripExpense, liveTripIds } from './eventRecords';
 import { firstAccountByRole } from './internal';
 import { ceilTo1000 } from './money';
 import { lunarToSolar, parseLunarMonthDay } from './holidays';
@@ -211,10 +212,10 @@ function projectAccount(
   const plannedEvents = data.events.filter((e) => !e.deleted && e.status === 'planned' && e.accountId === accountId);
   const installmentsDue = unrecordedInstallmentPayments(data, accountId);
   // 여행에 묶인 지출은 여행 남은 예산에서만 뺀다 (일정에도 묶여 있어도 일정 남은 금액에서 또 빼면 두 번 빠진다)
-  const liveTrips = new Set(data.trips.filter((t) => !t.deleted).map((t) => t.id));
+  const liveTrips = liveTripIds(data);
   const spent = new Map<Id, Won>();
   for (const x of data.expenses) {
-    if (x.deleted || !x.eventId || (x.tripId && liveTrips.has(x.tripId))) continue;
+    if (x.deleted || !x.eventId || isLiveTripExpense(x, liveTrips)) continue;
     spent.set(x.eventId, (spent.get(x.eventId) ?? 0) + x.amount);
   }
 
