@@ -1173,6 +1173,88 @@
   overflow-wrap: anywhere;
 }
 
+/* 추천 타협안 (평소 쓰는 돈과 적립 카드 안, 접힌 요약 + 자세히) */
+.compromise {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.compromiseRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.compromiseSummary {
+  flex: 1 1 0;
+  min-width: min(14em, 100%);
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.compromiseLine {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.compromise .bad {
+  color: var(--warning-text);
+}
+.compromise .subNote {
+  display: block;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.compromiseBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.compromiseBody[hidden] {
+  display: none;
+}
+.compromiseMonths {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.compromiseCuts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.compromiseCuts > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: 15px;
+  line-height: 22px;
+}
+.compromiseCat {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.compromiseAmt {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ───────── 범위 (아끼면 ~ 많이 쓰면) ───────── */
 .bars {
   position: relative;
