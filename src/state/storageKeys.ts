@@ -61,3 +61,5 @@ export function removeKey(storage: SessionStorageLike | null, key: string): void
  * 없거나 이상한 값이면 24개월
  */
 export const REPAY_MONTHS_KEY = 'budget:repayMonths';
+/** 통장 고르기에서 최근 고른 통장 id (기기마다, 최근 것이 앞). 시트 칸 없음 */
+export const RECENT_ACCOUNTS_KEY = 'budget:recentAccounts';

@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { current, renderApp, startDemo } from '../../_components/__tests__/harness';
+import { listedAccounts, pickAccount } from '../../_components/__tests__/pickAccount';
 
 const nav = vi.hoisted(() => ({
   router: { replace: vi.fn(), push: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() },
@@ -69,6 +70,9 @@ describe('지출 화면', () => {
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '230000' } });
     const account = within(dialog).getByLabelText(/^통장/) as HTMLSelectElement;
     expect(account.value).toBe('demo-acc-fixed');
+    // 지출 통장은 모든 통장에서 골라요 (청구할 수 없는 통장은 기록할 때 알려 줘요)
+    expect(listedAccounts(account)).toHaveLength(current(h).ledger.activeAccounts.length);
+    fireEvent.keyDown(within(dialog).getByRole('listbox'), { key: 'Escape' });
     // 생활비 통장이면 생활비 카테고리 6개가 먼저, 이벤트 카테고리는 [더 보기] 안에
     expect(within(dialog).queryByRole('button', { name: '여행' })).toBeNull();
     const more = within(dialog).getByRole('button', { name: /더 보기/ });
@@ -141,7 +145,7 @@ describe('지출 화면', () => {
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '18000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '식비' }));
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
-    fireEvent.change(within(dialog).getByLabelText(/^통장/), { target: { value: 'demo-acc-savings' } });
+    pickAccount(within(dialog).getByLabelText(/^통장/), 'demo-acc-savings');
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
     expect(await within(dialog).findByText('개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요')).toBeTruthy();
     expect(current(h).ledger.data!.expenses).toHaveLength(before);
@@ -188,7 +192,7 @@ describe('지출 화면', () => {
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '500000' } });
     // 생활비 통장 지출에는 보이지 않아요
     expect(within(dialog).queryByRole('checkbox', { name: /예외 \(평소 지출 아님\)/ })).toBeNull();
-    fireEvent.change(within(dialog).getByLabelText(/^통장/), { target: { value: 'demo-acc-event' } });
+    pickAccount(within(dialog).getByLabelText(/^통장/), 'demo-acc-event');
     fireEvent.change(within(dialog).getByLabelText(/내용/), { target: { value: '친구 결혼식' } });
     const toggle = within(dialog).getByRole('checkbox', { name: /예외 \(평소 지출 아님\)/ }) as HTMLInputElement;
     expect(toggle.checked).toBe(false);

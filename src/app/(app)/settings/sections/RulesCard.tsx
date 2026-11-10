@@ -5,14 +5,15 @@ import {
   ALLOWANCE_REVIEW_PROMPT, canAutoFill, conflictingRemainderRule, formatMan, formatMonthKo, formatWon, isAutoRule, isRemainderRule, monthOf, needBreakdownText, paydayPlans,
   remainderViews, ruleChangeText, ruleKindLabel, ruleNext, RULE_KIND_LABEL,
 } from '@/domain';
-import type { AllocationRule, RuleKind } from '@/domain/types';
+import type { Account, AllocationRule, RuleKind } from '@/domain/types';
 import {
   Badge, Banner, Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, MoneyInput, SegmentedControl, Select,
   focusFirstInvalid,
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { DAY_OPTIONS } from '@/app/start/new/wizard';
-import { incomeSummaries, paydayPreviewLines, periodLabel, startMonthForNew, startMonthHint, visibleRules, accountOptions as accountOptionsOf, accountNameWithOwner } from '../helpers';
+import { incomeSummaries, paydayPreviewLines, periodLabel, startMonthForNew, startMonthHint, visibleRules, accountNameWithOwner } from '../helpers';
+import { AccountPicker } from '../../_components/AccountPicker';
 import { useRunner } from '../useRunner';
 
 interface Draft {
@@ -42,6 +43,10 @@ const kindOf = (r: AllocationRule): RuleKind => (isRemainderRule(r) ? 'remainder
  * 줄마다 다음 배분 금액을 바로 보여 주고(알아서 맞추기는 지난달과 달라졌으면 까닭도), 누르지 않아도 다음 배분에 저절로 반영돼요.
  * 수입통장마다 합계가 수입보다 크면 경고하고, 월급날마다 어디로 얼마가 가는지 미리 보여 줘요 (PLAN 4-13 · 4-15)
  */
+
+// 보내는 통장은 수입통장을 앞에 둬요
+const isIncomeAccount = (a: Account) => a.role === 'income';
+
 export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
   const { busy, run } = useRunner();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -59,7 +64,6 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
   // 수입통장이 여럿이면 배분이나 수입 기록이 있는 통장만 보여요
   const summaries = allSummaries.length > 1 ? allSummaries.filter((x) => x.total > 0 || x.income !== null) : allSummaries;
   const multi = summaries.length > 1;
-  const accountOptions = accountOptionsOf(accounts);
   const editing = draft?.id ? ledger.data.rules.find((r) => r.id === draft.id) : undefined;
   const remainders = new Map(remainderViews(ledger.data, ledger.today).map((v) => [v.rule.id, v]));
   const autoTarget = draft ? canAutoFill(accounts.find((a) => a.id === draft.toAccountId)) : false;
@@ -318,10 +322,10 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
             }}
           >
             <Field label="보내는 통장">
-              <Select value={draft.fromAccountId} onChange={(v) => setDraft({ ...draft, fromAccountId: v })} options={accountOptions} />
+              <AccountPicker value={draft.fromAccountId} onChange={(v) => setDraft({ ...draft, fromAccountId: v })} accounts={accounts} prefer={isIncomeAccount} />
             </Field>
             <Field label="받는 통장" error={errors.to}>
-              <Select
+              <AccountPicker
                 value={draft.toAccountId}
                 onChange={(v) => {
                   // 새 배분은 받는 통장에 따라 기본 방식을 바꿔요 (생활비 → 알아서 맞추기, 용돈 등은 매달 같은 금액)
@@ -329,8 +333,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
                   const kind = draft.id ? draft.kind : auto && draft.kind === 'fixed' && draft.amount === null ? 'auto' : !auto && draft.kind === 'auto' ? 'fixed' : draft.kind;
                   setDraft({ ...draft, toAccountId: v, kind });
                 }}
-                options={accountOptions}
-                placeholder="통장 고르기"
+                accounts={accounts}
               />
             </Field>
             <div className="stack gap-2">

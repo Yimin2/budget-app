@@ -12,7 +12,8 @@ import {
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { DAY_OPTIONS } from '@/app/start/new/wizard';
-import { accountName, startMonthForNew, accountOptions as accountOptionsOf, categorySelectOptions } from '../helpers';
+import { accountName, startMonthForNew, categorySelectOptions } from '../helpers';
+import { AccountPicker } from '../../_components/AccountPicker';
 import { useRunner } from '../useRunner';
 import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 
@@ -88,7 +89,6 @@ export function InstallmentCard({ ledger, accountId }: { ledger: ReadyLedger; ac
   const month = monthOf(today);
   const year = Number(month.slice(0, 4));
   const accounts = ledger.activeAccounts;
-  const accountOptions = accountOptionsOf(accounts);
   const categoryOptions = categorySelectOptions(ledger.activeCategories, [draft?.categoryId, edit?.categoryId]);
   const plans = ledger.installments.filter(
     (p) => !p.ended || compareMonth(p.endMonth, addMonths(month, -ENDED_VISIBLE_MONTHS)) >= 0,
@@ -414,12 +414,7 @@ export function InstallmentCard({ ledger, accountId }: { ledger: ReadyLedger; ac
               </Field>
             </div>
             <Field label="나가는 통장" error={errors.account}>
-              <Select
-                value={draft.accountId}
-                onChange={(v) => setDraft({ ...draft, accountId: v })}
-                options={accountOptions}
-                placeholder="통장 고르기"
-              />
+              <AccountPicker value={draft.accountId} onChange={(v) => setDraft({ ...draft, accountId: v })} accounts={accounts} />
             </Field>
             <Field label="카테고리" optional>
               <Select value={draft.categoryId} onChange={(v) => setDraft({ ...draft, categoryId: v })} options={categoryOptions} />
@@ -504,7 +499,7 @@ export function InstallmentCard({ ledger, accountId }: { ledger: ReadyLedger; ac
                     <Select value={String(edit.day)} onChange={(v) => setEdit({ ...edit, day: Number(v) })} options={DAY_OPTIONS} />
                   </Field>
                   <Field label="나가는 통장" error={errors.account}>
-                    <Select value={edit.accountId} onChange={(v) => setEdit({ ...edit, accountId: v })} options={accountOptions} />
+                    <AccountPicker value={edit.accountId} onChange={(v) => setEdit({ ...edit, accountId: v })} accounts={accounts} />
                   </Field>
                 </div>
                 <Field label="카테고리" optional>

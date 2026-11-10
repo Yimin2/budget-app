@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { current, renderApp, startDemo } from '../../_components/__tests__/harness';
+import { listedAccounts, pickAccount } from '../../_components/__tests__/pickAccount';
 
 const nav = vi.hoisted(() => ({
   router: { replace: vi.fn(), push: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() },
@@ -95,16 +96,16 @@ describe('통장 목록', () => {
     await screen.findByRole('region', { name: '통장 잔액 합계' });
     fireEvent.click(screen.getByRole('button', { name: '이체 기록' }));
     const dialog = await screen.findByRole('dialog', { name: '이체 기록' });
-    const from = within(dialog).getByRole('combobox', { name: /보내는 통장/ }) as HTMLSelectElement;
-    const to = within(dialog).getByRole('combobox', { name: /받는 통장/ }) as HTMLSelectElement;
+    const from = within(dialog).getByLabelText(/^보내는 통장\*?$/) as HTMLSelectElement;
+    const to = within(dialog).getByLabelText(/^받는 통장\*?$/) as HTMLSelectElement;
     expect(from.value).toBe('demo-acc-income');
-    fireEvent.change(from, { target: { value: 'demo-acc-reservoir' } });
-    fireEvent.change(to, { target: { value: 'demo-acc-reservoir' } });
+    pickAccount(from, 'demo-acc-reservoir');
+    pickAccount(to, 'demo-acc-reservoir');
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '200000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
     expect(await within(dialog).findByText('보내는 통장과 다른 통장을 골라 주세요')).toBeTruthy();
 
-    fireEvent.change(to, { target: { value: 'demo-acc-event' } });
+    pickAccount(to, 'demo-acc-event');
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
     await screen.findByText('이벤트통장으로 200,000원 옮긴 기록을 남겼어요');
     expect(current(h).ledger.balances['demo-acc-event']).toBe(950_000);
@@ -159,7 +160,12 @@ describe('통장 상세', () => {
     // 수입통장이 여럿이면 누구 수입인지 골라요 (사람별 수입통장이 앞에)
     const to = within(dialog).getByLabelText(/누구 수입인가요/) as HTMLSelectElement;
     expect(to.value).toBe('demo-acc-event');
-    expect([...to.options].filter((o) => o.value).slice(0, 2).map((o) => o.textContent)).toEqual(['민지 수입통장 · minji@…', '준호 수입통장 · junho@…']);
+    expect(to.textContent).toBe('이벤트통장');
+    // 사람별로 묶어요: 나(민지) → 준호 → 함께. 이메일은 보이지 않아요
+    expect(listedAccounts(to).slice(0, 2)).toEqual(['demo-acc-income', 'demo-acc-income-junho']);
+    expect(within(dialog).getByRole('listbox').textContent).not.toContain('@');
+    fireEvent.keyDown(within(dialog).getByRole('listbox'), { key: 'Escape' });
+    expect(within(dialog).queryByRole('listbox')).toBeNull();
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '50000' } });
     fireEvent.change(within(dialog).getByLabelText(/메모/), { target: { value: '축의금 받음' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));

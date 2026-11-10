@@ -9,6 +9,8 @@ import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
 import { ROLE_OPTIONS, ROLE_TEXT, ownerText } from '../helpers';
 import { incomeAccountName, isEmail } from '@/app/start/new/wizard';
 import { useRunner } from '../useRunner';
+import { groupAccounts, meKeyOf } from '../../_components/accountGroups';
+import { useSession } from '@/state';
 
 interface Draft {
   id: string | null; // null = 새 통장
@@ -23,6 +25,7 @@ interface Draft {
 /** 통장: 이름 · 역할 · 주인(사람별 수입통장) · 시작 잔액/기준일 · 추가 · 지우기 */
 export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
   const { busy, run } = useRunner();
+  const session = useSession();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [nameError, setNameError] = useState<string | undefined>();
   const [emailError, setEmailError] = useState<string | undefined>();
@@ -30,6 +33,8 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
   const accounts = ledger.activeAccounts;
   const isShared = ledger.data.settings.kind === 'shared';
   const people = peopleOptions(ledger.data);
+  // 사람별로 묶어 보여요: 나 → 다른 사람 → 함께
+  const groups = groupAccounts(ledger.data, accounts, { meKey: meKeyOf(ledger.data, session.user?.email, ledger.myLivingAccountId) });
 
   function openNew(role: AccountRole = 'other') {
     setNameError(undefined);
@@ -131,39 +136,48 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
       {accounts.length === 0 ? (
         <EmptyState icon="wallet" headingLevel={3} title="통장이 없어요" description="통장을 추가하면 잔액을 계산해 드려요." />
       ) : (
-        <ul className="list">
-          {accounts.map((a) => (
-            <li key={a.id}>
-              <ListRow
-                icon={ACCOUNT_ROLE_ICON[a.role]}
-                title={a.name}
-                subtitle={
-                  <span className="st-sub">
-                    <Badge size="sm" dot={false}>
-                      {ROLE_TEXT[a.role]}
-                    </Badge>
-                    {ownerText(a) ? (
-                      <Badge size="sm" tone="info" dot={false}>
-                        {ownerText(a)}
-                      </Badge>
-                    ) : null}
-                    <span>
-                      시작 <Money amount={a.openingBalance} /> · {formatDateKo(a.openingDate, false)}부터
-                    </span>
-                  </span>
-                }
-                trailing={
-                  <span className="st-trail">
-                    <Money amount={ledger.balances[a.id] ?? 0} />
-                    <span className="st-cap">지금 잔액</span>
-                  </span>
-                }
-                onClick={() => openEdit(a)}
-                className="st-acc-row"
-              />
-            </li>
-          ))}
-        </ul>
+        groups.map((g) => (
+          <section key={g.key || '__shared'} className="stack gap-2">
+            {groups.length > 1 ? (
+              <h3 className="st-group-title">
+                {g.label}
+              </h3>
+            ) : null}
+            <ul className="list">
+              {g.accounts.map((a) => (
+                <li key={a.id}>
+                  <ListRow
+                    icon={ACCOUNT_ROLE_ICON[a.role]}
+                    title={a.name}
+                    subtitle={
+                      <span className="st-sub">
+                        <Badge size="sm" dot={false}>
+                          {ROLE_TEXT[a.role]}
+                        </Badge>
+                        {ownerText(a) ? (
+                          <Badge size="sm" tone="info" dot={false}>
+                            {ownerText(a)}
+                          </Badge>
+                        ) : null}
+                        <span>
+                          시작 <Money amount={a.openingBalance} /> · {formatDateKo(a.openingDate, false)}부터
+                        </span>
+                      </span>
+                    }
+                    trailing={
+                      <span className="st-trail">
+                        <Money amount={ledger.balances[a.id] ?? 0} />
+                        <span className="st-cap">지금 잔액</span>
+                      </span>
+                    }
+                    onClick={() => openEdit(a)}
+                    className="st-acc-row"
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
       )}
       <div className="st-foot">
         <Button variant="outline" icon="plus" onClick={() => openNew()}>

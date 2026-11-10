@@ -4,13 +4,13 @@ import { useId, useState, type FormEvent } from 'react';
 import { canClaimOnAccount, formatWon, tripItemForCategory } from '@/domain';
 import type { Expense, Id } from '@/domain';
 import { useLedger } from '@/state';
-import { Badge, Button, DateInput, Dialog, Field, Select, TextInput, useToast, focusFirstInvalid } from '@/ui';
+import { Badge, Button, DateInput, Dialog, Field, TextInput, useToast, focusFirstInvalid } from '@/ui';
 import { ClaimFields } from '../_components/ClaimFields';
 import { SpenderField } from '../_components/SpenderField';
 import { CategoryPicker } from '../_components/CategoryPicker';
 import { accountIdForCategory, accountIdForSource, errorMessage, expenseTitle, type Source } from './selectors';
 import styles from './home.module.css';
-import { accountOptions } from '../settings/helpers';
+import { AccountPicker } from '../_components/AccountPicker';
 
 export interface RecordSheetProps {
   amount: number;
@@ -161,15 +161,15 @@ export function RecordSheet({ amount, source, categoryId, tripId = null, spender
           <TextInput value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 운동화" maxLength={100} enterKeyHint="done" />
         </Field>
         <Field label="통장" error={accountError} hint="어느 돈으로 사는지에 따라 골라 뒀어요" required>
-          <Select
+          <AccountPicker
             value={accountId}
             onChange={(v) => {
               setAccountId(v);
               setAccountTouched(true);
               setAccountError(null);
             }}
-            placeholder={ledger.activeAccounts.length === 0 ? '통장이 없어요' : undefined}
-            options={accountOptions(ledger.activeAccounts)}
+            accounts={ledger.activeAccounts}
+            disabled={saving}
           />
         </Field>
         <ClaimFields

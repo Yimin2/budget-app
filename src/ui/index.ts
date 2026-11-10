@@ -8,7 +8,7 @@ export { Chip, ChipGroup, type ChipProps } from './Chip';
 export { Badge, type BadgeProps, type Tone } from './Badge';
 export { Banner, type BannerProps, type BannerTone, type BannerAction } from './Banner';
 export {
-  Field, TextInput, MoneyInput, Select, Textarea, DateInput, focusFirstInvalid,
+  Field, TextInput, MoneyInput, Select, Textarea, DateInput, focusFirstInvalid, useFieldControl,
   type FieldProps, type TextInputProps, type MoneyInputProps, type SelectProps, type SelectOption, type TextareaProps, type DateInputProps,
 } from './Field';
 export { SegmentedControl, type SegmentedControlProps, type SegmentOption } from './SegmentedControl';

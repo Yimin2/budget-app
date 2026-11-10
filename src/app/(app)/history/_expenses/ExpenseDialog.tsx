@@ -16,7 +16,7 @@ import { CategoryPicker } from '../../_components/CategoryPicker';
 import { spenderKeyForAccount } from '@/domain';
 import { accountForCategory, errorText, expenseTitle, isISODate, linkableEvents } from './selectors';
 import styles from './expenses.module.css';
-import { accountOptions } from '../../settings/helpers';
+import { AccountPicker } from '../../_components/AccountPicker';
 
 export interface ExpenseDialogProps {
   /** 고칠 지출. 없으면 새로 기록해요 */
@@ -383,15 +383,14 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
             required
             hint={autoAccount ? (selectedCategory ? `${selectedCategory.name} 카테고리에 맞춰 골랐어요` : '생활비 통장으로 골라 뒀어요') : undefined}
           >
-            <Select
+            <AccountPicker
               value={accountId}
               onChange={(v) => {
                 setAccountId(v);
                 setAccountTouched(true);
                 if (errors.account) setErrors((x) => ({ ...x, account: undefined }));
               }}
-              placeholder={accounts.length === 0 ? '통장이 없어요' : '통장 고르기'}
-              options={accountOptions(accounts)}
+              accounts={accounts}
             />
           </Field>
           <Field label="날짜" error={errors.date} required>
