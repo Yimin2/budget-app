@@ -31,6 +31,7 @@ import {
   autoLinkOwnerEmails,
   AUTO_KIND_NOTICE,
   rulesToAutoKind,
+  repairAllowanceAutoRules,
   migrateAllowanceRows,
   claimOwnerAccounts,
   unlinkedOwnerNames,
@@ -476,7 +477,29 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   );
 
   /**
-   * 기존 시트 자동 고치기 (PLAN 4-15): 생활비 · 용돈 통장으로 가는 '매달 같은 금액' 배분을 '알아서 맞추기'로 한 번에 써요.
+   * 기존 시트 자동 고치기 (PLAN 4-7): 지난 고치기가 '알아서 맞추기'로 바꾼 용돈 배분을 다시 '매달 같은 금액'으로 써요.
+   * 금액은 바뀌기 전 마지막 자동 기록 → 나뉜 규칙 · 예전 용돈 행 → 그 통장 고정비 합(확인 필요). 구글 시트 가계부만,
+   * 다시 해도 같고(고칠 게 없으면 쓰지 않음), 쓰기에 성공했을 때만 한 번 알려요
+   */
+  const repairAllowanceRules = useCallback(
+    async (repo: LedgerRepository, loaded: LedgerData, today: ISODate): Promise<LedgerData> => {
+      if (repo.ref.source !== 'sheets') return loaded;
+      const fixed = repairAllowanceAutoRules(loaded, today);
+      if (fixed.rules.length === 0) return loaded;
+      try {
+        await repo.upsertMany('rules', fixed.rules);
+      } catch {
+        return loaded;
+      }
+      if (fixed.notice) setNotice(fixed.notice);
+      const byId = new Map(fixed.rules.map((r) => [r.id, r]));
+      return { ...loaded, rules: loaded.rules.map((r) => byId.get(r.id) ?? r) };
+    },
+    [setNotice],
+  );
+
+  /**
+   * 기존 시트 자동 고치기 (PLAN 4-15): 생활비 통장으로 가는 '매달 같은 금액' 배분을 '알아서 맞추기'로 한 번에 써요 (용돈 통장은 건드리지 않아요).
    * 구글 시트 가계부만. 다시 해도 같고(바꿀 게 없으면 쓰지 않음), 쓰기에 성공했을 때만 한 번 알려요
    */
   const migrateRuleKinds = useCallback(
@@ -535,7 +558,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     try {
       const members = await syncMembers(repo, await repo.load());
       const moved = await migrateAllowances(repo, members);
-      const fresh = await migrateRuleKinds(repo, moved, todayRef.current);
+      const repaired = await repairAllowanceRules(repo, moved, todayRef.current);
+      const fresh = await migrateRuleKinds(repo, repaired, todayRef.current);
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
       const merged = withPendingWrites(synced, loadStart);
@@ -563,7 +587,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingCount((n) => n - 1);
     }
-  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, migrateRuleKinds, syncAutoRecords, withPendingWrites]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, syncAutoRecords, withPendingWrites]);
   const loadAllRef = useRef(loadAll);
   useEffect(() => {
     loadAllRef.current = loadAll;
@@ -1798,6 +1822,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       if (!rule.deleted && isRemainderRule(rule) && conflictingRemainderRule(requireData().data, rule)) {
         throw new Error('같은 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요');
       }
+      // 용돈 등 생활비가 아닌 통장으로 가는 배분은 알아서 맞추기로 저장하지 않아요 (4-7)
+      if (!rule.deleted && rule.kind === 'auto' && !canAutoFill(requireData().data.accounts.find((a) => a.id === rule.toAccountId))) {
+        throw new Error('알아서 맞추기는 생활비 통장으로 보낼 때만 고를 수 있어요');
+      }
       await upsertRow('rules', rule, '매달 배분을 저장하지 못했어요');
       await syncAutoNow();
     },
@@ -1811,7 +1839,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         throw new Error('같은 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요');
       }
       if (input.kind === 'auto' && !canAutoFill(requireData().data.accounts.find((a) => a.id === input.toAccountId))) {
-        throw new Error('알아서 맞추기는 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요');
+        throw new Error('알아서 맞추기는 생활비 통장으로 보낼 때만 고를 수 있어요');
       }
       const computed = isRemainderRule(input) || input.kind === 'auto';
       const id = givenId || newId();
@@ -1898,12 +1926,13 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         compareMonth(target.startMonth, from) >= 0 ||
         (compareMonth(target.startMonth, cur) >= 0 && compareMonth(from, addMonths(cur, 1)) <= 0 && recordedThisMonth(target));
       if (inPlace) {
-        await upsertRow('rules', { ...target, amount: rounded }, '적립액을 바꾸지 못했어요');
+        await upsertRow('rules', { ...target, amount: rounded, needsReview: undefined }, '적립액을 바꾸지 못했어요');
         return;
       }
-      const ended: AllocationRule = { ...target, endMonth: addMonths(from, -1) };
+      const ended: AllocationRule = { ...target, endMonth: addMonths(from, -1), needsReview: undefined };
       const created: AllocationRule = {
         ...target,
+        needsReview: undefined,
         id: successorRuleId(target.id, from),
         amount: rounded,
         startMonth: from,

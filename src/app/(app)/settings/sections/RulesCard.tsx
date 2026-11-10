@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import {
-  canAutoFill, conflictingRemainderRule, formatMan, formatMonthKo, formatWon, isAutoRule, isRemainderRule, monthOf, needBreakdownText, paydayPlans,
+  ALLOWANCE_REVIEW_PROMPT, canAutoFill, conflictingRemainderRule, formatMan, formatMonthKo, formatWon, isAutoRule, isRemainderRule, monthOf, needBreakdownText, paydayPlans,
   remainderViews, ruleChangeText, ruleKindLabel, ruleNext, RULE_KIND_LABEL,
 } from '@/domain';
 import type { AllocationRule, RuleKind } from '@/domain/types';
@@ -32,8 +32,8 @@ const KIND_OPTIONS: { value: RuleKind; label: string }[] = [
   { value: 'remainder', label: RULE_KIND_LABEL.remainder },
 ];
 
-/** 받는 통장이 생활비 · 용돈이면 '알아서 맞추기'가 기본, 아니면 '매달 같은 금액' */
-const AUTO_ONLY_MESSAGE = '알아서 맞추기는 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요';
+/** 받는 통장이 생활비면 '알아서 맞추기'가 기본, 아니면(용돈 · 이벤트 · 저축 …) '매달 같은 금액' */
+const AUTO_ONLY_MESSAGE = '알아서 맞추기는 생활비 통장으로 보낼 때만 고를 수 있어요';
 
 const kindOf = (r: AllocationRule): RuleKind => (isRemainderRule(r) ? 'remainder' : isAutoRule(r) ? 'auto' : 'fixed');
 
@@ -47,6 +47,8 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [confirmDelete, setConfirmDelete] = useState<AllocationRule | null>(null);
+  // 금액 확인이 필요한 용돈 배분 줄의 그 자리 금액 (규칙 id → 금액)
+  const [review, setReview] = useState<Record<string, number | null>>({});
 
   const month = monthOf(ledger.today);
   const accounts = ledger.activeAccounts;
@@ -100,7 +102,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
       return;
     }
     const amount = draft.kind === 'fixed' ? draft.amount! : 0;
-    // 받는 통장이 생활비 · 용돈이 아니면 '알아서 맞추기'는 고를 수 없어요 (이벤트통장 등은 매달 같은 금액)
+    // 받는 통장이 생활비가 아니면 '알아서 맞추기'는 고를 수 없어요 (용돈 · 이벤트통장 등은 매달 같은 금액)
     const ok = await run(
       'save',
       async () => {
@@ -140,6 +142,18 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
       draft.id ? '매달 배분을 저장했어요' : '매달 배분을 추가했어요',
     );
     if (ok) setDraft(null);
+  }
+
+  /** 금액 확인: 그 자리에서 금액을 고치고 확인 필요 표시를 지워요 (지난 기록은 그대로) */
+  async function confirmAmount(r: AllocationRule) {
+    const amount = review[r.id] ?? r.amount;
+    if (!(amount > 0)) return;
+    const ok = await run(`review:${r.id}`, () => ledger.saveRule({ ...r, amount: Math.round(amount), needsReview: false }), '용돈 금액을 저장했어요');
+    if (ok) setReview((x) => {
+      const next = { ...x };
+      delete next[r.id];
+      return next;
+    });
   }
 
   async function remove(r: AllocationRule) {
@@ -235,6 +249,37 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
                   }
                   onClick={() => openEdit(r)}
                 />
+                {r.needsReview && !isAutoRule(r) && !isRemainderRule(r) ? (
+                  <form
+                    className="st-review stack gap-2"
+                    role="group"
+                    aria-label={ALLOWANCE_REVIEW_PROMPT}
+                    noValidate
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void confirmAmount(r);
+                    }}
+                  >
+                    <Field
+                      label={ALLOWANCE_REVIEW_PROMPT}
+                      hint="예전 금액을 찾지 못해 이 통장의 고정비 합을 넣어 두었어요. 실제 용돈 금액으로 고쳐 주세요."
+                    >
+                      <MoneyInput
+                        value={review[r.id] === undefined ? r.amount : review[r.id]!}
+                        onChange={(v) => setReview((x) => ({ ...x, [r.id]: v }))}
+                      />
+                    </Field>
+                    <div>
+                      <Button
+                        type="submit"
+                        loading={busy === `review:${r.id}`}
+                        disabled={!((review[r.id] === undefined ? r.amount : review[r.id]!) ?? 0)}
+                      >
+                        확인
+                      </Button>
+                    </div>
+                  </form>
+                ) : null}
               </li>
             );
           })}
@@ -279,7 +324,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
               <Select
                 value={draft.toAccountId}
                 onChange={(v) => {
-                  // 새 배분은 받는 통장에 따라 기본 방식을 바꿔요 (생활비 · 용돈 → 알아서 맞추기)
+                  // 새 배분은 받는 통장에 따라 기본 방식을 바꿔요 (생활비 → 알아서 맞추기, 용돈 등은 매달 같은 금액)
                   const auto = canAutoFill(accounts.find((a) => a.id === v));
                   const kind = draft.id ? draft.kind : auto && draft.kind === 'fixed' && draft.amount === null ? 'auto' : !auto && draft.kind === 'auto' ? 'fixed' : draft.kind;
                   setDraft({ ...draft, toAccountId: v, kind });
@@ -298,7 +343,8 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
                   setDraft({ ...draft, kind });
                   setErrors((x) => ({ ...x, kind: undefined, amount: undefined }));
                 }}
-                options={KIND_OPTIONS.map((o) => ({ ...o, disabled: o.value === 'auto' && !autoTarget && draft.kind !== 'auto' }))}
+                // 생활비 통장이 아니면(용돈 등) 알아서 맞추기를 보이지 않아요
+                options={KIND_OPTIONS.filter((o) => o.value !== 'auto' || autoTarget || draft.kind === 'auto')}
               />
               {errors.kind ? (
                 <span className="hint err" role="alert">

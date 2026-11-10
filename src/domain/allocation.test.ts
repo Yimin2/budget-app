@@ -1,5 +1,5 @@
 import { account, emptyLedger, fixed, rule, transfer } from './_fixtures';
-import { AUTO_KIND_NOTICE, ruleAmountIn, ruleChangeText, ruleKindLabel, ruleNext, rulesToAutoKind, windowNeed } from './allocation';
+import { ALLOWANCE_FIXED_NOTICE, AUTO_KIND_NOTICE, AUTO_RULE_MEMO, canAutoFill, repairAllowanceAutoRules, ruleAmountIn, ruleChangeText, ruleKindLabel, ruleNext, rulesToAutoKind, windowNeed } from './allocation';
 import { normalizeBill } from './bills';
 import { autoTransferId } from './ids';
 import { paydayPlans, projectRemainders, remainderViews } from './income';
@@ -118,12 +118,9 @@ describe('기존 시트 자동 고치기: 생활비 · 용돈 배분 → 알아�
   ];
   const d = () => emptyLedger({ accounts: [salary, liv, ev, res, allow, sav], rules: base });
 
-  it('생활비 · 용돈으로 가는 매달 같은 금액만 알아서 맞추기(금액 0)로 바꿔요', () => {
+  it('생활비로 가는 매달 같은 금액만 알아서 맞추기(금액 0)로 바꿔요. 용돈 통장은 건너뛰어요', () => {
     const out = rulesToAutoKind(d(), '2026-11-12');
-    expect(out.map((r) => [r.id, r.kind, r.amount])).toEqual([
-      ['r-liv', 'auto', 0],
-      ['r-allow', 'auto', 0],
-    ]);
+    expect(out.map((r) => [r.id, r.kind, r.amount])).toEqual([['r-liv', 'auto', 0]]);
     expect(AUTO_KIND_NOTICE).toBe("생활비 · 용돈 배분을 '알아서 맞추기'로 바꿨어요");
   });
 
@@ -145,6 +142,83 @@ describe('기존 시트 자동 고치기: 생활비 · 용돈 배분 → 알아�
       ],
     });
     expect(rulesToAutoKind(two, '2026-11-12')).toEqual([]);
+  });
+});
+
+describe('기존 시트 자동 고치기: 용돈 배분 → 다시 매달 같은 금액 (4-7)', () => {
+  const TODAY = '2026-11-10';
+  const allow = account('allowance', { id: 'allow', name: '용돈(민구)', order: 4, ownerName: '민구', ownerEmail: 'mg@x', openingDate: '2026-01-01' });
+  const tithe = normalizeBill(fixed({ id: 'tithe', name: '십일조 · 헌금', kind: 'bill', amount: 50_000, accountId: allow.id, dayOfMonth: 28, startMonth: '2026-01' }));
+  const autoAllow = rule({ id: 'r-allow', fromAccountId: salary.id, toAccountId: allow.id, amount: 0, kind: 'auto', dayOfMonth: 25, startMonth: '2026-01' });
+  const autoLiv = rule({ id: 'r-liv', fromAccountId: salary.id, toAccountId: liv.id, amount: 0, kind: 'auto', dayOfMonth: 21, startMonth: '2026-01' });
+  const rec = (ruleId: string, month: string, amount: number, memo = '매달 배분') =>
+    transfer({ id: autoTransferId(ruleId, month), date: `${month}-25`, amount, memo, ruleId, fromAccountId: salary.id, toAccountId: allow.id });
+  const d = (p: Partial<LedgerData> = {}) =>
+    emptyLedger({ accounts: [salary, liv, ev, res, allow], fixedExpenses: [tithe], rules: [autoAllow, autoLiv], ...p });
+  const apply = (data: LedgerData) => {
+    const out = repairAllowanceAutoRules(data, TODAY);
+    const byId = new Map(out.rules.map((r) => [r.id, r]));
+    return { out, after: { ...data, rules: data.rules.map((r) => byId.get(r.id) ?? r) } };
+  };
+
+  it('알아서 맞추기는 생활비 통장만 받을 수 있어요', () => {
+    expect(canAutoFill(liv)).toBe(true);
+    expect(canAutoFill(allow)).toBe(false);
+    expect(canAutoFill(ev)).toBe(false);
+  });
+
+  it('바뀌기 전 마지막 자동 기록 금액으로 되돌려요 (바뀐 뒤 알아서 맞추기 기록 · 그 뒤의 기록은 안 봐요). 생활비 자동은 그대로', () => {
+    const data = d({
+      transfers: [
+        rec('r-allow', '2026-08', 380_000),
+        rec('r-allow', '2026-09', 390_000),
+        rec('r-allow', '2026-10', 340_000, AUTO_RULE_MEMO),
+        // 바뀐 뒤 손으로 고친 기록 · 지운 기록 · 0원은 안 봐요
+        rec('r-allow', '2026-11', 999_000),
+        { ...rec('r-allow', '2026-07', 777_000), deleted: true },
+      ],
+    });
+    const { out } = apply(data);
+    expect(out.rules).toEqual([{ ...autoAllow, kind: 'fixed', amount: 390_000 }]);
+    expect(out.repairs[0]!.source).toBe('transfer');
+    expect(out.notice).toBe(`${ALLOWANCE_FIXED_NOTICE} · 민구 용돈 39만`);
+    expect(out.notice).toBe("용돈 배분을 다시 '매달 같은 금액'으로 바꿨어요 · 민구 용돈 39만");
+  });
+
+  it('25일 전에 바뀌어 알아서 맞추기 기록이 아직 없으면 지난달(매달 같은 금액) 기록 금액으로', () => {
+    const { out } = apply(d({ transfers: [rec('r-allow', '2026-10', 390_000)] }));
+    expect(out.rules.map((r) => [r.id, r.kind, r.amount])).toEqual([['r-allow', 'fixed', 390_000]]);
+  });
+
+  it('기록이 없으면 금액 변경으로 나뉜 앞 규칙의 금액으로', () => {
+    const prev = rule({ id: 'r-allow', fromAccountId: salary.id, toAccountId: allow.id, amount: 380_000, dayOfMonth: 25, startMonth: '2026-01', endMonth: '2026-10' });
+    const cur = { ...autoAllow, id: 'r-allow@2026-11', startMonth: '2026-11' };
+    const { out } = apply(d({ rules: [prev, cur, autoLiv] }));
+    expect(out.rules).toEqual([{ ...cur, kind: 'fixed', amount: 380_000 }]);
+    expect(out.repairs[0]!.source).toBe('history');
+  });
+
+  it('기록 · 나뉜 규칙이 없으면 예전 용돈 행(지움 표시된 것도)의 금액으로', () => {
+    const old = fixed({ id: 'old-pocket', name: '용돈(민구)', kind: 'allowance', amount: 400_000, accountId: salary.id, targetEmail: 'mg@x', dayOfMonth: 25, deleted: true });
+    const { out } = apply(d({ fixedExpenses: [tithe, old] }));
+    expect(out.rules.map((r) => [r.kind, r.amount, r.needsReview])).toEqual([['fixed', 400_000, undefined]]);
+    expect(out.notice).toBe(`${ALLOWANCE_FIXED_NOTICE} · 민구 용돈 40만`);
+  });
+
+  it('아무것도 없으면 그 통장의 고정비 합 + 확인 필요 표시', () => {
+    const { out } = apply(d());
+    expect(out.rules).toEqual([{ ...autoAllow, kind: 'fixed', amount: 50_000, needsReview: true }]);
+    expect(out.repairs[0]!.source).toBe('bills');
+    expect(out.notice).toBe(`${ALLOWANCE_FIXED_NOTICE} · 민구 용돈 5만 (확인 필요)`);
+  });
+
+  it('다시 해도 같아요. 되돌린 뒤 4-15 고치기도 용돈 배분을 다시 바꾸지 않아요', () => {
+    const { after } = apply(d({ transfers: [rec('r-allow', '2026-10', 390_000)] }));
+    expect(repairAllowanceAutoRules(after, TODAY)).toEqual({ repairs: [], rules: [], notice: null });
+    expect(rulesToAutoKind(after, TODAY)).toEqual([]);
+    expect(after.rules.find((r) => r.id === 'r-allow')).toMatchObject({ kind: 'fixed', amount: 390_000 });
+    // 되돌린 금액이 25일 배분에 그대로 나가요
+    expect(ruleAmountIn(after, after.rules.find((r) => r.id === 'r-allow')!, '2026-11')).toBe(390_000);
   });
 });
 

@@ -439,7 +439,7 @@ describe('budget-import v2 — 고정비 시작일 · 해지일 · 세부 항목
         subItems: [{ name: '정기 모임', amount: 40_000 }, { name: '연말 행사', amount: 30_000, startDate: '2026-12-01', endDate: '2026-12-31' }],
       },
     );
-    (raw.rules as Record<string, unknown>[]).push({ key: 'auto-b', from: 'salary', to: 'pocket-a', kind: 'auto', dayOfMonth: 25, startMonth: '2026-12' });
+    (raw.rules as Record<string, unknown>[]).push({ key: 'auto-b', from: 'salary', to: 'liv-b', kind: 'auto', dayOfMonth: 25, startMonth: '2026-12' });
     return raw;
   }
 
@@ -469,7 +469,11 @@ describe('budget-import v2 — 고정비 시작일 · 해지일 · 세부 항목
     const raw = withDated();
     (raw.rules as Record<string, unknown>[]).push({ key: 'auto-ev', from: 'salary', to: 'event', kind: 'auto', dayOfMonth: 21, startMonth: '2026-11' });
     const plan = planImport(base(), parsed(raw), CTX);
-    expect(plan.errors.some((e) => e.includes("'auto-ev'") && e.includes('생활비 · 용돈'))).toBe(true);
+    expect(plan.errors.some((e) => e.includes("'auto-ev'") && e.includes('생활비 통장'))).toBe(true);
+    // 용돈 통장도 매달 같은 금액만 (알아서 맞추기 금액은 십일조 · 헌금뿐이라 실제 용돈이 빠져요)
+    const pocket = withDated();
+    (pocket.rules as Record<string, unknown>[]).push({ key: 'auto-pocket', from: 'salary', to: 'pocket-a', kind: 'auto', dayOfMonth: 25, startMonth: '2026-11' });
+    expect(planImport(base(), parsed(pocket), CTX).errors.some((e) => e.includes("'auto-pocket'"))).toBe(true);
 
     const living = sampleV2();
     (living.fixedExpenses as Record<string, unknown>[])[2]!.startDate = '2026-11-01';

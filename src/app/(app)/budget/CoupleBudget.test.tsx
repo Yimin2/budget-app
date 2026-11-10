@@ -92,9 +92,13 @@ describe('예산 — 부부 예시', () => {
     // 같은 날(21일) 나머지 배분을 하나 더 만들면 막아요
     fireEvent.click(within(card('매달 배분')).getByRole('button', { name: '배분 추가' }));
     dialog = screen.getByRole('dialog', { name: '매달 배분 추가' });
-    // 생활비 · 용돈 통장으로 보내는 새 배분은 '알아서 맞추기'가 기본, 이벤트통장 등은 '매달 같은 금액'
-    fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-allowance-junho' } });
+    // 생활비 통장으로 보내는 새 배분은 '알아서 맞추기'가 기본, 용돈 · 이벤트통장 등은 '매달 같은 금액'
+    fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-living-junho' } });
     expect(within(dialog).getByRole('radio', { name: '알아서 맞추기' }).getAttribute('aria-checked')).toBe('true');
+    // 용돈 통장에는 알아서 맞추기를 보이지 않아요 (용돈은 매달 같은 금액)
+    fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-allowance-junho' } });
+    expect(within(dialog).queryByRole('radio', { name: '알아서 맞추기' })).toBeNull();
+    expect(within(dialog).getByRole('radio', { name: '매달 같은 금액' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.change(within(dialog).getByLabelText('받는 통장'), { target: { value: 'demo-acc-event' } });
     expect(within(dialog).getByRole('radio', { name: '매달 같은 금액' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.click(within(dialog).getByRole('radio', { name: '남는 돈 전부' }));
@@ -117,6 +121,28 @@ describe('예산 — 부부 예시', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const changed = current(h).ledger.data!.rules.find((r) => r.id === 'demo-rule-25-reservoir')!;
     expect(changed).toMatchObject({ kind: 'fixed', amount: 500_000 });
+  });
+
+  it("금액을 찾지 못해 되돌린 용돈 배분 줄에 '용돈 금액을 확인해 주세요' + 그 자리 금액 칸 (4-7)", async () => {
+    const h = renderApp(<BudgetPage />, { couple: true });
+    await startDemo(h);
+    const rule = current(h).ledger.data!.rules.find((r) => r.toAccountId === 'demo-acc-allowance-junho')!;
+    await act(async () => {
+      await current(h).ledger.saveRule({ ...rule, kind: 'fixed', amount: 50_000, needsReview: true });
+    });
+    const rules = card('매달 배분');
+    const prompt = within(rules).getByRole('group', { name: '용돈 금액을 확인해 주세요' });
+    expect(within(rules).getAllByRole('group', { name: '용돈 금액을 확인해 주세요' })).toHaveLength(1);
+    const input = within(prompt).getByLabelText(/용돈 금액을 확인해 주세요/) as HTMLInputElement;
+    expect(input.value.replace(/\D/g, '')).toBe('50000');
+    fireEvent.change(input, { target: { value: '350000' } });
+    await act(async () => {
+      fireEvent.click(within(prompt).getByRole('button', { name: '확인' }));
+    });
+    await waitFor(() => expect(within(card('매달 배분')).queryByRole('group', { name: '용돈 금액을 확인해 주세요' })).toBeNull());
+    const saved = current(h).ledger.data!.rules.find((r) => r.id === rule.id)!;
+    expect(saved).toMatchObject({ kind: 'fixed', amount: 350_000 });
+    expect(saved.needsReview).toBeFalsy();
   });
 
   it('생활비 항목은 누구 생활비인지 고르고, 같은 항목도 사람마다 따로 둘 수 있어요', async () => {
