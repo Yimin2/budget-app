@@ -122,3 +122,30 @@ describe('음력 매년 반복 일정', () => {
     expect(next > '2041-01-01' && next < '2041-03-01').toBe(true);
   });
 });
+
+describe('음력 월 · 일 고르기 도우미', () => {
+  it('그해 음력 달의 날 수와 30일 → 29일 줄임 표시', async () => {
+    const { lunarMonthLength, convertLunar } = await import('./holidays');
+    expect(lunarMonthLength(2026, 1)).toBe(30);
+    expect(lunarMonthLength(2026, 2)).toBe(29);
+    expect(lunarMonthLength(2026, 13)).toBeNull();
+    expect(convertLunar(2026, 2, 30)).toEqual({ lunarYear: 2026, date: lunarToSolar(2026, 2, 29), clamped: true, monthLength: 29 });
+    expect(convertLunar(2026, 1, 30)?.clamped).toBe(false);
+  });
+
+  it('올해 양력: 한 양력 해에 두 번 오면 아직 안 온 쪽, 지났으면 다음 회차도', async () => {
+    const { lunarThisYear } = await import('./holidays');
+    // 음력 11/15 는 2026년에 2026-01-03(2025 음력 해) · 2026-12-23(2026 음력 해) 두 번
+    expect(lunarThisYear(11, 15, '2026-11-20')).toMatchObject({ thisYear: { date: '2026-12-23' }, next: { date: '2026-12-23' } });
+    expect(lunarThisYear(8, 15, '2026-11-20')).toMatchObject({ thisYear: { date: '2026-09-25' }, next: { date: '2027-09-15' } });
+    expect(lunarThisYear(8, 31, '2026-11-20')).toBeNull();
+  });
+
+  it('목록 꼬리표: 음력 8/15 (올해 9/25) · 다른 해면 연도', async () => {
+    const { lunarRepeatLabel, lunarShortLabel } = await import('./holidays');
+    expect(lunarShortLabel('08-15')).toBe('음력 8/15');
+    expect(lunarRepeatLabel('08-15', '2026-09-25', '2026-11-20')).toBe('음력 8/15 (올해 9/25)');
+    expect(lunarRepeatLabel('08-15', '2027-09-15', '2026-11-20')).toBe('음력 8/15 (2027년 9/15)');
+    expect(lunarRepeatLabel('bad', '2027-09-15', '2026-11-20')).toBe('');
+  });
+});

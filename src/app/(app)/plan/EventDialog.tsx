@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState, type FormEvent } from 'react';
-import { formatLunarMonthDay, lunarLabel, lunarToSolar, parseLunarMonthDay, solarToLunar } from '@/domain';
+import { formatLunarMonthDay, lunarPreview, lunarToSolar, parseLunarMonthDay, solarToLunar } from '@/domain';
 import type { Id, PlannedEvent, Repeat } from '@/domain';
 import { useLedger } from '@/state';
 import {
@@ -13,6 +13,7 @@ import {
   Field,
   MoneyInput,
   SegmentedControl,
+  Select,
   TextInput,
   Textarea,
   isIconName,
@@ -45,6 +46,8 @@ export interface EventDialogProps {
 
 const NAME_MAX = 40;
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 type CalendarKind = 'solar' | 'lunar';
 const CALENDAR_OPTIONS: { value: CalendarKind; label: string }[] = [
   { value: 'solar', label: '양력' },
@@ -59,8 +62,15 @@ function lunarFor(date: string, original?: string): string | null {
   if (md && lunarToSolar(l.year, md.month, md.day) === date) return formatLunarMonthDay(md.month, md.day);
   return formatLunarMonthDay(l.month, l.day);
 }
+const LUNAR_MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}월` }));
+const LUNAR_DAY_OPTIONS = Array.from({ length: 30 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}일` }));
+
+/** 처음 보여 줄 음력 월 · 일: 일정의 음력 값, 없으면 그 양력 날짜의 음력 */
+function initialLunar(lunar: string | undefined, date: string): { month: string; day: string } {
+  const md = parseLunarMonthDay(lunar) ?? (DATE_RE.test(date) ? solarToLunar(date) : null);
+  return md ? { month: String(md.month), day: String(md.day) } : { month: '', day: '' };
+}
 const MEMO_MAX = 200;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface Errors {
   date?: string;
@@ -81,6 +91,8 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
   const [categoryId, setCategoryId] = useState<Id | null>(event?.categoryId ?? preset?.categoryId ?? null);
   const [repeat, setRepeat] = useState<Repeat>(event?.repeat ?? preset?.repeat ?? 'none');
   const [calendar, setCalendar] = useState<CalendarKind>(event?.lunar && event.repeat === 'yearly' ? 'lunar' : 'solar');
+  // 음력 기준 월 · 일 (음력이면 이 값이 기준이고, 고치면 날짜를 그 음력의 다음 양력 회차로 옮겨요)
+  const [lunarMd, setLunarMd] = useState(() => initialLunar(event?.lunar, event?.date ?? preset?.date ?? ledger.today));
   const [memo, setMemo] = useState(event?.memo ?? '');
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
@@ -100,10 +112,57 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
     if (!name.trim()) e.name = '일정 이름을 입력해 주세요';
     else if (name.trim().length > NAME_MAX) e.name = `이름은 ${NAME_MAX}자까지 쓸 수 있어요`;
     if (amount === null || !(amount > 0)) e.amount = '예상 금액을 입력해 주세요';
-    if (!e.date && repeat === 'yearly' && calendar === 'lunar' && !lunarFor(date, event?.lunar)) {
-      e.date = '이 날짜의 음력을 셈할 수 없어요. 양력으로 넣어 주세요';
+    if (!e.date && repeat === 'yearly' && calendar === 'lunar') {
+      const md = chosenLunar();
+      if (!md) e.date = '음력 월 · 일을 골라 주세요';
+      else if (!lunarMatchesDate(md, date)) e.date = '이 날짜는 고른 음력 날짜와 맞지 않아요. 음력 월 · 일을 다시 골라 주세요';
     }
     return e;
+  }
+
+  /** 고른 음력 월 · 일 (말이 안 되면 null) */
+  function chosenLunar(): { month: number; day: number } | null {
+    return parseLunarMonthDay(lunarMd.month && lunarMd.day ? `${lunarMd.month}-${lunarMd.day}` : '');
+  }
+
+  /** 양력 날짜가 그 음력 월-일의 어느 해 회차인지 (그달에 없는 30일 → 29일 포함) */
+  function lunarMatchesDate(md: { month: number; day: number }, d: string): boolean {
+    const l = solarToLunar(d);
+    if (!l) return false;
+    return [l.year - 1, l.year, l.year + 1].some((y) => lunarToSolar(y, md.month, md.day) === d);
+  }
+
+  /** 날짜를 고치면 음력 월 · 일도 그 날짜의 음력으로 맞춰요 (원래 30일이 29일로 줄어든 해면 30일 그대로) */
+  function changeDate(next: string) {
+    setDate(next);
+    if (!DATE_RE.test(next)) return;
+    const md = chosenLunar();
+    if (md && lunarMatchesDate(md, next)) return;
+    const l = lunarFor(next, event?.lunar);
+    const parsed = parseLunarMonthDay(l);
+    if (parsed) setLunarMd({ month: String(parsed.month), day: String(parsed.day) });
+  }
+
+  /** 음력 월 · 일을 고치면 날짜를 그 음력의 다음 양력 회차(오늘 포함)로 옮겨요 */
+  function changeLunar(next: { month: string; day: string }) {
+    setLunarMd(next);
+    const md = parseLunarMonthDay(next.month && next.day ? `${next.month}-${next.day}` : '');
+    if (!md) return;
+    if (DATE_RE.test(date) && lunarMatchesDate(md, date)) return;
+    const p = lunarPreview(md.month, md.day, ledger.today);
+    if (p?.next) setDate(p.next);
+  }
+
+  function changeCalendar(next: CalendarKind) {
+    setCalendar(next);
+    // 음력으로 바꾸면 지금 날짜의 음력부터 보여 줘요
+    if (next === 'lunar' && DATE_RE.test(date)) {
+      const md = chosenLunar();
+      if (!md || !lunarMatchesDate(md, date)) {
+        const parsed = parseLunarMonthDay(lunarFor(date, event?.lunar));
+        if (parsed) setLunarMd({ month: String(parsed.month), day: String(parsed.day) });
+      }
+    }
   }
 
   async function submit(ev: FormEvent) {
@@ -117,7 +176,8 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
       return;
     }
     setSaving(true);
-    const lunar = repeat === 'yearly' && calendar === 'lunar' ? (lunarFor(date, event?.lunar) ?? undefined) : undefined;
+    const md = chosenLunar();
+    const lunar = repeat === 'yearly' && calendar === 'lunar' && md ? formatLunarMonthDay(md.month, md.day) : undefined;
     const clean = { date, name: name.trim(), amount: amount!, categoryId, repeat, memo: memo.trim() };
     try {
       if (event) {
@@ -157,6 +217,14 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
         ? dateLabel(date, ledger.today)
         : undefined;
   const formId = `${ids}-form`;
+  const lunarHint = (() => {
+    const md = chosenLunar();
+    if (!md) return '음력 월 · 일을 골라 주세요';
+    const p = lunarPreview(md.month, md.day, ledger.today);
+    const head = `음력 ${md.month}월 ${md.day}일이에요`;
+    if (!p) return `${head}. 이 음력 날짜는 셈할 수 없어요`;
+    return [head, p.line, p.note, '해마다 그해 양력 날짜로 바뀌어요 (윤달은 평달 같은 날)'].filter(Boolean).join(' · ');
+  })();
 
   return (
     <Dialog
@@ -202,7 +270,7 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
             />
           </Field>
           <Field label="날짜" required error={errors.date} hint={errors.date ? undefined : dateHint} id={`${ids}-date`}>
-            <DateInput value={date} onChange={setDate} />
+            <DateInput value={date} onChange={changeDate} />
           </Field>
         </div>
 
@@ -247,13 +315,29 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
         {repeat === 'yearly' ? (
           <div className={styles.group2}>
             <span className="label">날짜 기준</span>
-            <SegmentedControl options={CALENDAR_OPTIONS} value={calendar} onChange={setCalendar} ariaLabel="양력 또는 음력" />
-            <span className={styles.groupHint}>
-              {calendar === 'lunar'
-                ? DATE_RE.test(date) && lunarFor(date, event?.lunar)
-                  ? `${lunarLabel(lunarFor(date, event?.lunar))}이에요. 해마다 그해 양력 날짜로 바뀌어요`
-                  : '고른 날짜의 음력으로 해마다 반복해요'
-                : '해마다 같은 양력 날짜예요'}
+            <SegmentedControl options={CALENDAR_OPTIONS} value={calendar} onChange={changeCalendar} ariaLabel="양력 또는 음력" />
+            {calendar === 'lunar' ? (
+              <div className={styles.annualMonthDay}>
+                <Select
+                  value={lunarMd.month}
+                  onChange={(v) => changeLunar({ ...lunarMd, month: v })}
+                  options={LUNAR_MONTH_OPTIONS}
+                  placeholder="음력 월"
+                  aria-label="음력 월"
+                  disabled={busy}
+                />
+                <Select
+                  value={lunarMd.day}
+                  onChange={(v) => changeLunar({ ...lunarMd, day: v })}
+                  options={LUNAR_DAY_OPTIONS}
+                  placeholder="음력 일"
+                  aria-label="음력 일"
+                  disabled={busy}
+                />
+              </div>
+            ) : null}
+            <span className={styles.groupHint} aria-live="polite" data-testid="event-calendar-hint">
+              {calendar === 'lunar' ? lunarHint : '해마다 같은 양력 날짜예요'}
             </span>
           </div>
         ) : null}

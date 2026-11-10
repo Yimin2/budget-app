@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { formatShortDate, formatWon, monthOf } from '@/domain';
+import { formatShortDate, formatWon, lunarRepeatLabel, monthOf } from '@/domain';
 import type { Category, Id, ISODate, PlannedEvent, Won } from '@/domain';
 import { Badge, Button, Card, Icon, cx } from '@/ui';
 import { dateLabel, monthLabel, REPEAT_LABEL, weekdayShort, type EventSections } from './selectors';
@@ -204,7 +204,7 @@ function EventRow({
               <Badge size="sm" dot={false}>
                 <Icon name="repeat" size={16} />
                 {REPEAT_LABEL[event.repeat]}
-                {event.repeat === 'yearly' && event.lunar ? ' · 음력' : ''}
+                {event.repeat === 'yearly' && event.lunar ? ` ${lunarRepeatLabel(event.lunar, event.date, today)}` : ''}
               </Badge>
             ) : null}
             {done ? (

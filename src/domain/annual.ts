@@ -13,7 +13,7 @@
  */
 import { dateInMonth } from './dates';
 import { seriesBaseId } from './events';
-import { formatLunarMonthDay, nextLunarOccurrence } from './holidays';
+import { formatLunarMonthDay, lunarThisYear, nextLunarOccurrence } from './holidays';
 import { ledgerPeople } from './people';
 import type { Id, ISODate, LedgerData, PlannedEvent, Won } from './types';
 
@@ -179,6 +179,30 @@ export function nextAnnualDate(month: number, day: number, calendar: AnnualCalen
   const y = Number(today.slice(0, 4));
   const thisYear = dateInMonth(`${y}-${mm}`, day);
   return thisYear >= today ? thisYear : dateInMonth(`${y + 1}-${mm}`, day);
+}
+
+/**
+ * 음력 월 · 일을 고를 때 바로 보여 줄 줄: '올해 양력: 2026-10-03' (지났으면 '· 다음 2027-…').
+ * 그해 그달이 29일까지인데 30일을 골랐으면 note 에 '…29일로 셈해요'. 윤달은 따로 고르지 않고 평달 같은 날로 셈해요.
+ * 셈할 수 없으면 null
+ */
+export function lunarPreview(month: number, day: number, today: ISODate): { line: string; note: string | null; next: ISODate | null } | null {
+  const r = lunarThisYear(month, day, today);
+  if (!r) return null;
+  const { thisYear, next } = r;
+  let line: string;
+  if (thisYear) {
+    line = `올해 양력: ${thisYear.date}`;
+    if (thisYear.date < today && next) line += ` (지났어요 · 다음 ${next.date})`;
+  } else {
+    line = `다음 양력: ${next!.date}`;
+  }
+  const clampedYears = [...new Set([thisYear, next].filter((c) => c?.clamped).map((c) => c!.lunarYear))];
+  const note =
+    clampedYears.length > 0
+      ? `${clampedYears.join(' · ')}년 음력 ${month}월은 29일까지라 ${day}일 대신 29일로 셈해요`
+      : null;
+  return { line, note, next: next?.date ?? null };
 }
 
 function categoryIdByName(data: LedgerData, name: string): Id | null {

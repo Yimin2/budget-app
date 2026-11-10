@@ -1,5 +1,8 @@
 /* 지출 화면의 순수 함수. 화면과 떼어 테스트해요. */
-import { compareMonth, isMonthActive, monthOf } from '@/domain';
+import {
+  compareMonth, expenseSpender, isAutoFixedRecord, claimLoanTransferId, claimTransferId, isClaimExpense, isMonthActive,
+  ledgerPeople, monthOf, recorderKey, type ExpenseSpender,
+} from '@/domain';
 import type { Account, AccountRole, Category, Expense, Id, ISODate, LedgerData, PlannedEvent, Won, YearMonth } from '@/domain/types';
 
 /* ───────── 이번 달 지출 ───────── */
@@ -41,46 +44,96 @@ export function parseMonthParam(value: string | null | undefined): YearMonth | n
 
 /* ───────── 필터 ───────── */
 
-/** 카테고리 'none' = 카테고리 없는 지출 */
+/** 카테고리 'none' = 카테고리 없는 지출. spender = 실제로 쓴 사람 키 (expenseSpender) */
 export interface ExpenseFilter {
   accountId: Id | null;
   categoryId: Id | 'none' | null;
-  author: string | null;
+  spender: string | null;
 }
 
-export const EMPTY_FILTER: ExpenseFilter = { accountId: null, categoryId: null, author: null };
+export const EMPTY_FILTER: ExpenseFilter = { accountId: null, categoryId: null, spender: null };
 
 export function activeFilterCount(f: ExpenseFilter): number {
-  return (f.accountId ? 1 : 0) + (f.categoryId ? 1 : 0) + (f.author ? 1 : 0);
+  return (f.accountId ? 1 : 0) + (f.categoryId ? 1 : 0) + (f.spender ? 1 : 0);
 }
 
-export function applyFilter(list: Expense[], f: ExpenseFilter): Expense[] {
+/** spenderKeyOf 가 없으면 기록한 사람으로 걸러요 */
+export function applyFilter(
+  list: Expense[],
+  f: ExpenseFilter,
+  spenderKeyOf: (e: Expense) => string = recorderKey,
+): Expense[] {
   return list.filter((e) => {
     if (f.accountId && e.accountId !== f.accountId) return false;
     if (f.categoryId === 'none' && e.categoryId !== null) return false;
     if (f.categoryId && f.categoryId !== 'none' && e.categoryId !== f.categoryId) return false;
-    if (f.author && e.author.toLowerCase() !== f.author.toLowerCase()) return false;
+    if (f.spender && spenderKeyOf(e) !== f.spender) return false;
     return true;
   });
 }
 
-/** 작성자 고르기 목록: 멤버(멤버 탭 순서) 다음에 멤버가 아닌 작성자 */
-export function authorOptions(data: LedgerData, list: Expense[]): { email: string; name: string }[] {
-  const out: { email: string; name: string }[] = [];
+/** 지출마다 실제로 쓴 사람 (id → 결과). 한 번 구해 목록 · 필터에 함께 써요 */
+export function spendersById(data: LedgerData, list: Expense[]): Map<Id, ExpenseSpender> {
+  const people = ledgerPeople(data);
+  return new Map(list.map((e) => [e.id, expenseSpender(data, e, people)] as const));
+}
+
+/** 쓴 사람 고르기 목록: 가계부의 사람 다음에 이 목록에서 쓴 다른 사람 (청구에 적힌 예전 이름, 공유가 풀린 멤버 등) */
+export function spenderFilterOptions(data: LedgerData, spenders: Iterable<ExpenseSpender>): { key: string; name: string }[] {
+  const out: { key: string; name: string }[] = [];
   const seen = new Set<string>();
-  for (const m of data.members) {
-    const key = m.email.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ email: m.email, name: m.displayName || m.email.split('@')[0] || m.email });
-  }
-  for (const e of list) {
-    const key = e.author.toLowerCase();
+  for (const p of ledgerPeople(data)) {
+    const key = p.email.trim().toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    out.push({ email: e.author, name: e.author.split('@')[0] || e.author });
+    out.push({ key, name: p.name });
+  }
+  for (const s of spenders) {
+    if (!s.key || seen.has(s.key)) continue;
+    seen.add(s.key);
+    out.push({ key: s.key, name: s.name });
   }
   return out;
+}
+
+/* ───────── 줄 배지 ───────── */
+
+export type ExpenseBadgeKind = 'claim-pending' | 'claim-settled' | 'claim-reservoir' | 'excluded' | 'auto' | 'event';
+
+export interface ExpenseBadge {
+  kind: ExpenseBadgeKind;
+  label: string;
+  /** 글자와 함께 쓰는 색 (색만으로 뜻을 전하지 않아요) */
+  tone: 'warning' | 'success' | 'info' | 'neutral';
+}
+
+/**
+ * 지출 줄의 배지: 청구 상태(돌려줄 돈 · 돌려줌 · 저수지에서 빌려 줌) → 예외 → 자동(고정 지출 자동 기록) → 일정.
+ * 색은 청구 상태에만 쓰고 나머지는 중립이에요
+ */
+export function expenseBadges(data: LedgerData, expense: Expense): ExpenseBadge[] {
+  return expenseBadgeReader(data)(expense);
+}
+
+/** 여러 줄에 쓸 때: 이체를 한 번만 훑고 줄마다 배지를 돌려줘요 (isClaimSettled · isClaimPaidFromReservoir 와 같은 규칙) */
+export function expenseBadgeReader(data: LedgerData): (expense: Expense) => ExpenseBadge[] {
+  const live = new Map(data.transfers.filter((t) => !t.deleted && t.status === 'done').map((t) => [t.id, t] as const));
+  const reservoirIds = new Set(data.accounts.filter((a) => a.role === 'reservoir').map((a) => a.id));
+  return (expense) => {
+    const out: ExpenseBadge[] = [];
+    if (isClaimExpense(expense)) {
+      const settle = live.get(claimTransferId(expense.id));
+      const viaReservoir =
+        live.has(claimLoanTransferId(expense.id)) || (!!settle?.fromAccountId && reservoirIds.has(settle.fromAccountId));
+      if (!settle) out.push({ kind: 'claim-pending', label: '돌려줄 돈', tone: 'warning' });
+      else if (viaReservoir) out.push({ kind: 'claim-reservoir', label: '저수지에서 빌려 줌', tone: 'info' });
+      else out.push({ kind: 'claim-settled', label: '돌려줌', tone: 'success' });
+    }
+    if (expense.excluded) out.push({ kind: 'excluded', label: '예외', tone: 'neutral' });
+    if (isAutoFixedRecord(expense)) out.push({ kind: 'auto', label: '자동', tone: 'neutral' });
+    if (expense.eventId) out.push({ kind: 'event', label: '일정', tone: 'neutral' });
+    return out;
+  };
 }
 
 /* ───────── 생활비 / 이벤트 / 고정비 나누기 ───────── */

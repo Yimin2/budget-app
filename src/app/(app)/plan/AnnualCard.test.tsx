@@ -94,4 +94,86 @@ describe('매년 일정 한 번에 등록', () => {
     });
     expect(rows()).toHaveLength(1);
   });
+
+  it('생신 줄에서 음력을 고르면 음력 월 · 일 칸과 올해 양력이 바로 보이고, 그 음력과 올해 양력 날짜로 넣어요', async () => {
+    const { h, card } = await renderCard();
+    const check = within(card).getAllByRole('checkbox', { name: /아버님/ })[0]!;
+    const label = document.querySelector(`label[for="${check.id}"] span`)!.textContent!;
+    fireEvent.click(check);
+    fireEvent.click(within(within(card).getByRole('radiogroup', { name: `${label} 양력 또는 음력` })).getByText('음력'));
+    const preview = within(card).getByTestId('annual-lunar-preview');
+    expect(preview.textContent).toContain('음력 월 · 일을 골라 주세요');
+    expect(preview.textContent).toContain('윤달');
+    fireEvent.change(within(card).getByLabelText(`${label} 음력 월`), { target: { value: '11' } });
+    fireEvent.change(within(card).getByLabelText(`${label} 음력 일`), { target: { value: '15' } });
+    // 2026 음력 11월 15일 = 양력 2026-12-23 (오늘 2026-11-20 뒤라 올해)
+    expect(within(card).getByTestId('annual-lunar-preview').textContent).toContain('올해 양력: 2026-12-23');
+    fireEvent.change(within(card).getByLabelText(`${label} 금액`), { target: { value: '200000' } });
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '등록하기' }));
+    });
+    await screen.findByText('매년 일정 1개를 넣었어요');
+    const ev = h.probe.ledger!.data!.events.find((e) => e.name === `${label} 생신` && !e.deleted)!;
+    expect(ev).toMatchObject({ date: '2026-12-23', lunar: '11-15', repeat: 'yearly' });
+    // 등록됨 줄과 다가오는 일정 목록에 음력 기준과 이 회차 양력이 보여요
+    await waitFor(() => expect(within(card).getByText(/매년 음력 11\/15/)).toBeTruthy());
+    const upcoming = screen.getByRole('region', { name: '다가오는 일정' });
+    expect(within(upcoming).getByText(/음력 11\/15 \(올해 12\/23\)/)).toBeTruthy();
+  });
+
+  it('그해 29일까지인 달의 30일은 29일로 셈하고 알려 줘요', async () => {
+    const { h, card } = await renderCard();
+    fireEvent.click(within(card).getByRole('button', { name: '직접 추가' }));
+    fireEvent.change(within(card).getByLabelText('일정 이름'), { target: { value: '큰아버지 생신' } });
+    fireEvent.click(within(within(card).getByRole('radiogroup', { name: '큰아버지 생신 양력 또는 음력' })).getByText('음력'));
+    fireEvent.change(within(card).getByLabelText('큰아버지 생신 음력 월'), { target: { value: '3' } });
+    fireEvent.change(within(card).getByLabelText('큰아버지 생신 음력 일'), { target: { value: '30' } });
+    const text = within(card).getByTestId('annual-lunar-preview').textContent!;
+    // 2026 음력 3월(30일)은 지났고, 다음인 2027 음력 3월은 29일까지
+    expect(text).toContain('올해 양력: 2026-05-16 (지났어요 · 다음 2027-05-05)');
+    expect(text).toContain('2027년 음력 3월은 29일까지라 30일 대신 29일로 셈해요');
+    fireEvent.change(within(card).getByLabelText('직접 추가 금액'), { target: { value: '100000' } });
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '등록하기' }));
+    });
+    await screen.findByText('매년 일정 1개를 넣었어요');
+    expect(h.probe.ledger!.data!.events.find((e) => e.name === '큰아버지 생신')).toMatchObject({ date: '2027-05-05', lunar: '03-30' });
+  });
+
+  it('설날 · 추석 줄은 음력 날짜가 정해져 있어 그해 양력만 읽기 전용으로 보여요', async () => {
+    const { card } = await renderCard();
+    const seollal = within(card).getByRole('checkbox', { name: /설날/ });
+    expect(seollal.closest('li')!.textContent).toContain('음력 1/1 · 올해 양력: 2026-02-17 (지났어요 · 다음 2027-02-07)');
+    const chuseok = within(card).getByRole('checkbox', { name: /추석/ });
+    expect(chuseok.closest('li')!.textContent).toContain('음력 8/15 · 올해 양력: 2026-09-25 (지났어요 · 다음 2027-09-15)');
+    fireEvent.click(chuseok);
+    expect(within(chuseok.closest('li')!).queryByLabelText(/음력 월/)).toBeNull();
+  });
+
+  it('일정 창에서 음력 일정의 음력 월 · 일을 고치면 음력 값과 다음 회차 양력 날짜가 바뀌어요', async () => {
+    const h = makeHarness();
+    render(<EventsView />, { wrapper: h.Wrapper });
+    await screen.findByRole('region', { name: '매년 일정 한 번에 등록' });
+    await act(async () => {
+      await h.probe.ledger!.addEvent({ date: '2026-12-23', name: '외할머니 생신', amount: 100_000, repeat: 'yearly', lunar: '11-15' });
+    });
+    const upcoming = screen.getByRole('region', { name: '다가오는 일정' });
+    expect(within(upcoming).getByText(/음력 11\/15 \(올해 12\/23\)/)).toBeTruthy();
+    fireEvent.click(within(upcoming).getByRole('button', { name: /외할머니 생신/ }));
+    const dialog = await screen.findByRole('dialog', { name: '일정 고치기' });
+    expect(within(dialog).getByRole('radio', { name: '음력' }).getAttribute('aria-checked')).toBe('true');
+    expect((within(dialog).getByLabelText('음력 월') as HTMLSelectElement).value).toBe('11');
+    expect((within(dialog).getByLabelText('음력 일') as HTMLSelectElement).value).toBe('15');
+    expect(within(dialog).getByTestId('event-calendar-hint').textContent).toContain('올해 양력: 2026-12-23');
+
+    // 음력 12월 15일 → 2026 음력 해의 12/15 = 양력 2027-01-22 (올해 양력 날짜는 이미 지남)
+    fireEvent.change(within(dialog).getByLabelText('음력 월'), { target: { value: '12' } });
+    expect((within(dialog).getByLabelText(/^날짜/) as HTMLInputElement).value).toBe('2027-01-22');
+    expect(within(dialog).getByTestId('event-calendar-hint').textContent).toContain('다음 2027-01-22');
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장하기' }));
+    await screen.findByText('‘외할머니 생신’ 일정을 고쳤어요');
+    const ev = h.probe.ledger!.data!.events.find((e) => e.name === '외할머니 생신')!;
+    expect(ev).toMatchObject({ lunar: '12-15', date: '2027-01-22', repeat: 'yearly' });
+    await waitFor(() => expect(within(screen.getByRole('region', { name: '다가오는 일정' })).getByText(/음력 12\/15 \(2027년 1\/22\)/)).toBeTruthy());
+  });
 });

@@ -6,7 +6,8 @@ import {
   customAnnualEvents,
   customAnnualId,
   formatWon,
-  lunarLabel,
+  lunarPreview,
+  lunarShortLabel,
   nextAnnualDate,
   planAnnualRegistration,
   registeredAnnualEvent,
@@ -23,8 +24,14 @@ const CALENDAR_OPTIONS: { value: AnnualCalendar; label: string }[] = [
   { value: 'lunar', label: '음력' },
 ];
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}월` }));
-const dayOptions = (calendar: AnnualCalendar) =>
-  Array.from({ length: calendar === 'lunar' ? 30 : 31 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}일` }));
+/** 양력은 그달의 날 수까지(2월은 29일), 음력은 30일까지 (그해 29일까지인 달이면 29일로 셈하고 알려 줘요) */
+const SOLAR_MONTH_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const maxDay = (calendar: AnnualCalendar, month: string) => (calendar === 'lunar' ? 30 : (SOLAR_MONTH_DAYS[Number(month) - 1] ?? 31));
+const dayOptions = (calendar: AnnualCalendar, month: string) =>
+  Array.from({ length: maxDay(calendar, month) }, (_, i) => ({ value: String(i + 1), label: `${i + 1}일` }));
+/** 월 · 양력/음력이 바뀌어 고른 일이 그달에 없으면 마지막 날로 */
+const fitDay = (calendar: AnnualCalendar, month: string, day: string) =>
+  day && Number(day) > maxDay(calendar, month) ? String(maxDay(calendar, month)) : day;
 
 interface RowDraft {
   checked: boolean;
@@ -39,10 +46,15 @@ const emptyRow = (calendar: AnnualCalendar = 'solar'): RowDraft => ({ checked: f
 
 type RowError = { amount?: string; date?: string; name?: string };
 
-/** '음력 1월 1일 · 2027년 2월 7일' / '5월 8일' */
+/** '음력 1/1 · 올해 양력: 2026-02-17 (지났어요 · 다음 2027-02-07)' / '매년 5월 8일 · 다음 …' */
 function whenText(month: number, day: number, calendar: AnnualCalendar, today: ISODate): string {
+  if (calendar === 'lunar') {
+    const p = lunarPreview(month, day, today);
+    const base = lunarShortLabel(`${month}-${day}`);
+    return p ? `${base} · ${p.line}` : base;
+  }
   const next = nextAnnualDate(month, day, calendar, today);
-  const base = calendar === 'lunar' ? lunarLabel(`${month}-${day}`) : `매년 ${month}월 ${day}일`;
+  const base = `매년 ${month}월 ${day}일`;
   return next ? `${base} · 다음 ${dateLabel(next, today, false)}` : base;
 }
 
@@ -158,7 +170,7 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
       <div className={styles.annualText}>
         <span className={styles.annualName}>{label}</span>
         <span className={styles.annualMeta}>
-          {ev.lunar ? `${lunarLabel(ev.lunar)} · ` : ''}
+          {ev.lunar ? `매년 ${lunarShortLabel(ev.lunar)} · ` : ''}
           {dateLabel(ev.date, today, false)} · {formatWon(ev.amount)}
         </span>
       </div>
@@ -175,34 +187,57 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
 
   const dateInputs = (key: string, r: RowDraft, update: (next: Partial<RowDraft>) => void, calendarChoice: boolean, label: string) => (
     <div className={styles.annualDate}>
+      {calendarChoice ? (
+        <SegmentedControl
+          options={CALENDAR_OPTIONS}
+          value={r.calendar}
+          onChange={(v) => update({ calendar: v, day: fitDay(v, r.month, r.day) })}
+          ariaLabel={`${label} 양력 또는 음력`}
+        />
+      ) : null}
       <div className={styles.annualMonthDay} id={`${key}-date`} tabIndex={-1}>
         <Select
           value={r.month}
-          onChange={(v) => update({ month: v })}
+          onChange={(v) => update({ month: v, day: fitDay(r.calendar, v, r.day) })}
           options={MONTH_OPTIONS}
-          placeholder="월"
-          aria-label={`${label} 월`}
+          placeholder={r.calendar === 'lunar' ? '음력 월' : '월'}
+          aria-label={`${label} ${r.calendar === 'lunar' ? '음력 ' : ''}월`}
           disabled={busy}
         />
         <Select
           value={r.day}
           onChange={(v) => update({ day: v })}
-          options={dayOptions(r.calendar)}
-          placeholder="일"
-          aria-label={`${label} 일`}
+          options={dayOptions(r.calendar, r.month)}
+          placeholder={r.calendar === 'lunar' ? '음력 일' : '일'}
+          aria-label={`${label} ${r.calendar === 'lunar' ? '음력 ' : ''}일`}
           disabled={busy}
         />
       </div>
-      {calendarChoice ? (
-        <SegmentedControl
-          options={CALENDAR_OPTIONS}
-          value={r.calendar}
-          onChange={(v) => update({ calendar: v, ...(v === 'lunar' && r.day === '31' ? { day: '30' } : {}) })}
-          ariaLabel={`${label} 양력 또는 음력`}
-        />
-      ) : null}
+      {datePreview(key, r)}
     </div>
   );
+
+  /** 고른 날짜를 바로 보여 줘요: 음력이면 '올해 양력: 2026-10-03' (+ 29일로 줄인 안내 · 윤달 안내) */
+  const datePreview = (key: string, r: RowDraft) => {
+    const month = Number(r.month);
+    const day = Number(r.day);
+    if (r.calendar !== 'lunar') {
+      const next = r.month && r.day ? nextAnnualDate(month, day, 'solar', today) : null;
+      return next ? (
+        <p className={styles.annualMeta} id={`${key}-preview`} aria-live="polite">
+          다음 {next}
+        </p>
+      ) : null;
+    }
+    const p = r.month && r.day ? lunarPreview(month, day, today) : null;
+    return (
+      <p className={styles.annualMeta} id={`${key}-preview`} aria-live="polite" data-testid="annual-lunar-preview">
+        {r.month && r.day ? (p ? p.line : '이 음력 날짜는 셈할 수 없어요') : '음력 월 · 일을 골라 주세요'}
+        {p?.note ? ` · ${p.note}` : ''}
+        {' · 윤달은 따로 고르지 않고 평달 같은 날로 셈해요'}
+      </p>
+    );
+  };
 
   const errorLine = (key: string) => {
     const e = errors[key];

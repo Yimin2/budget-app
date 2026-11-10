@@ -161,3 +161,24 @@ describe('평소 쓰는 돈 · 기록에서 찾기와 함께', () => {
     expect(names.filter((n) => !isCoveredByAnnual(data, n))).toEqual(['조카 생일']);
   });
 });
+
+describe('음력 날짜 미리 보기 (lunarPreview)', () => {
+  it('올해 양력과, 지났으면 다음 회차', async () => {
+    const { lunarPreview } = await import('./annual');
+    expect(lunarPreview(11, 15, '2026-11-20')).toEqual({ line: '올해 양력: 2026-12-23', note: null, next: '2026-12-23' });
+    expect(lunarPreview(1, 1, '2026-11-20')?.line).toBe('올해 양력: 2026-02-17 (지났어요 · 다음 2027-02-07)');
+  });
+
+  it('그해 29일까지인 달의 30일은 29일로 셈하고 알려 줘요', async () => {
+    const { lunarPreview, planAnnualRegistration } = await import('./annual');
+    expect(lunarPreview(3, 30, '2026-11-20')).toEqual({
+      line: '올해 양력: 2026-05-16 (지났어요 · 다음 2027-05-05)',
+      note: '2027년 음력 3월은 29일까지라 30일 대신 29일로 셈해요',
+      next: '2027-05-05',
+    });
+    const drafts = planAnnualRegistration(emptyLedger(), '2026-11-20', [
+      { id: 'annual-custom-x', name: '큰아버지 생신', categoryName: '경조사', month: 3, day: 30, calendar: 'lunar', amount: 100_000 },
+    ]);
+    expect(drafts[0]).toMatchObject({ date: '2027-05-05', lunar: '03-30' });
+  });
+});

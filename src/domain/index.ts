@@ -14,6 +14,7 @@ export * from './categories';
 export * from './categoryMerge';
 export * from './income';
 export * from './household';
+export * from './spender';
 export * from './installments';
 export * from './bills';
 export * from './allocation';

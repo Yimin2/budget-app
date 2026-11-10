@@ -327,6 +327,36 @@ button.card {
 .badge.danger .dot {
   background: var(--danger);
 }
+.badge.soft {
+  background: var(--surface-subtle);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+.badge.soft.brand {
+  background: var(--primary-subtle);
+  border-color: var(--decor-1);
+  color: var(--primary-subtle-text);
+}
+.badge.soft.info {
+  background: var(--info-subtle);
+  border-color: var(--info-border);
+  color: var(--info-text);
+}
+.badge.soft.success {
+  background: var(--success-subtle);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+.badge.soft.warning {
+  background: var(--warning-subtle);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+.badge.soft.danger {
+  background: var(--danger-subtle);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
 .badge.sm {
   height: 24px;
   padding: 0 var(--space-2);
