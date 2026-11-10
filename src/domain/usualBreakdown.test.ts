@@ -35,7 +35,7 @@ function ledger(expenses: Expense[]): LedgerData {
 const MONTHS = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'];
 
 describe('평소 쓰는 돈 항목별 평균', () => {
-  it('최근 6개월 합 ÷ 6, 건수 · 건당 · 지난달, 월 평균 큰 순. 합은 카드의 평소 쓰는 돈과 같아요', () => {
+  it('최근 12개월(기록이 더 짧으면 있는 만큼) 합 ÷ 달 수, 건수 · 건당 · 지난달, 월 평균 큰 순. 합은 카드의 평소 쓰는 돈과 같아요', () => {
     const data = ledger([
       ...MONTHS.map((m) => spend(`${m}-03`, 120_000, { categoryId: 'c-fam', author: 'minji@x' })),
       spend('2026-06-10', 30_000, { categoryId: 'c-gift', author: 'junho@x' }),
@@ -58,7 +58,7 @@ describe('평소 쓰는 돈 항목별 평균', () => {
     expect(b.monthlyTotal).toBe(insight.monthlyUsual);
   });
 
-  it('일정 · 여행 · 고정 지출 자동 기록 · 예외 · 다른 통장 · 이번 달 · 6개월 전 지출은 세지 않아요', () => {
+  it('일정 · 여행 · 고정 지출 자동 기록 · 예외 · 다른 통장 · 이번 달 · 12개월 전 지출은 세지 않아요', () => {
     const data = ledger([
       spend('2026-10-01', 50_000, { categoryId: 'c-fam' }),
       spend('2026-10-02', 1_000_000, { categoryId: 'c-fam', excluded: true }),
@@ -66,14 +66,16 @@ describe('평소 쓰는 돈 항목별 평균', () => {
       spend('2026-10-04', 70_000, { categoryId: 'c-fam', tripId: 'trip-1' }),
       spend('2026-10-05', 70_000, { categoryId: 'c-fam', fixedExpenseId: 'fx-1' }),
       spend('2026-11-02', 70_000, { categoryId: 'c-fam' }),
-      spend('2026-04-30', 70_000, { categoryId: 'c-fam' }),
+      spend('2025-10-31', 70_000, { categoryId: 'c-fam' }),
       expense({ date: '2026-10-06', amount: 70_000, accountId: minjiAcc.id, categoryId: 'c-fam' }),
     ]);
     const b = usualBreakdown(data, eventAcc.id, TODAY);
     expect(b.rows).toHaveLength(1);
-    expect(b.rows[0]).toMatchObject({ count: 1, sum: 50_000, monthly: Math.round(50_000 / 6) });
-    // 2026-04 지출이 기록 시작을 4월로 당겨도 기간은 최근 6개월 (5~10월)
-    expect(b.months).toEqual(MONTHS);
+    expect(b.rows[0]).toMatchObject({ count: 1, sum: 50_000, monthly: Math.round(50_000 / 12) });
+    // 2025-10 지출이 기록 시작을 2025년 10월로 당겨도 기간은 최근 12개월 (2025-11 ~ 2026-10)
+    expect(b.months).toEqual([
+      '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', ...MONTHS,
+    ]);
   });
 
   it('사람을 고르면 그 사람이 쓴 지출만 (월 평균 · 건수 · 합 모두)', () => {
