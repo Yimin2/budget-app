@@ -159,6 +159,20 @@ export class LocalRepository implements LedgerRepository {
     writeLedger(this.storage, this.ref.id, data);
   }
 
+  async upsertMany<T extends TableName>(table: T, rows: TableRows[T][]): Promise<void> {
+    if (rows.length === 0) return;
+    const data = readLedger(this.storage, this.ref.id);
+    const list = data[table] as TableRows[T][];
+    for (const row of rows) {
+      const k = keyOf(table, row);
+      if (!k) throw new Error(`${SCHEMAS[table].tab} 항목의 키가 비어 있어요`);
+      const i = list.findIndex((r) => keyOf(table, r) === k);
+      if (i >= 0) list[i] = clone(row);
+      else list.push(clone(row));
+    }
+    writeLedger(this.storage, this.ref.id, data);
+  }
+
   async updateSettings(patch: Partial<LedgerSettings>): Promise<void> {
     const data = readLedger(this.storage, this.ref.id);
     data.settings = { ...data.settings, ...patch };

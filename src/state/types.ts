@@ -253,7 +253,12 @@ export interface LedgerApi {
    * accountId=null 이면 이어진 통장을 모두 풀어요
    */
   linkMemberAccount(email: string, accountId: Id | null): Promise<void>;
+  /**
+   * 구글 시트 공유 목록을 다시 읽어 멤버에 맞춰요 (가계부를 다시 불러와요).
+   * 'synced' = 공유 목록을 읽었어요 / 'unavailable' = 못 읽었어요(보기 · 댓글 권한, 연결 오류, 체험 모드) — 멤버는 그대로
+   */
+  refreshSharing(): Promise<'synced' | 'unavailable'>;
   renameLedger(name: string): Promise<void>;
-  /** 기록한 사람 이름: 멤버면 이어진 통장 주인 이름 → 표시 이름, 아니면 이메일 앞부분 */
+  /** 기록한 사람 이름: 멤버면 이어진 통장 주인 이름 → 표시 이름, 공유가 풀린 멤버는 표시 이름, 아니면 이메일 앞부분 */
   displayName(email: string): string;
 }

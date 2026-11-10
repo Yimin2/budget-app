@@ -4,7 +4,7 @@
  * 열을 추가해도 읽을 수 있다. 쓰기 값은 RAW(문자열·숫자·불리언).
  */
 import type {
-  AccountRole, EventStatus, FixedKind, LedgerKind, LedgerSettings, LivingSpread, MonthEndChoice, MonthEndItem, Repeat,
+  AccountRole, EventStatus, FixedKind, LedgerKind, LedgerSettings, LivingSpread, MemberRole, MonthEndChoice, MonthEndItem, Repeat,
   RuleKind, TransferKind, TransferStatus, TripItem,
 } from '@/domain/types';
 import { TRIP_ITEMS, TRIP_ITEM_LABELS } from '@/domain/trips';
@@ -252,6 +252,37 @@ function enumCodec<T extends string>(labels: Record<T, string>, fallback: T): Co
   };
 }
 
+/** 멤버 공유 여부: 빈 칸 = 공유됨 (예전 탭 · 사람이 지운 칸). '아니오' 같은 분명한 부정만 공유 안 됨 */
+const NOT_SHARED = new Set(['아니오', '아니요', '아님', 'no', 'n', 'false', '0', 'x']);
+const sharedFlag: Codec = {
+  enc: (v) => (v === false ? '아니오' : '예'),
+  dec: (c) => {
+    if (typeof c === 'boolean') return c;
+    if (typeof c === 'number') return c !== 0;
+    if (isBlank(c)) return true;
+    return !NOT_SHARED.has(String(c).replace(/\s/g, '').toLowerCase());
+  },
+};
+
+export const MEMBER_ROLE_CELL_LABELS: Record<MemberRole, string> = {
+  owner: '소유자', writer: '편집자', commenter: '댓글 작성자', reader: '뷰어',
+};
+/** 멤버 드라이브 권한. 빈 칸 · 모르는 값은 null. '보기 전용' · '댓글' 도 읽는다 */
+const memberRole: Codec = {
+  enc: (v) => (typeof v === 'string' && v in MEMBER_ROLE_CELL_LABELS ? MEMBER_ROLE_CELL_LABELS[v as MemberRole] : ''),
+  dec: (c) => {
+    if (isBlank(c)) return null;
+    const k = String(c).replace(/\s/g, '').toLowerCase();
+    for (const [code, label] of Object.entries(MEMBER_ROLE_CELL_LABELS) as [MemberRole, string][]) {
+      if (k === code || k === label.replace(/\s/g, '')) return code;
+    }
+    if (k === '보기전용' || k === 'viewer') return 'reader';
+    if (k === '댓글' || k === '댓글가능') return 'commenter';
+    if (k === 'organizer' || k === 'fileorganizer') return 'writer';
+    return null;
+  },
+};
+
 export const ROLE_LABELS: Record<AccountRole, string> = {
   income: '수입', fixed: '고정지출', event: '이벤트', reservoir: '저수지',
   savings: '저축투자', allowance: '용돈', other: '기타',
@@ -395,7 +426,10 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
   },
   members: {
     table: 'members', tab: TAB_NAMES.members, key: 'email',
-    columns: [c('email', '이메일', str), c('displayName', '표시이름', str, ['이름'])],
+    columns: [
+      c('email', '이메일', str), c('displayName', '표시이름', str, ['이름']),
+      c('shared', '공유', sharedFlag, ['공유됨']), c('role', '권한', memberRole),
+    ],
   },
   trips: {
     table: 'trips', tab: TAB_NAMES.trips, key: 'id',

@@ -1,5 +1,6 @@
 import { addMonths, daysInMonth, daysLeftInMonth, isMonthActive, monthOf } from './dates';
 import { activeAccountsSorted, livingAccountIdsFor } from './internal';
+import { livingOwnerName } from './household';
 import { floorTo100 } from './money';
 import type {
   Category, FixedExpense, Id, ISODate, LedgerData, LivingItem, LivingSpread, LivingStatus, MonthEndItem, YearMonth, Won,
@@ -70,12 +71,11 @@ export function livingAccountIds(data: LedgerData, month: YearMonth): Id[] {
   return livingAccountIdsFor(data, month);
 }
 
-/** 통장 이름 대신 부를 주인 이름: 주인 → 통장 이름 */
+/** 통장 이름 대신 부를 주인 이름: 이어진 사람(멤버) → 주인 → 통장 이름 (livingOwnerName) */
 function ownerOf(data: LedgerData, accountId: Id | null): string | null {
   if (!accountId) return null;
-  const a = data.accounts.find((x) => x.id === accountId);
-  if (!a) return null;
-  return a.ownerName?.trim() || a.ownerEmail?.split('@')[0] || a.name;
+  if (!data.accounts.some((x) => x.id === accountId)) return null;
+  return livingOwnerName(data, accountId);
 }
 
 /**
@@ -211,7 +211,7 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
 export interface LivingView {
   /** 생활비 통장 */
   accountId: Id;
-  /** 부를 이름 (통장 주인 → 통장 이름) */
+  /** 부를 이름 (이어진 사람 → 통장 주인 → 통장 이름, livingOwnerName) */
   name: string;
   status: LivingStatus;
 }

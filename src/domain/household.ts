@@ -30,14 +30,32 @@ export interface LivingOwner {
   person: LedgerPerson | null;
 }
 
+/**
+ * 생활비 통장을 부를 이름: 이어진 사람 이름 → 통장 주인 이름 → 주인 이메일 앞부분 →
+ * (주인 없는 통장이고 가계부의 사람이 한 명뿐이며 그 사람 통장이 따로 없으면) 그 사람 이름 → 통장 이름.
+ * 혼자 쓰는 가계부에서 '생활비' 대신 내 이름이 보이게 해요
+ */
+export function livingOwnerName(data: LedgerData, accountId: Id, people: LedgerPerson[] = ledgerPeople(data)): string {
+  const account = data.accounts.find((a) => a.id === accountId);
+  if (!account) return '생활비';
+  const person = people.find((p) => accountBelongsTo(account, p));
+  if (person?.name) return person.name;
+  const owner = account.ownerName?.trim() || (account.ownerEmail ?? '').trim().split('@')[0];
+  if (owner) return owner;
+  const only = people.length === 1 ? people[0]! : null;
+  if (only && !data.accounts.some((a) => !a.deleted && a.id !== accountId && a.role === account.role && accountBelongsTo(a, only))) {
+    return only.name;
+  }
+  return account.name || '생활비';
+}
+
 /** 그달 생활비 통장마다 주인 (통장 순서) */
 export function livingOwners(data: LedgerData, month: YearMonth): LivingOwner[] {
   const people = ledgerPeople(data);
   return livingAccountIdsFor(data, month).map((id) => {
     const account = data.accounts.find((a) => a.id === id);
     const person = account ? (people.find((p) => accountBelongsTo(account, p)) ?? null) : null;
-    const name = person?.name || account?.ownerName?.trim() || account?.name || '생활비';
-    return { accountId: id, name, person };
+    return { accountId: id, name: livingOwnerName(data, id, people), person };
   });
 }
 

@@ -277,9 +277,20 @@ export interface Favorite {
   deleted: boolean;
 }
 
+/** 구글 드라이브 공유 권한 (PLAN 4-8). 공유 드라이브의 관리자 · 콘텐츠 관리자는 편집자로 본다 */
+export type MemberRole = 'owner' | 'writer' | 'commenter' | 'reader';
+
 export interface Member {
   email: string;
+  /** 구글 프로필 이름 (공유 목록 · 로그인에서 저절로 채워져요). 비면 이메일 앞부분으로 불러요 */
   displayName: string;
+  /**
+   * 지금 구글 시트가 이 사람에게 공유돼 있는지. 빈 칸 · 없음 = 공유됨.
+   * false = 공유가 풀린 사람: 사람 고르기에서 빠지고, 예전 기록의 이름은 그대로 읽혀요
+   */
+  shared?: boolean;
+  /** 드라이브 권한 (공유 목록을 읽었을 때만). 모르면 null */
+  role?: MemberRole | null;
 }
 
 export interface LedgerSettings {

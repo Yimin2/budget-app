@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
-import { ledgerPeople } from '@/domain';
+import { isSharedMember, ledgerPeople, MEMBER_ROLE_LABELS } from '@/domain';
 import type { Member } from '@/domain/types';
 import { buildInviteLink, useSession } from '@/state';
 import { Avatar, Badge, Banner, Button, Card, EmptyState, Field, ListRow, Select, TextInput, useToast } from '@/ui';
@@ -17,16 +17,33 @@ export function MembersCards({ ledger }: { ledger: ReadyLedger }) {
 
 function Members({ ledger }: { ledger: ReadyLedger }) {
   const session = useSession();
+  const toast = useToast();
+  const [refreshing, setRefreshing] = useState(false);
   const me = session.user?.email.toLowerCase() ?? '';
-  const members = [...ledger.data.members].sort((a, b) => {
-    // 나를 맨 위에
+  // 이름은 구글에 보이는 그대로 (공유 목록 · 로그인에서 저절로 맞춰져요). 나를 맨 위에
+  const nameOf = (m: Member) => m.displayName.trim() || m.email.split('@')[0] || m.email;
+  const sorted = [...ledger.data.members].sort((a, b) => {
     const am = a.email.toLowerCase() === me ? 0 : 1;
     const bm = b.email.toLowerCase() === me ? 0 : 1;
-    return am - bm || a.displayName.localeCompare(b.displayName, 'ko');
+    return am - bm || nameOf(a).localeCompare(nameOf(b), 'ko');
   });
+  const members = sorted.filter(isSharedMember);
+  const unshared = sorted.filter((m) => !isSharedMember(m));
   const isShared = ledger.data.settings.kind === 'shared';
+  const isSheets = ledger.ref.source === 'sheets';
   const people = new Map(ledgerPeople(ledger.data).map((p) => [p.email.toLowerCase(), p]));
   const canLink = isShared && ledger.incomeAccounts.length > 0;
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      const result = await ledger.refreshSharing();
+      if (result === 'synced') toast.success('공유 목록을 새로 읽었어요');
+      else toast.show('공유 목록을 읽지 못했어요. 시트 소유자나 편집자만 볼 수 있어요. 멤버는 그대로 둘게요', { tone: 'info' });
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <>
@@ -37,7 +54,8 @@ function Members({ ledger }: { ledger: ReadyLedger }) {
           <ul className="list">
             {members.map((m, i) => {
               const mine = m.email.toLowerCase() === me;
-              const name = people.get(m.email.toLowerCase())?.name || m.displayName || m.email;
+              const name = nameOf(m);
+              const role = m.role ? MEMBER_ROLE_LABELS[m.role] : null;
               return (
                 <li key={m.email}>
                   <ListRow
@@ -49,7 +67,7 @@ function Members({ ledger }: { ledger: ReadyLedger }) {
                       />
                     }
                     title={name}
-                    subtitle={m.email}
+                    subtitle={role ? `${m.email} · ${role}` : m.email}
                     trailing={
                       mine ? (
                         <Badge size="sm" tone="brand" dot={false}>
@@ -64,8 +82,41 @@ function Members({ ledger }: { ledger: ReadyLedger }) {
             })}
           </ul>
         )}
-        {ledger.ref.source === 'sheets' ? (
-          <p className="st-desc">멤버를 빼려면 구글 시트의 공유 설정에서 그 사람의 권한을 지워 주세요.</p>
+        {unshared.length > 0 ? (
+          <section className="stack gap-3" aria-labelledby="mb-unshared">
+            <h3 id="mb-unshared" className="section-title">
+              공유가 풀린 사람
+            </h3>
+            <ul className="list">
+              {unshared.map((m) => (
+                <li key={m.email}>
+                  <ListRow
+                    leading={<Avatar name={nameOf(m)} />}
+                    title={nameOf(m)}
+                    subtitle={m.email}
+                    trailing={
+                      <Badge size="sm" dot={false}>
+                        공유 안 됨
+                      </Badge>
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+            <p className="st-desc">사람 고르기에는 나오지 않고, 예전 기록에는 이름이 그대로 보여요.</p>
+          </section>
+        ) : null}
+        {isSheets ? (
+          <>
+            <p className="st-desc">
+              멤버와 이름은 구글 시트의 공유 설정에서 저절로 가져와요. 사람을 더하거나 빼려면 공유 설정에서 바꾼 뒤 새로고침해 주세요.
+            </p>
+            <div className="st-foot">
+              <Button variant="outline" icon="refresh" loading={refreshing} onClick={() => void refresh()}>
+                공유 목록 새로고침
+              </Button>
+            </div>
+          </>
         ) : null}
       </Card>
 
@@ -110,7 +161,7 @@ function InviteCard({ ledger }: { ledger: ReadyLedger }) {
       setError('이메일 주소를 확인해 주세요');
       return;
     }
-    if (ledger.data.members.some((m) => m.email.toLowerCase() === clean.toLowerCase())) {
+    if (ledger.data.members.some((m) => isSharedMember(m) && m.email.toLowerCase() === clean.toLowerCase())) {
       setError('이미 멤버예요');
       return;
     }
@@ -158,7 +209,7 @@ function InviteCard({ ledger }: { ledger: ReadyLedger }) {
             placeholder="name@gmail.com"
           />
         </Field>
-        <Field label="표시 이름" optional hint="기록에 보일 이름이에요. 비우면 이메일 앞부분을 써요.">
+        <Field label="표시 이름" optional hint="공유 목록을 읽으면 구글 이름으로 저절로 바뀌어요. 그 전까지 보일 이름이에요.">
           <TextInput value={name} maxLength={20} onChange={(e) => setName(e.target.value)} />
         </Field>
         {ledger.incomeAccounts.length > 0 ? (

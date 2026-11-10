@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useState } from 'react';
-import { formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, withSubject } from '@/domain';
+import { useId, useMemo, useState } from 'react';
+import { ledgerPeople, formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, withSubject } from '@/domain';
 import type { Favorite, LivingItem, LivingStatus, LivingView } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import {
@@ -22,6 +22,8 @@ export function HomeView() {
   const fallback = useLedgerFallback(<HomeSkeleton />);
   const data = ledger.data;
   const name = data?.settings.name ?? session.activeLedger?.name ?? '가계부';
+  // 함께 쓰는 사람 = 지금 공유돼 있는 멤버 (공유 목록에서 저절로 맞춰져요)
+  const people = useMemo(() => (data ? ledgerPeople(data) : []), [data]);
 
   return (
     <div className={styles.home}>
@@ -41,11 +43,8 @@ export function HomeView() {
           )
         }
         actions={
-          data && data.members.length > 1 ? (
-            <AvatarGroup
-              people={data.members.map((m) => ({ name: m.displayName || m.email }))}
-              label={`함께 쓰는 사람 ${data.members.length}명`}
-            />
+          people.length > 1 ? (
+            <AvatarGroup people={people.map((p) => ({ name: p.name }))} label={`함께 쓰는 사람 ${people.length}명`} />
           ) : undefined
         }
       />
@@ -119,6 +118,43 @@ function headline(living: LivingStatus): number {
   return living.items.some((i) => i.spread === 'daily') ? living.todayAvailable : living.remaining;
 }
 
+/** 하루에 나눠 쓰는 항목에 오늘 쓴 돈 합 (한 달 한도 항목은 빼요) */
+function dailySpentToday(living: LivingStatus): number {
+  return living.items.reduce((sum, i) => (i.spread === 'daily' ? sum + i.spentToday : sum), 0);
+}
+
+/**
+ * 하루 예산 한 줄: 오늘 쓴 돈이 있으면 '오늘 쓴 돈 ○원 · 써도 되는 돈 ○원', 없으면 '오늘 써도 되는 돈 ○원'.
+ * 써도 되는 돈을 넘었으면 '오늘 ○원 넘었어요'(경고 색)
+ */
+function DailyLine({ spent, available }: { spent: number; available: number }) {
+  const over = available < 0;
+  const left = over ? (
+    <strong className={styles.warn}>오늘 {formatWon(-available)} 넘었어요</strong>
+  ) : spent > 0 ? (
+    <>
+      써도 되는 돈 <strong>{formatWon(available)}</strong>
+    </>
+  ) : (
+    <>
+      오늘 써도 되는 돈 <strong>{formatWon(available)}</strong>
+    </>
+  );
+  return (
+    <span className={styles.dailyLine}>
+      {spent > 0 ? (
+        <>
+          <span>
+            오늘 쓴 돈 <strong>{formatWon(spent)}</strong>
+          </span>
+          <span aria-hidden="true">·</span>
+        </>
+      ) : null}
+      <span>{left}</span>
+    </span>
+  );
+}
+
 function TodayCard({
   living,
   person = null,
@@ -140,6 +176,7 @@ function TodayCard({
   const daily = living.items.filter((i) => i.spread === 'daily');
   const hasDaily = daily.length > 0;
   const over = hasDaily && living.todayAvailable < 0;
+  const spentToday = dailySpentToday(living);
   const ratio = living.monthBudget > 0 ? living.spent / living.monthBudget : 0;
   const tone = living.remaining < 0 ? 'danger' : ratio >= 0.8 ? 'warning' : 'primary';
   const dailyNames = daily.map((i) => i.name).join(' · ');
@@ -169,6 +206,12 @@ function TodayCard({
       </h2>
       <Money amount={Math.max(0, hasDaily ? living.todayAvailable : living.remaining)} hero animate as="p" style={{ margin: 0 }} />
       {hasDaily && living.items.length > 1 ? <p className={styles.heroNote}>{dailyNames} 합계</p> : null}
+      {hasDaily && spentToday > 0 ? (
+        // 큰 숫자가 '오늘 써도 되는 돈'(오늘 쓴 돈을 뺀 값)이라 오늘 쓴 돈만 더해요. 안 썼으면 '0원' 줄은 없어요
+        <p className={styles.heroToday}>
+          오늘 쓴 돈 <strong>{formatWon(spentToday)}</strong>
+        </p>
+      ) : null}
       {over ? (
         <p className={styles.over}>
           <Icon name="alert-triangle" size={20} />
@@ -208,17 +251,25 @@ function TodayCard({
           {others.map((v) => (
             <li key={v.accountId}>
               <span>{v.name}</span>
-              <strong>{formatWon(Math.max(0, headline(v.status)))}</strong>
+              <OtherAmount living={v.status} />
             </li>
           ))}
           <li>
             <span>{views.length === 2 ? '둘이 합쳐' : '모두 합쳐'}</span>
-            <strong>{formatWon(Math.max(0, headline(household)))}</strong>
+            <OtherAmount living={household} />
           </li>
         </ul>
       ) : null}
     </Card>
   );
+}
+
+/** 다른 사람 · 합계 한 줄의 금액: 하루 항목에 오늘 쓴 돈이 있거나 넘었으면 하루 예산 한 줄, 아니면 큰 숫자와 같은 금액 */
+function OtherAmount({ living }: { living: LivingStatus }) {
+  const daily = living.items.some((i) => i.spread === 'daily');
+  const spent = daily ? dailySpentToday(living) : 0;
+  if (daily && (spent > 0 || living.todayAvailable < 0)) return <DailyLine spent={spent} available={living.todayAvailable} />;
+  return <strong>{formatWon(Math.max(0, headline(living)))}</strong>;
 }
 
 /* ───────── 생활비 항목 ───────── */
@@ -279,9 +330,7 @@ function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner
                 {i.carryIn !== 0 ? ` · 이월 ${formatWon(i.carryIn)}` : ''}
               </span>
               {i.todayAvailable !== null ? (
-                <span>
-                  오늘 써도 되는 돈 <strong className={i.todayAvailable < 0 ? styles.bad : undefined}>{formatWon(i.todayAvailable)}</strong>
-                </span>
+                <DailyLine spent={i.spentToday} available={i.todayAvailable} />
               ) : (
                 <span>{i.unbudgeted ? '예산 없음' : '한 달 한도'}</span>
               )}

@@ -116,6 +116,30 @@
 .heroMeta .bad {
   color: var(--danger-text);
 }
+.heroToday {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.heroToday strong {
+  color: var(--text);
+  font-weight: 700;
+}
+/* 하루 예산 한 줄: 좁은 화면에서는 '·' 앞뒤로 줄을 바꿔요 */
+.dailyLine {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-1);
+  min-width: 0;
+}
+.dailyLine .warn,
+.heroToday .warn,
+.heroOthers .warn,
+.itemMeta .warn {
+  color: var(--warning-text);
+}
 .heroNote {
   margin: 0;
   font-size: 14px;

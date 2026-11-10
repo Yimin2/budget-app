@@ -170,6 +170,8 @@ describe('state — 체험 모드 흐름', () => {
             self.fail ? Promise.reject(new Error('boom')) : repo.insert(t, rows),
           upsert: <T extends TableName>(t: T, row: TableRows[T]) =>
             self.fail ? Promise.reject(new Error('boom')) : repo.upsert(t, row),
+          upsertMany: <T extends TableName>(t: T, rows: TableRows[T][]) =>
+            self.fail ? Promise.reject(new Error('boom')) : repo.upsertMany(t, rows),
           updateSettings: repo.updateSettings.bind(repo),
         };
       }

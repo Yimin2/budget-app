@@ -115,6 +115,7 @@ describe('설정 · 멤버 · 공유', () => {
           load: () => r.load(),
           insert: (t, rows) => r.insert(t, rows),
           upsert: (t, row) => r.upsert(t, row),
+          upsertMany: (t, rows) => r.upsertMany(t, rows),
           updateSettings: (patch) => r.updateSettings(patch),
         };
       },
