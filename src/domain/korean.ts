@@ -8,7 +8,7 @@ export function hasBatchim(word: string): boolean {
   return code % 28 !== 0;
 }
 
-/** '기쁜' → '기쁜이', '민구' → '민구가' */
+/** '가람' → '가람이', '나래' → '나래가' */
 export function withSubject(name: string): string {
   return `${name}${hasBatchim(name) ? '이' : '가'}`;
 }

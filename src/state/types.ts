@@ -7,6 +7,7 @@ import type { TripInput } from '@/domain/trips';
 import type { InstallmentInput, InstallmentPatch } from '@/domain/installments';
 import type { ImportFile, ImportPlan } from '@/domain/importFile';
 import type { LedgerRef } from '@/storage/types';
+import type { InviteOpenResult } from './invite';
 
 export type SessionMode = 'google' | 'demo';
 
@@ -33,6 +34,11 @@ export interface SessionApi {
   createLedger(input: { kind: 'shared' | 'personal'; name: string; sharedLedgerId?: string | null }): Promise<LedgerRef>;
   /** 공유받은 가계부 열기 (sheets: 구글 파일 선택 창) */
   openSharedLedger(): Promise<LedgerRef | null>;
+  /**
+   * 초대 링크(/start?open=<id>)로 열기 (구글 모드만). 바로 읽히면 그대로 열고, 아니면 그 파일을 미리 골라 둔 선택 창을 띄워요.
+   * 열리면 최근 목록에 넣고 지금 가계부로 골라요. 선택 창을 닫으면 { kind: 'cancelled' }
+   */
+  openInvitedLedger(spreadsheetId: string): Promise<InviteOpenResult>;
   forgetLedger(id: string): void;
   /** 구글 연결 다시 맺기 (버튼 클릭 안에서). 조용한 복구가 막혀 가계부를 못 불러올 때 */
   reconnectGoogle(): Promise<void>;

@@ -39,9 +39,18 @@ function loadPickerApi(): Promise<GooglePickerNamespace> {
   return pickerLoad;
 }
 
+export interface PickOptions {
+  /**
+   * 초대 링크로 열 때: 이 파일만 보이게 미리 골라 둔다 (DocsView.setFileIds). 사용자는 '선택'만 누르면 된다.
+   * 고르는 순간 drive.file 권한이 이 파일에 생긴다
+   */
+  fileId?: string;
+}
+
 /** 파일 선택 창. 토큰은 호출하는 쪽이 넘긴다 (getAccessToken) */
 export async function pickSpreadsheetWith(
   getToken: () => Promise<string>,
+  opts: PickOptions = {},
 ): Promise<{ id: string; name: string } | null> {
   const { apiKey, appId, clientId } = getGoogleConfig();
   if (!clientId || !apiKey) throw new GoogleError('not_configured', 'NEXT_PUBLIC_GOOGLE_API_KEY missing');
@@ -49,13 +58,15 @@ export async function pickSpreadsheetWith(
   const [ns, token] = await Promise.all([loadPickerApi(), getToken()]);
 
   return new Promise((resolve) => {
-    const view = new ns.DocsView(ns.ViewId.SPREADSHEETS).setMimeTypes(SPREADSHEET_MIME).setIncludeFolders(false);
+    let view = new ns.DocsView(ns.ViewId.SPREADSHEETS).setMimeTypes(SPREADSHEET_MIME).setIncludeFolders(false);
+    const fileId = opts.fileId?.trim();
+    if (fileId && view.setFileIds) view = view.setFileIds(fileId);
     let builder = new ns.PickerBuilder()
       .addView(view)
       .setOAuthToken(token)
       .setDeveloperKey(apiKey)
       .setLocale('ko')
-      .setTitle('가계부 시트 고르기')
+      .setTitle(fileId ? '초대받은 가계부 열기' : '가계부 시트 고르기')
       .setCallback((data: PickerResponse) => {
         if (data.action === ns.Action.PICKED) {
           const doc = data.docs?.[0];

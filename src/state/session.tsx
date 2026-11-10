@@ -5,6 +5,7 @@ import { createDefaultLedger, createDemoLedger, toISODate } from '@/domain';
 import * as googleModule from '@/google';
 import { LocalBackend, SheetsBackend } from '@/storage';
 import type { LedgerBackend, LedgerRef } from '@/storage/types';
+import { openInvitedLedger as runInviteOpen, type InviteOpenResult } from './invite';
 import { DEMO_LEDGER_ID, SESSION_KEY, browserStorage, readJson, removeKey, writeJson, type SessionStorageLike } from './storageKeys';
 import type { SessionApi, SessionMode, SessionUser } from './types';
 
@@ -15,7 +16,8 @@ export interface GoogleDeps {
   signIn(): Promise<{ email: string; name: string; picture: string | null }>;
   signOut(): void;
   restoreSession(emailHint: string): Promise<{ email: string; name: string; picture: string | null } | null>;
-  pickSpreadsheet(): Promise<{ id: string; name: string } | null>;
+  /** opts.fileId: 그 파일을 미리 골라 둔 선택 창 (초대 링크) */
+  pickSpreadsheet(opts?: { fileId?: string }): Promise<{ id: string; name: string } | null>;
   /** forceRefresh: 401 뒤 캐시된 토큰을 버리고 새로 받기 */
   getAccessToken(forceRefresh?: boolean): Promise<string>;
   /** 사용자 클릭 안에서 같은 계정으로 다시 연결 (없으면 getAccessToken(true) 로 대신) */
@@ -297,6 +299,23 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
     return ref;
   }, [deps, selectLedger]);
 
+  const openInvitedLedger = useCallback(
+    async (spreadsheetId: string): Promise<InviteOpenResult> => {
+      const s = stateRef.current;
+      if (s.status !== 'signedIn' || s.mode !== 'google') throw new Error('초대 링크는 구글로 로그인해야 열 수 있어요');
+      const result = await runInviteOpen(
+        {
+          describe: (id) => deps.sheets.describe(id),
+          pick: (fileId) => deps.google.pickSpreadsheet({ fileId }),
+        },
+        spreadsheetId,
+      );
+      if (result.kind === 'opened') selectLedger(result.ref);
+      return result;
+    },
+    [deps, selectLedger],
+  );
+
   const forgetLedger = useCallback(
     (id: string) => {
       update((s) => ({
@@ -346,10 +365,14 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       selectLedger,
       createLedger,
       openSharedLedger,
+      openInvitedLedger,
       forgetLedger,
       reconnectGoogle,
     }),
-    [state, googleAvailable, signInWithGoogle, startDemo, signOut, activeLedger, selectLedger, createLedger, openSharedLedger, forgetLedger, reconnectGoogle],
+    [
+      state, googleAvailable, signInWithGoogle, startDemo, signOut, activeLedger, selectLedger, createLedger, openSharedLedger,
+      openInvitedLedger, forgetLedger, reconnectGoogle,
+    ],
   );
 
   const internals = useMemo<SessionInternals>(() => ({ deps, backendFor, updateRecent }), [deps, backendFor, updateRecent]);

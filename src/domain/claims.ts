@@ -191,7 +191,7 @@ export { withSubject } from './korean';
 
 /**
  * 기록 직후 · 목록에 보여 줄 한 줄.
- * 정산일이 오늘(또는 지남): "기쁜에게 50,000원, 오늘 돌려주세요" / 아니면 "기쁜이 11월 21일에 돌려받아요"
+ * 정산일이 오늘(또는 지남): "가람에게 50,000원, 오늘 돌려주세요" / 아니면 "가람이 11월 21일에 돌려받아요"
  */
 export function claimMessage(claim: { payer: string; amount: Won; due: ISODate }, today: ISODate): string {
   if (claim.due <= today) return `${claim.payer}에게 ${formatWon(claim.amount)}, 오늘 돌려주세요`;

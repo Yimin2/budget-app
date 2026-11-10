@@ -13,7 +13,7 @@ import type { Expense, LedgerData, Trip } from './types';
 const TODAY = '2026-11-09';
 const NOW = '2026-11-01T00:00:00.000Z';
 
-const incomeAcc = account('income', { id: 'inc', ownerName: '기쁜', order: 0 });
+const incomeAcc = account('income', { id: 'inc', ownerName: '가람', order: 0 });
 const eventAcc = account('event', { id: 'event', openingBalance: 1_000_000, order: 1 });
 const reservoirAcc = account('reservoir', { id: 'res', openingBalance: 5_000_000, order: 2 });
 
@@ -132,7 +132,7 @@ describe('이벤트통장 예측 (두 번 빠지지 않게)', () => {
     expect(lastEnd(later)).toBe(lastEnd(base()));
     const claim = {
       ...base(),
-      expenses: [tripExpense({ amount: 300_000, paidBy: '기쁜', claimAccountId: 'inc', claimDue: '2026-11-21' })],
+      expenses: [tripExpense({ amount: 300_000, paidBy: '가람', claimAccountId: 'inc', claimDue: '2026-11-21' })],
     };
     expect(projectEventAccount(claim, TODAY).months[0]!.claims).toBe(300_000);
     expect(lastEnd(claim)).toBe(lastEnd(base()));

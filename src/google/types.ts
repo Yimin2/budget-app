@@ -56,6 +56,8 @@ export interface DocsView {
   setMimeTypes(mimeTypes: string): DocsView;
   setIncludeFolders(include: boolean): DocsView;
   setSelectFolderEnabled?(enabled: boolean): DocsView;
+  /** 쉼표로 이은 파일 id 만 보여 준다 (Picker API) */
+  setFileIds?(fileIds: string): DocsView;
 }
 
 export interface Picker {

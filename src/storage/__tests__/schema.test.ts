@@ -135,13 +135,13 @@ describe('schema', () => {
     const rows = decodeTable('expenses', [
       ['id', '금액', '낸사람', '돌려받을통장', '정산일'],
       ['a', 1000, '', '', ''],
-      ['b', 1000, ' 기쁜 ', 'inc-g', '2026. 11. 21.'],
-      ['c', 1000, '민구', '', '아무 글자'],
+      ['b', 1000, ' 가람 ', 'inc-g', '2026. 11. 21.'],
+      ['c', 1000, '나래', '', '아무 글자'],
     ]);
     expect(rows.map((r) => [r.paidBy, r.claimAccountId, r.claimDue])).toEqual([
       [null, null, null],
-      ['기쁜', 'inc-g', '2026-11-21'],
-      ['민구', null, null],
+      ['가람', 'inc-g', '2026-11-21'],
+      ['나래', null, null],
     ]);
   });
 

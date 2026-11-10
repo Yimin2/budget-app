@@ -22,6 +22,7 @@ beforeEach(() => {
     constructor(id: string) { calls.view = [id]; }
     setMimeTypes = chain('mime');
     setIncludeFolders = chain('folders');
+    setFileIds = chain('fileIds');
   }
   class PickerBuilder {
     addView = chain('addView');
@@ -56,6 +57,25 @@ describe('pickSpreadsheetWith', () => {
     cb!({ action: 'loaded' });
     cb!({ action: 'picked', docs: [{ id: 'S1', name: '우리집 가계부' }] });
     await expect(p).resolves.toEqual({ id: 'S1', name: '우리집 가계부' });
+  });
+
+  it('초대 링크: fileId 를 미리 골라 둔다', async () => {
+    cb = null;
+    const p = pickSpreadsheetWith(async () => 'TOK', { fileId: 'SHEET_ID_123' });
+    await vi.waitFor(() => expect(cb).not.toBeNull());
+    expect(calls.fileIds).toEqual(['SHEET_ID_123']);
+    expect(calls.title).toEqual(['초대받은 가계부 열기']);
+    cb!({ action: 'picked', docs: [{ id: 'SHEET_ID_123', name: '우리집' }] });
+    await expect(p).resolves.toEqual({ id: 'SHEET_ID_123', name: '우리집' });
+  });
+
+  it('fileId 가 없으면 전체 목록', async () => {
+    cb = null;
+    const p = pickSpreadsheetWith(async () => 'TOK');
+    await vi.waitFor(() => expect(cb).not.toBeNull());
+    expect(calls.fileIds).toBeUndefined();
+    cb!({ action: 'cancel' });
+    await p;
   });
 
   it('취소하면 null', async () => {

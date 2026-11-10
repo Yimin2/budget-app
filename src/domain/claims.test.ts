@@ -11,17 +11,17 @@ import type { Expense, LedgerData } from './types';
 
 const TODAY = '2026-11-09';
 
-const incomeGippeun = account('income', { id: 'inc-g', name: '기쁜 수입통장', ownerName: '기쁜', order: 0 });
-const incomeMingu = account('income', { id: 'inc-m', name: '민구 수입통장', ownerName: '민구', order: 1 });
+const incomeGaram = account('income', { id: 'inc-g', name: '가람 수입통장', ownerName: '가람', order: 0 });
+const incomeNarae = account('income', { id: 'inc-m', name: '나래 수입통장', ownerName: '나래', order: 1 });
 const fixedAcc = account('fixed', { id: 'fixed', openingBalance: 1_000_000, order: 2 });
 const eventAcc = account('event', { id: 'event', openingBalance: 100_000, order: 3 });
 
 function ledger(p: Partial<LedgerData> = {}): LedgerData {
-  return emptyLedger({ accounts: [incomeGippeun, incomeMingu, fixedAcc, eventAcc], ...p });
+  return emptyLedger({ accounts: [incomeGaram, incomeNarae, fixedAcc, eventAcc], ...p });
 }
 
 function claim(p: Partial<Expense> & Pick<Expense, 'amount' | 'accountId'>): Expense {
-  return expense({ date: TODAY, paidBy: '기쁜', claimAccountId: 'inc-g', claimDue: null, ...p });
+  return expense({ date: TODAY, paidBy: '가람', claimAccountId: 'inc-g', claimDue: null, ...p });
 }
 
 describe('정산일 (다음 월급날)', () => {
@@ -90,7 +90,7 @@ describe('아직 안 돌려준 청구', () => {
     ledger({
       expenses: [
         claim({ id: 'c1', amount: 50_000, accountId: 'event', claimDue: '2026-11-09' }),
-        claim({ id: 'c2', amount: 30_000, accountId: 'fixed', claimDue: '2026-11-21', paidBy: '민구', claimAccountId: 'inc-m' }),
+        claim({ id: 'c2', amount: 30_000, accountId: 'fixed', claimDue: '2026-11-21', paidBy: '나래', claimAccountId: 'inc-m' }),
         claim({ id: 'c3', amount: 20_000, accountId: 'fixed', claimDue: '2026-11-21' }),
         claim({ id: 'gone', amount: 99_000, accountId: 'fixed', deleted: true }),
         expense({ id: 'plain', date: TODAY, amount: 7_000, accountId: 'fixed' }),
@@ -101,8 +101,8 @@ describe('아직 안 돌려준 청구', () => {
     const s = summarizeClaims(base(), TODAY);
     expect(s.total).toBe(100_000);
     expect(s.byPayer).toEqual([
-      { name: '기쁜', amount: 70_000 },
-      { name: '민구', amount: 30_000 },
+      { name: '가람', amount: 70_000 },
+      { name: '나래', amount: 30_000 },
     ]);
     expect(s.nextDue).toBe('2026-11-09');
     expect(s.dueNow.map((c) => c.expense.id)).toEqual(['c1']);
@@ -198,16 +198,16 @@ describe('잔액과 예측 — 두 번 빠지지 않게', () => {
 
 describe('낸 사람과 안내 문구', () => {
   it('낸 사람 목록과 돌려받을 통장', () => {
-    const d = ledger({ members: [{ email: 'g@x', displayName: '기쁜' }, { email: 'k@x', displayName: '친구' }] });
-    expect(claimPayers(d)).toEqual(['기쁜', '민구', '친구']);
-    expect(claimAccountFor(d, '민구')).toBe('inc-m');
+    const d = ledger({ members: [{ email: 'g@x', displayName: '가람' }, { email: 'k@x', displayName: '친구' }] });
+    expect(claimPayers(d)).toEqual(['가람', '나래', '친구']);
+    expect(claimAccountFor(d, '나래')).toBe('inc-m');
     expect(claimAccountFor(d, '친구')).toBeNull();
   });
 
   it('오늘 돌려줄 때와 나중에 돌려받을 때', () => {
-    expect(claimMessage({ payer: '기쁜', amount: 50_000, due: TODAY }, TODAY)).toBe('기쁜에게 50,000원, 오늘 돌려주세요');
-    expect(claimMessage({ payer: '기쁜', amount: 50_000, due: '2026-11-21' }, TODAY)).toBe('기쁜이 11월 21일에 50,000원 돌려받아요');
-    expect(withSubject('민구')).toBe('민구가');
+    expect(claimMessage({ payer: '가람', amount: 50_000, due: TODAY }, TODAY)).toBe('가람에게 50,000원, 오늘 돌려주세요');
+    expect(claimMessage({ payer: '가람', amount: 50_000, due: '2026-11-21' }, TODAY)).toBe('가람이 11월 21일에 50,000원 돌려받아요');
+    expect(withSubject('나래')).toBe('나래가');
   });
 
   it('돌려준 청구는 돌려줬다고 알려 준다', () => {
@@ -216,7 +216,7 @@ describe('낸 사람과 안내 문구', () => {
       expenses: [e],
       transfers: [transfer({ id: claimTransferId('c1'), date: TODAY, amount: 10_000, fromAccountId: 'fixed', toAccountId: 'inc-g' })],
     });
-    expect(claimMessageFor(d, e, TODAY)).toBe('기쁜에게 돌려줬어요');
+    expect(claimMessageFor(d, e, TODAY)).toBe('가람에게 돌려줬어요');
     expect(claimMessageFor(d, { ...e, paidBy: null }, TODAY)).toBeNull();
   });
 });
