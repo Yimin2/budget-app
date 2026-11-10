@@ -51,7 +51,7 @@ describe('AppShell', () => {
       { href: '/', label: '홈', icon: 'home' },
       { href: '/history', label: '내역', icon: 'receipt' },
       { href: '/budget', label: '예산', icon: 'piggy-bank' },
-      { href: '/plan', label: '계획', icon: 'calendar' },
+      { href: '/plan', label: '이벤트', icon: 'calendar' },
       { href: '/extra', label: '그 밖', icon: 'dots' },
     ];
     let opened = 0;
