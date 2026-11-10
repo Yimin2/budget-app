@@ -22,12 +22,13 @@ export function ownerKeyOf(account: Pick<Account, 'ownerEmail' | 'ownerName'> | 
   return name ? `name:${name}` : '';
 }
 
-/** 키 목록 → 탭 (나온 순서, 함께는 맨 뒤) */
-export function ownerGroups(keys: string[], data: LedgerData): OwnerGroup[] {
+/** 키 목록 → 탭 (나(meKey)는 맨 앞, 나머지는 나온 순서, 함께는 맨 뒤) */
+export function ownerGroups(keys: string[], data: LedgerData, meKey: string | null = null): OwnerGroup[] {
   const people = peopleOptions(data);
   const seen: string[] = [];
   for (const k of keys) if (!seen.includes(k)) seen.push(k);
-  seen.sort((a, b) => (a === '' ? 1 : 0) - (b === '' ? 1 : 0));
+  const rank = (k: string) => (k === '' ? 2 : meKey && k === meKey ? 0 : 1);
+  seen.sort((a, b) => rank(a) - rank(b));
   return seen.map((k) => {
     if (k === '') return { value: '__shared', label: '함께' };
     if (k.startsWith('name:')) return { value: k, label: k.slice(5) };
@@ -41,8 +42,8 @@ export function ownerGroups(keys: string[], data: LedgerData): OwnerGroup[] {
  * 사람별로 나눠 보기: 두 사람 이상이면 [모두 · 민지 · 준호 · 함께] 탭을 보여 줘요.
  * initial 을 주면 그 사람부터 (예: 내 생활비)
  */
-export function useOwnerFilter(keys: string[], data: LedgerData, initial: string = ALL) {
-  const groups = ownerGroups(keys, data);
+export function useOwnerFilter(keys: string[], data: LedgerData, initial: string = ALL, meKey: string | null = null) {
+  const groups = ownerGroups(keys, data, meKey);
   const [tab, setTab] = useState(initial === '' ? '__shared' : initial);
   const show = groups.length > 1;
   const active = show && (tab === ALL || groups.some((g) => g.value === tab)) ? tab : ALL;

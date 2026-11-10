@@ -461,9 +461,18 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income'), [activeAccounts]);
   const living = useMemo(() => (data ? computeLiving(data, today) : null), [data, today]);
   // 사람별 생활비 (PLAN 4-14): 생활비 통장마다, 로그인한 사람의 통장, '누가 썼나요?'에서 고를 사람
-  const livingViews = useMemo(() => (data ? livingByAccount(data, today) : []), [data, today]);
   const myLivingId = useMemo(() => (data ? myLivingAccountId(data, monthOf(today), author) : null), [data, today, author]);
-  const spenders = useMemo(() => (data ? spenderOptions(data, monthOf(today)) : []), [data, today]);
+  // 로그인한 사람(나)을 맨 앞(왼쪽)에, 나머지는 원래 순서대로
+  const livingViews = useMemo(() => {
+    const views = data ? livingByAccount(data, today) : [];
+    return myLivingId ? [...views.filter((v) => v.accountId === myLivingId), ...views.filter((v) => v.accountId !== myLivingId)] : views;
+  }, [data, today, myLivingId]);
+  const spenders = useMemo(() => {
+    const list = data ? spenderOptions(data, monthOf(today)) : [];
+    return myLivingId
+      ? [...list.filter((x) => x.livingAccountId === myLivingId), ...list.filter((x) => x.livingAccountId !== myLivingId)]
+      : list;
+  }, [data, today, myLivingId]);
   const mySpender = useMemo(() => mySpenderKey(spenders, author, myLivingId), [spenders, author, myLivingId]);
   const livingFor = useCallback<LedgerApi['livingFor']>(
     (accountId) => {

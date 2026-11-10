@@ -67,7 +67,8 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const accountLabel = (id: string) => accountNameWithOwner(ledger.activeAccounts, id);
   // 사람별 생활비 통장이면 사람마다 탭 (기본: 내 생활비)
   const keyOfAccount = (id: string) => ownerKeyOf(ledger.activeAccounts.find((a) => a.id === id));
-  const people = useOwnerFilter(livingAccounts.map((a) => ownerKeyOf(a)), data, keyOfAccount(accountId));
+  const meKey = ledger.myLivingAccountId ? keyOfAccount(ledger.myLivingAccountId) : null;
+  const people = useOwnerFilter(livingAccounts.map((a) => ownerKeyOf(a)), data, keyOfAccount(accountId), meKey);
   const shownRows = rows.filter((f) => people.matches(keyOfAccount(f.accountId)));
   const newAccountId =
     people.selected !== null ? (livingAccounts.find((a) => ownerKeyOf(a) === people.selected)?.id ?? accountId) : accountId;
