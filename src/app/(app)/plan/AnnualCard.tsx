@@ -14,6 +14,7 @@ import {
 import type { AnnualCalendar, AnnualItem, AnnualSelection, ISODate, LedgerData, PlannedEvent } from '@/domain';
 import { useLedger } from '@/state';
 import { Badge, Button, Card, Icon, MoneyInput, SegmentedControl, Select, TextInput, cx, useToast } from '@/ui';
+import { ExpandButton } from '../_components/ExpandButton';
 import { dateLabel, errorText } from './selectors';
 import styles from './events.module.css';
 
@@ -59,7 +60,8 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
   const registered = useMemo(() => new Map(items.map((i) => [i.id, registeredAnnualEvent(data, i)])), [data, items]);
   const customs = useMemo(() => customAnnualEvents(data), [data]);
   const doneCount = items.filter((i) => registered.get(i.id)).length;
-  const [open, setOpen] = useState(doneCount < items.length);
+  // 다른 카드처럼 처음에는 접힌 요약 한 줄만, [펼치기]로 같은 자리에서 체크 목록을 펼쳐요
+  const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Record<string, RowDraft>>({});
   const [extra, setExtra] = useState<RowDraft[]>([]);
   const [errors, setErrors] = useState<Record<string, RowError>>({});
@@ -220,24 +222,16 @@ export function AnnualCard({ data, today, onEdit }: { data: LedgerData; today: I
           <h2 id={titleId} className={styles.insightTitle}>
             매년 일정 한 번에 등록
           </h2>
-          <p className={styles.recurringSub}>
-            명절 · 생신 · 기념일을 체크하고 금액을 넣으면 매년 반복 일정이 돼요. 등록한 {doneCount}/{items.length}
+          <p className={styles.recurringSub} data-testid="annual-summary">
+            {doneCount > 0 ? `등록됨 ${doneCount}개` : '아직 등록한 매년 일정이 없어요'}
           </p>
         </div>
-        <Button
-          variant="ghost"
-         
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-controls={`${ids}-list`}
-          iconRight={open ? 'chevron-up' : 'chevron-down'}
-        >
-          {open ? '접기' : '펼치기'}
-        </Button>
+        <ExpandButton open={open} onToggle={() => setOpen((o) => !o)} controls={`${ids}-list`} openLabel="펼치기" label="매년 일정 한 번에 등록" />
       </div>
 
       {open ? (
         <div id={`${ids}-list`} className={styles.annualBody}>
+          <p className={styles.recurringSub}>명절 · 생신 · 기념일을 체크하고 금액을 넣으면 매년 반복 일정이 돼요. 등록한 {doneCount}/{items.length}</p>
           <ul className={styles.annualList}>
             {items.map((item) => {
               const ev = registered.get(item.id);
