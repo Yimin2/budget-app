@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 /**
- * 주소의 # 가 ids 중 하나면 접힌 칸을 펼치고 그 칸으로 스크롤 · 포커스해요 ('/budget#st-fixed' · '#st-rules').
+ * 주소의 # 가 ids 중 하나면 접힌 칸을 펼치고 그 칸으로 스크롤 · 포커스해요 ('/budget#st-fixed' · '#st-living').
  * 같은 화면에서 # 만 바뀌어도 따라가요. enabled 가 false 면 아무것도 하지 않아요
  */
 export function useHashOpen(ids: readonly string[], enabled = true): [boolean, (open: boolean | ((o: boolean) => boolean)) => void] {

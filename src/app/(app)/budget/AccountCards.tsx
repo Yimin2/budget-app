@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
-import { formatMan, formatShortDate, monthOf, needBreakdownText, ruleChangeText, ruleNext, addDays } from '@/domain';
+import type { ReactNode } from 'react';
+import { formatMan, formatShortDate, formatWon, monthOf, plannedIncome, addDays } from '@/domain';
 import type { Account, AccountRole, FixedExpense } from '@/domain/types';
 import { Badge, Card } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
 import type { ReadyLedger } from '../_components/RequireLedger';
-import { accountName } from '../settings/helpers';
+import { incomeSummaries, type IncomeSummary } from '../settings/helpers';
 import { FixedCard } from '../settings/sections/FixedCard';
 import { InstallmentCard } from '../settings/sections/InstallmentCard';
 import { LivingCard } from '../settings/sections/LivingCard';
 import { OwnerTabs, ownerGroups, ownerKeyOf, useOwnerFilter } from '../settings/sections/OwnerTabs';
-import { accountMoney, type AccountMoney, type FlowKind } from './flow';
+import { accountMoney, flowName, type AccountMoney } from './flow';
+import { IncomePlanRows, IncomingRules, incomePlanRows, incomingRuleRows } from './IncomingRows';
 import { INSTALLMENT_THIS_MONTH } from './monthLedger';
 import { ReadOnly } from './ReadOnly';
 import type { BudgetMonthKind } from '@/domain';
@@ -28,8 +29,6 @@ const ROLE_TEXT: Record<AccountRole, string> = {
   other: '기타',
 };
 
-const KIND_SHORT: Record<FlowKind, string> = { fixed: '', auto: ' (자동)', remainder: ' (남는 돈 전부)', left: '' };
-
 const liveIn = (f: FixedExpense, month: string) => !f.deleted && (f.endMonth === null || f.endMonth === '' || f.endMonth >= month);
 
 /** 통장 카드에 보일 나가는 돈 줄: 생활비 통장은 셋 다, 용돈 통장은 고정비 · 할부, 다른 통장은 있는 것만 */
@@ -41,7 +40,8 @@ interface OutRows {
 
 /**
  * 예산 '통장별 들어오는 돈 · 나가는 돈' (작업정리 8-3): 사람 탭(민구 · 기쁜 · 함께)마다 통장 카드 하나씩.
- * 들어오는 돈(배분 금액 · 날짜)과 나가는 돈(고정비 · 할부 · 생활비 예산 합)을 접힌 요약으로, 펼치면 그 자리에서 항목을 고쳐요.
+ * 들어오는 돈은 배분 줄(월급통장은 수입 계획 줄)을 바로 보여 주고, 줄을 누르면 그 자리에서 고쳐요 ([+ 들어오는 돈] · [+ 수입]).
+ * 나가는 돈(고정비 · 할부 · 생활비 예산 합)은 접힌 요약으로, 펼치면 그 자리에서 항목을 고쳐요.
  * 항목 고치기는 예전 카드(FixedCard · InstallmentCard · LivingCard)를 그 통장으로 좁혀 그대로 써요 — 항목은 한 곳에만 보여요
  */
 export function AccountCards({
@@ -62,24 +62,27 @@ export function AccountCards({
     installments: ledger.installments.some((p) => !p.ended && p.accountId === id),
     living: fixed.some((f) => liveIn(f, month) && f.kind === 'living' && f.accountId === id),
   });
-  // 수입통장이 아닌 통장 모두 + 항목이 있는 통장 (수입통장 · 지운 통장이라도 항목은 한 번씩 보이게)
+  // 지우지 않은 통장 모두(월급통장은 수입 계획 · 보내는 돈) + 항목이 있는 지운 통장 (항목은 한 번씩 보이게)
   const accounts: Account[] = data.accounts
     .filter((a) => {
       const h = has(a.id);
-      const any = h.bills || h.installments || h.living;
-      return any || (!a.deleted && a.role !== 'income');
+      return h.bills || h.installments || h.living || !a.deleted;
     })
     .sort((a, b) => Number(a.deleted) - Number(b.deleted) || a.order - b.order);
 
   const keys = accounts.map((a) => ownerKeyOf(a));
   const meKey = ledger.myLivingAccountId ? ownerKeyOf(data.accounts.find((a) => a.id === ledger.myLivingAccountId)) : null;
   const groups = ownerGroups(keys, data, meKey);
-  const initial = groups[0]?.value ?? 'all';
+  // 처음 탭: 내 생활비 통장이 있는 탭 (함께 쓰는 생활비 통장이면 '함께'), 없으면 첫 탭
+  const initial = meKey === '' && keys.includes('') ? '__shared' : meKey && keys.includes(meKey) ? meKey : (groups[0]?.value ?? 'all');
   const owners = useOwnerFilter(keys, data, initial, meKey);
   const shown = accounts.filter((a) => owners.matches(ownerKeyOf(a)));
   // '/budget#st-fixed' 처럼 들어오면 처음 탭의 첫 생활비 통장(없으면 첫 통장)에서 그 칸을 펼쳐요
   const firstTab = accounts.filter((a) => ownerKeyOf(a) === (initial === '__shared' ? '' : initial));
   const anchorId = (firstTab.find((a) => a.role === 'fixed' && !a.deleted) ?? firstTab[0] ?? accounts[0])?.id ?? null;
+  // '#st-income' 은 보이는 첫 월급통장의 수입 계획 줄로
+  const incomeAnchorId = shown.find((a) => a.role === 'income' && !a.deleted)?.id ?? null;
+  const summaries = new Map(incomeSummaries(data, month).map((x) => [x.account.id, x]));
 
   if (accounts.length === 0) {
     return <p className="st-desc">통장이 아직 없어요. 설정에서 통장을 추가해 주세요.</p>;
@@ -104,6 +107,8 @@ export function AccountCards({
               money={accountMoney(data, a.id, month, ledger.today)}
               rows={rows}
               anchor={a.id === anchorId}
+              incomeAnchor={a.id === incomeAnchorId}
+              summary={summaries.get(a.id) ?? null}
               readOnly={readOnly}
               installmentsReadOnly={readOnly || kind !== 'current'}
             />
@@ -121,6 +126,8 @@ function AccountCard({
   money,
   rows,
   anchor,
+  incomeAnchor,
+  summary,
   readOnly,
   installmentsReadOnly,
 }: {
@@ -128,18 +135,31 @@ function AccountCard({
   account: Account;
   money: AccountMoney;
   rows: OutRows;
+  /** '#st-fixed' · '#st-rules' 같은 주소로 들어올 통장 */
   anchor: boolean;
+  incomeAnchor: boolean;
+  /** 월급통장: 보내는 배분 합 · 수입과 비교 */
+  summary: IncomeSummary | null;
   readOnly: boolean;
   installmentsReadOnly: boolean;
 }) {
-  const [inOpen, setInOpen] = useState(false);
   const headId = `bd-acc-${account.id}`;
-  const inId = `${headId}-in`;
   const name = account.name;
-  const incomingSummary =
-    money.incoming.length === 0
-      ? '들어오는 배분이 없어요'
-      : money.incoming.map((l) => `${l.day}일 ${formatMan(l.amount)}${KIND_SHORT[l.kind]}`).join(' · ');
+  const isIncome = account.role === 'income' && !account.deleted;
+  const month = monthOf(ledger.today);
+  const planned = isIncome ? plannedIncome(ledger.data, month, account.id) : 0;
+  const ruleCount = incomingRuleRows(ledger, account.id, money.incoming).length;
+  const incomingSummary = isIncome
+    ? planned > 0
+      ? `한 달 ${formatMan(planned)}`
+      : incomePlanRows(ledger, account.id).length > 0
+        ? '다음 달부터 들어와요'
+        : '수입 계획이 없어요'
+    : money.incoming.length > 0
+      ? `한 달 ${formatMan(money.incomingTotal)}`
+      : ruleCount > 0
+        ? '다음 달부터 들어와요'
+        : '들어오는 배분이 없어요';
   const anyOut = rows.bills || rows.installments || rows.living;
   const diff = money.incomingTotal - money.outgoingTotal;
   const period = `${formatShortDate(money.from)} ~ ${formatShortDate(addDays(money.to, -1))}`;
@@ -155,8 +175,13 @@ function AccountCard({
         </Badge>
       </div>
 
-      {/* 들어오는 돈 */}
-      <div className={styles.block} role="group" aria-label={`${name} 들어오는 돈`}>
+      {/* 들어오는 돈: 줄을 누르면 그 자리에서 고쳐요 */}
+      <div
+        id={anchor ? 'st-rules' : incomeAnchor ? 'st-income' : undefined}
+        className={styles.block}
+        role="group"
+        aria-label={`${name} 들어오는 돈`}
+      >
         <div className={styles.blockRow}>
           <div className={styles.blockText}>
             <span className={styles.blockLabel}>들어오는 돈</span>
@@ -164,35 +189,9 @@ function AccountCard({
               {incomingSummary}
             </span>
           </div>
-          {money.incoming.length > 0 ? (
-            <ExpandButton open={inOpen} onToggle={() => setInOpen((o) => !o)} controls={inId} openLabel="펼치기" label={`${name} 들어오는 돈`} />
-          ) : null}
         </div>
-        {inOpen ? (
-          <ul id={inId} className={styles.inList}>
-            {money.incoming.map((l) => {
-              const next = l.kind === 'remainder' ? null : ruleNext(ledger.data, l.rule, ledger.today);
-              const change = next ? ruleChangeText(next) : null;
-              return (
-                <li key={l.rule.id}>
-                  <span>
-                    {l.day}일 · {accountName(ledger.data.accounts, l.fromAccountId)}에서 · <strong>{formatMan(l.amount)}</strong>
-                    {KIND_SHORT[l.kind]}
-                  </span>
-                  {l.kind === 'auto' && next?.need ? <span className="st-hint-line">{needBreakdownText(next.need)}</span> : null}
-                  {change ? <span className="st-change">{change}</span> : null}
-                </li>
-              );
-            })}
-            <li>
-              <a className={styles.inlineLink} href="#st-rules">
-                {readOnly ? '배분 보기' : '배분 고치기'}
-              </a>
-            </li>
-          </ul>
-        ) : (
-          <div id={inId} hidden />
-        )}
+        {isIncome ? <IncomePlanRows ledger={ledger} account={account} readOnly={readOnly} /> : null}
+        <IncomingRules ledger={ledger} account={account} incoming={money.incoming} readOnly={readOnly || account.deleted} addable={!isIncome} />
       </div>
 
       {/* 나가는 돈 */}
@@ -243,6 +242,17 @@ function AccountCard({
               </OutRow>
             ) : null}
           </div>
+        ) : null}
+        {isIncome && summary && summary.total > 0 ? (
+          <p className={styles.note} data-testid="income-sent">
+            매달 배분으로 보내는 돈 {formatMan(summary.total)}
+            {summary.remainder ? ` · 남는 돈 전부 → ${flowName(ledger.data, ledger.data.accounts.find((a) => a.id === summary.remainder!.toAccountId))}` : ''}
+          </p>
+        ) : null}
+        {isIncome && summary && summary.over > 0 ? (
+          <p className={styles.warn} role="note">
+            {name}에서 보내는 돈이 수입보다 {formatWon(summary.over)} 많아요
+          </p>
         ) : null}
         {anyOut && money.incomingTotal > 0 && diff !== 0 ? (
           <p className={diff < 0 ? styles.warn : styles.note} data-testid="account-diff">
