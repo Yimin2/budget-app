@@ -353,3 +353,37 @@ describe('EventsView — 체험 가계부', () => {
     expect(within(dialog).getByRole('button', { name: '명절' }).getAttribute('aria-pressed')).toBe('true');
   });
 });
+
+describe('EventsView — 추천 타협안', () => {
+  afterEach(() => window.localStorage.clear());
+
+  it('접힌 요약 한 줄 + [자세히]로 셈 · 개월 칩 · 카테고리별 줄일 금액, 고른 개월 수는 이 기기에 저장', async () => {
+    const h = await renderEvents();
+    await act(async () => {
+      await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 900_000, accountId: 'demo-acc-event', categoryId: null });
+      await h.probe.ledger!.borrowAndSettleClaims(['demo-claim-jeju']);
+    });
+    const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
+    const summary = within(card).getByTestId('compromise-summary');
+    expect(summary.textContent).toMatch(/^추천: 적립 월 .+ · 쓰는 돈 월 .+ 줄이기 → .+ · 저수지 빚 30만을 24개월에 갚아요$/);
+    // 적립이 모자라면 접혀 있어도 올리라는 안내가 보여요
+    expect(within(card).getByTestId('compromise-raise').textContent).toMatch(/^적립이 실제 필요보다 월 .+원 적어요 → 월 .+원으로 올려야 해요$/);
+    expect(within(card).queryByTestId('compromise-cut')).toBeNull();
+    const toggle = within(card).getByRole('button', { name: '추천 타협안 자세히' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(within(card).getByTestId('compromise-cut').textContent).toContain('저수지 빚을 24개월에 갚으려면 쓰는 돈을 월 1.3만원 줄여야 해요');
+    expect(within(card).getByRole('list', { name: '카테고리별 줄일 금액' })).toBeTruthy();
+    expect(within(card).getByTestId('compromise-check').textContent).toMatch(/추천대로|모자라요/);
+    const chip12 = within(card).getByRole('button', { name: '12개월' });
+    expect(within(card).getByRole('button', { name: '24개월' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(chip12);
+    expect(chip12.getAttribute('aria-pressed')).toBe('true');
+    expect(within(card).getByTestId('compromise-cut').textContent).toContain('저수지 빚을 12개월에 갚으려면 쓰는 돈을 월 2.5만원 줄여야 해요');
+    expect(within(card).getByTestId('compromise-summary').textContent).toMatch(/저수지 빚 30만을 12개월에 갚아요$/);
+    expect(window.localStorage.getItem('budget:repayMonths')).toBe('12');
+    // 자동으로 바꾸는 버튼은 없어요
+    expect(within(card).queryByRole('button', { name: /적용|바꾸기|올리기/ })).toBeNull();
+  });
+});

@@ -56,3 +56,8 @@ export function removeKey(storage: SessionStorageLike | null, key: string): void
     // 무시
   }
 }
+/**
+ * 이벤트 '추천 타협안'에서 고른 저수지 빚 갚는 개월 수 (12 · 18 · 24 · 36). 기기마다 따로 두는 화면 선택이라 시트에는 쓰지 않는다.
+ * 없거나 이상한 값이면 24개월
+ */
+export const REPAY_MONTHS_KEY = 'budget:repayMonths';

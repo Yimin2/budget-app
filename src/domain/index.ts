@@ -29,3 +29,4 @@ export * from './settlement';
 export * from './yearly';
 export * from './exceptions';
 export * from './annual';
+export * from './compromise';

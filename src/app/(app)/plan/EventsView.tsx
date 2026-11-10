@@ -10,9 +10,10 @@ import {
   nextEventDate,
   nextOccurrenceId,
   projectWithExclusions,
+  recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { Category, EventProjection, ExclusionDraft, Id, PlannedEvent, UsualInsight } from '@/domain';
+import type { Category, CompromisePlan, EventProjection, ExclusionDraft, Id, PlannedEvent, RepayMonths, UsualInsight } from '@/domain';
 import { useLedger } from '@/state';
 import {
   Button,
@@ -32,6 +33,7 @@ import { RequireLedger, SettlementCard, type ReadyLedger } from '../_components'
 import { HashTarget } from '../_components/HashTarget';
 import { AnnualCard } from './AnnualCard';
 import { CompleteDialog } from './CompleteDialog';
+import { CompromisePanel, readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
 import { ExceptionCard } from './ExceptionCard';
@@ -211,6 +213,17 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
     () => (projection ? usualSpendingInsight(data, today, projection) : null),
     [data, today, projection],
   );
+  // 추천 타협안: 저수지 빚 갚는 개월 수는 이 기기에 저장 (localStorage, 시트에는 쓰지 않음)
+  const [repayMonths, setRepayMonths] = useState<RepayMonths>(readRepayMonths);
+  const loanBalance = ledger.settlement?.loan.balance ?? 0;
+  const compromise = useMemo(
+    () => (projection && insight ? recommendCompromise(data, today, projection, { loanBalance, repayMonths }) : null),
+    [data, today, projection, insight, loanBalance, repayMonths],
+  );
+  const chooseMonths = (m: RepayMonths) => {
+    setRepayMonths(m);
+    writeRepayMonths(m);
+  };
   // 예외 지출 빼기: 체크한 대로 저장하지 않고 덮어씌운 예측 (바꾼 것이 없으면 null). 화면을 떠나면 사라져요
   const candidates = useMemo(() => findExceptionCandidates(data, today), [data, today]);
   const [draft, setDraft] = useState<ExclusionDraft>({});
@@ -238,7 +251,15 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
             draft={draft}
             onChange={setDraft}
           />
-          {insight ? <UsualInsightCard insight={insight} today={today} /> : null}
+          {insight ? (
+            <UsualInsightCard
+              insight={insight}
+              today={today}
+              compromise={compromise}
+              repayMonths={repayMonths}
+              onRepayMonths={chooseMonths}
+            />
+          ) : null}
           {!tried && projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
           ) : null}
@@ -314,7 +335,19 @@ function SummaryCard({ projection }: { projection: EventProjection }) {
 
 /* ───────── 평소 쓰는 돈과 적립 (정보만, 바꾸는 버튼 없음) ───────── */
 
-function UsualInsightCard({ insight, today }: { insight: UsualInsight; today: string }) {
+function UsualInsightCard({
+  insight,
+  today,
+  compromise,
+  repayMonths,
+  onRepayMonths,
+}: {
+  insight: UsualInsight;
+  today: string;
+  compromise: CompromisePlan | null;
+  repayMonths: RepayMonths;
+  onRepayMonths: (m: RepayMonths) => void;
+}) {
   const titleId = useId();
   const short = Math.round(insight.gap / 1000) < 0;
   const top = usualCategoriesText(insight.topCategories);
@@ -361,6 +394,7 @@ function UsualInsightCard({ insight, today }: { insight: UsualInsight; today: st
       <p className={styles.foot}>
         일정이나 여행에 묶지 않은 이벤트통장 지출을 ‘평소 쓰는 돈’으로 셌어요. 적립액은 예산의 매달 배분에서 직접 정해요
       </p>
+      {compromise ? <CompromisePanel plan={compromise} months={repayMonths} onMonths={onRepayMonths} /> : null}
     </Card>
   );
 }
