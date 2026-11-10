@@ -257,6 +257,8 @@ export interface Settlement {
   available: Won;
   /** 이번 달 아직 안 쓴 일정 · 여행 · 할부 */
   reserved: Won;
+  /** reserved 중 여행 남은 예산 */
+  reservedTrips: Won;
   /** 지난달부터 못 준 이벤트통장 청구 중 먼저 돌려줄 합 (available 안에서 오래된 순 first-fit) */
   oldPay: Won;
   /** 이번 달 청구에 쓸 수 있는 돈 = max(0, available − oldPay − reserved) */
@@ -380,6 +382,7 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
   const reservoirAcc = firstAccountByRole(data, 'reservoir');
   const proj = projection ?? projectEventAccount(data, today);
   const reserved = eventAcc ? reservedThisMonth(data, eventAcc.id, today, proj) : 0;
+  const reservedTrips = eventAcc ? (proj.months.find((m) => m.month === monthOf(today))?.trips ?? 0) : 0;
   const balance = eventAcc ? balanceWithScheduled(data, eventAcc.id, today, asOf) : 0;
   const recorded = eventAcc ? accountBalance(data, eventAcc.id, asOf) : 0;
   const incoming = balance - recorded;
@@ -462,6 +465,7 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
     shortfall: Math.max(0, -recorded),
     available,
     reserved,
+    reservedTrips,
     oldPay,
     freshLimit,
     payable,
@@ -821,6 +825,10 @@ export interface EventMonthUsage {
   spent: Won;
   /** 이번 달 남은 예정 = 아직 안 쓴 이번 달 일정 · 여행 · 할부(reservedThisMonth) + 오늘 뒤 날짜로 미리 기록한 이번 달 이벤트통장 지출 */
   planned: Won;
+  /** 이번 달 여행에 묶은 이벤트통장 지출 (오늘까지, spent 에는 없다) */
+  tripSpent: Won;
+  /** 이번 달 여행 남은 예산 + 오늘 뒤 날짜의 여행 지출 (planned 에는 없다) */
+  tripPlanned: Won;
   /** 이번 달 정산일에 이벤트통장에서 돌려줄 청구 (지급할 수 있는 돈 안 = eventPayTotal, 예정에는 넣지 않는다 — 쓴 날에 이미 셈) */
   plannedClaims: Won;
   /** 이번 달 이벤트통장에 들어오는(들어온) 돈 = 이번 달 적립 · 수입 · 이체(기록된 것 + 아직 기록 안 된 매달 배분 · 수입 계획 · 예정 이체). 저수지에서 빌린 이체(loan:)는 뺀다 */
@@ -859,21 +867,32 @@ export function eventMonthUsage(data: LedgerData, s: Settlement, today: ISODate)
     .map((g) => ({ name: g.name, amount: g.amount }))
     .sort((a, b) => b.amount - a.amount || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const acc = s.eventAccountId;
-  if (!acc) return { spent: 0, planned: 0, plannedClaims: 0, incoming: 0, unpaid: s.carryTotal, unpaidPeople };
+  if (!acc) return { spent: 0, planned: 0, tripSpent: 0, tripPlanned: 0, plannedClaims: 0, incoming: 0, unpaid: s.carryTotal, unpaidPeople };
   const month = monthOf(today);
   // 이번 달 사용 = 지출 날짜가 이번 달인 이벤트통장 지출 (돌려줄 청구 포함). 지급한 날이 아니라 쓴 날 기준이라,
   // 지난달 이전에 쓴 청구를 이번 달에 지급 처리해도 이번 달 쓴 돈에 들어가지 않아요.
+  // 여행에 묶은 지출 · 여행 남은 예산은 따로 (홈에서 '여행 ○만'으로 옆에 보여요)
+  const liveTrips = new Set(data.trips.filter((t) => !t.deleted).map((t) => t.id));
   let spent = 0;
   let ahead = 0;
+  let tripSpent = 0;
+  let tripAhead = 0;
   for (const e of data.expenses) {
     if (e.deleted || e.accountId !== acc || monthOf(e.date) !== month) continue;
-    if (e.date <= today) spent += e.amount;
+    const trip = !!e.tripId && liveTrips.has(e.tripId);
+    if (e.date <= today) {
+      if (trip) tripSpent += e.amount;
+      else spent += e.amount;
+    } else if (trip) tripAhead += e.amount;
     else ahead += e.amount;
   }
   const plannedClaims = s.eventPayTotal;
+  const tripLeft = s.reservedTrips;
   return {
     spent,
-    planned: s.reserved + ahead,
+    planned: s.reserved - tripLeft + ahead,
+    tripSpent,
+    tripPlanned: tripLeft + tripAhead,
     plannedClaims,
     incoming: monthIncoming(data, acc, today),
     unpaid: s.carryTotal,

@@ -702,6 +702,8 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     expect(u).toEqual({
       spent: 0,
       planned: 0,
+      tripSpent: 0,
+      tripPlanned: 0,
       plannedClaims: 150_000,
       incoming: 500_000,
       unpaid: 550_000,
@@ -763,9 +765,28 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     expect(u.planned).toBe(0);
   });
 
+  it('여행에 묶은 지출 · 여행 남은 예산은 쓴 돈 · 예정에서 빼고 따로 (tripSpent · tripPlanned)', () => {
+    const NOWT = '2026-11-01T00:00:00.000Z';
+    const d = base({
+      expenses: [
+        expense({ id: 'x-ev', accountId: 'event', amount: 100_000, date: '2026-11-03', categoryId: 'cat-gift' }),
+        expense({ id: 'x-trip', accountId: 'event', amount: 200_000, date: '2026-11-04', categoryId: 'cat-gift', tripId: 'tr' }),
+      ],
+      trips: [
+        { id: 'tr', name: '여행', startDate: '2026-11-20', endDate: '2026-11-22', budget: 500_000, items: {}, memo: '', author: 'a@x', createdAt: NOWT, updatedAt: NOWT, deleted: false },
+      ],
+    });
+    const s = computeSettlement(d, TODAY);
+    const u = eventMonthUsage(d, s, TODAY);
+    expect(u.spent).toBe(100_000);
+    expect(u.tripSpent).toBe(200_000);
+    expect(u.tripPlanned).toBe(300_000);
+    expect(u.planned).toBe(s.reserved - 300_000);
+  });
+
   it('붙일 말: 두 명이면 사람마다 금액, 다른 통장 몫, 줄 돈이 없으면 그렇게 말해요', () => {
     const sum = settlementSummary(computeSettlement(base(), TODAY));
-    const u = { spent: 0, planned: 0, plannedClaims: 0, incoming: 0, unpaid: 0, unpaidPeople: [] };
+    const u = { spent: 0, planned: 0, tripSpent: 0, tripPlanned: 0, plannedClaims: 0, incoming: 0, unpaid: 0, unpaidPeople: [] };
     expect(
       eventUsageNoteText({ ...u, unpaid: 700_000, unpaidPeople: [{ name: '민구', amount: 550_000 }, { name: '기쁜', amount: 150_000 }] }, sum),
     ).toBe('못 준 돈 70만은 다음 달로 (민구 55만 · 기쁜 15만)');

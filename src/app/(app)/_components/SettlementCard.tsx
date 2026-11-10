@@ -77,17 +77,28 @@ export function SettlementCard({ compact = false, home = false, className }: { c
   return <SettlementLine s={s} usage={usage} baseYear={Number(ledger.today.slice(0, 4))} className={className} id={id} />;
 }
 
-/** 홈: 이번 달 이벤트통장 쓴 돈만 — '이번 달 이벤트통장 쓴 돈 45만 (지금까지 15만 + 예정 30만)' */
+/**
+ * 홈: 이번 달 이벤트통장 쓴 돈 — '이번 달 이벤트 쓴 돈 10만 (지금까지 8만 + 예정 2만) · 여행 320만'.
+ * 여행(묶은 지출 + 남은 예산)은 합치지 않고 옆에 따로
+ */
 function HomeEventLine({ usage, className }: { usage: EventMonthUsage; className?: string }) {
   const total = usage.spent + usage.planned;
+  const trip = usage.tripSpent + usage.tripPlanned;
   return (
     <Card as="section" aria-label="이번 달 정산" className={cx(styles.lineCard, className)}>
       <p className={styles.oneLine} data-testid="settlement-line">
-        이번 달 이벤트통장 쓴 돈 <strong>{formatManShort(total)}</strong>
+        이번 달 이벤트 쓴 돈 <strong>{formatManShort(total)}</strong>
         {usage.planned > 0 ? (
           <span className={styles.oneLineSub}>
             {' '}
             (지금까지 {formatManShort(usage.spent)} + 예정 {formatManShort(usage.planned)})
+          </span>
+        ) : null}
+        {trip > 0 ? (
+          <span className={styles.oneLineSub} data-testid="settlement-trip">
+            {' '}
+            · 여행 {formatManShort(trip)}
+            {usage.tripPlanned > 0 && usage.tripSpent > 0 ? ` (예정 ${formatManShort(usage.tripPlanned)} 포함)` : usage.tripSpent === 0 ? ' 예정' : ''}
           </span>
         ) : null}
       </p>
@@ -107,11 +118,11 @@ function SettlementLine({ s, usage, baseYear, className, id }: { s: Settlement; 
   return (
     <Card as="section" id={id} aria-label="이번 달 정산" className={cx(styles.lineCard, className)}>
       <p className={styles.oneLine} data-testid="settlement-line">
-        이번 달 이벤트통장 쓴 돈 <strong>{formatManShort(usage.spent)}</strong>
-        {usage.planned > 0 ? (
+        이번 달 이벤트통장 쓴 돈 <strong>{formatManShort(usage.spent + usage.tripSpent)}</strong>
+        {usage.planned + usage.tripPlanned > 0 ? (
           <>
             {' '}
-            + 예정 <strong>{formatManShort(usage.planned)}</strong>
+            + 예정 <strong>{formatManShort(usage.planned + usage.tripPlanned)}</strong>
           </>
         ) : null}
         {usage.incoming > 0 ? <span className={styles.oneLineSub}> · 들어올 돈 {formatManShort(usage.incoming)}</span> : null}
