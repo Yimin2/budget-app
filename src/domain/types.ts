@@ -215,6 +215,11 @@ export interface PlannedEvent {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   deleted: boolean;
+  /**
+   * 음력 반복 (PLAN 4-3). 'MM-DD' = 음력 월-일, 매년 반복일 때만 봐요. 해마다 그해 음력 날짜를 양력으로 바꿔 회차를 만들어요.
+   * 나중에 더한 열이라 빈 칸 = 양력 (없는 값)
+   */
+  lunar?: string;
 }
 
 export interface Expense {

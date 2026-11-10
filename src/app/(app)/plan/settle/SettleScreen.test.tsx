@@ -154,7 +154,7 @@ describe('정산 화면', () => {
     expect(L(h).data!.expenses.find((e) => e.id === id)!.accountId).toBe('demo-acc-reservoir');
   });
 
-  it("맨 아래 '저수지' 칸(#loan): 빌리고 갚은 기록(취소 · 금액 고치기)과 저수지에서 쓴 이벤트 지출 하나씩 바꾸기가 펼치기 없이 보여요", async () => {
+  it("맨 아래 '저수지' 칸(#loan): 요약과 [모두 보기] → 같은 자리에서 빌리고 갚은 기록(취소 · 금액 고치기) · 하나씩 바꾸기, [접기]", async () => {
     const { h } = await renderScreen();
     expect(screen.queryByRole('region', { name: /^저수지 · 갚을 돈/ })).toBeNull();
     await act(async () => {
@@ -164,6 +164,13 @@ describe('정산 화면', () => {
     const loan = await screen.findByRole('region', { name: '저수지 · 갚을 돈 30만' });
     expect(loan.id).toBe('loan');
     expect(loan.querySelector('details')).toBeNull();
+    expect(within(loan).getByTestId('loan-section-summary').textContent).toBe(
+      '빌린 돈 30만 · 갚은 돈 0원 · 남은 갚을 돈 30만 · 바꿀 수 있는 지출 1건',
+    );
+    expect(within(loan).queryByRole('list', { name: '빌리고 갚은 기록' })).toBeNull();
+    const toggle = within(loan).getByRole('button', { name: '저수지 기록 모두 보기' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
     const history = within(loan).getByRole('list', { name: '빌리고 갚은 기록' });
     expect(history.textContent).toContain('민지에게 지급 · 제주 항공권');
     expect(history.textContent).toContain('저수지에서 지급');
@@ -173,5 +180,8 @@ describe('정산 화면', () => {
     await screen.findByText('200,000원을 이벤트통장이 갚을 돈으로 바꿨어요');
     expect(L(h).settlement!.loan.balance).toBe(500_000);
     await waitFor(() => expect(within(loan).getByRole('button', { name: '돌잔치 취소' })).toBeTruthy());
+    fireEvent.click(within(loan).getByRole('button', { name: '저수지 기록 접기' }));
+    expect(within(loan).queryByRole('list', { name: '빌리고 갚은 기록' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

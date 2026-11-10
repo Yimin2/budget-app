@@ -29,6 +29,14 @@ async function renderScreen() {
   return h;
 }
 
+/** 접힌 요약에서 [모두 보기]를 눌러 같은 자리에서 펼쳐요 */
+function expand(region: HTMLElement, label: string) {
+  const btn = within(region).getByRole('button', { name: `${label} 모두 보기` });
+  expect(btn.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(btn);
+  expect(within(region).getByRole('button', { name: `${label} 접기` }).getAttribute('aria-expanded')).toBe('true');
+}
+
 async function addReservoirClaim(h: H, memo: string, amount = 120_000) {
   await act(async () => {
     await L(h).addExpense({ date: '2026-10-02', amount, accountId: 'demo-acc-reservoir', categoryId: eventCat(h), memo, paidBy: '민지' });
@@ -44,6 +52,10 @@ describe('지급한 기록 (#paid)', () => {
     });
     const paid = await screen.findByRole('region', { name: '지급한 기록' });
     expect(paid.id).toBe('paid');
+    // 처음에는 요약 한 줄만
+    expect(within(paid).getByTestId('paid-summary').textContent).toMatch(/^이번 달 \d+건 .+ · 전체 \d+건 .+$/);
+    expect(within(paid).queryAllByRole('list')).toHaveLength(0);
+    expand(paid, '지급한 기록');
     const lists = within(paid).getAllByRole('list');
     // 가장 최근에 지급한 제주 항공권이 맨 위
     const first = within(lists[0]!).getAllByRole('listitem')[0]!;
@@ -83,6 +95,7 @@ describe('지급한 기록 (#paid)', () => {
     });
     expect(expense(h, id).accountId).toBe('demo-acc-event');
     const paid = await screen.findByRole('region', { name: '지급한 기록' });
+    expand(paid, '지급한 기록');
     const row = within(paid).getByRole('button', { name: '민지 나무 돌잔치 120,000원 지급 취소' }).closest('li')!;
     expect(row.textContent).toContain('저수지에서 빌려 지급');
 
@@ -119,6 +132,7 @@ describe('저수지 기록 (#loan)', () => {
       await L(h).borrowAndSettleClaims(['demo-claim-jeju']);
     });
     const loan = await screen.findByRole('region', { name: '저수지 · 갚을 돈 30만' });
+    expand(loan, '저수지 기록');
     const row = within(loan).getByTestId(`loan-row-${claimLoanTransferId('demo-claim-jeju')}`);
     fireEvent.click(within(row).getByRole('button', { name: '민지에게 지급 · 제주 항공권 금액 고치기' }));
     const input = within(row).getByRole('textbox', { name: '민지에게 지급 · 제주 항공권 금액' }) as HTMLInputElement;
@@ -152,6 +166,7 @@ describe('저수지 기록 (#loan)', () => {
     });
     const before = { ...L(h).balances };
     const loan = await screen.findByRole('region', { name: /^저수지 · 갚을 돈/ });
+    expand(loan, '저수지 기록');
     const row = within(loan).getByTestId(`loan-row-${claimLoanTransferId(id)}`);
     fireEvent.click(within(row).getByRole('button', { name: '민지에게 지급 · 나무 돌잔치 취소' }));
     expect(row.textContent).toContain('지급도 함께 취소할까요?');
@@ -177,6 +192,7 @@ describe('저수지 기록 (#loan)', () => {
       await L(h).borrowAndSettleClaims(['demo-claim-jeju']);
     });
     const loan = await screen.findByRole('region', { name: '저수지 · 갚을 돈 30만' });
+    expand(loan, '저수지 기록');
     const row = within(loan).getByTestId(`loan-row-${claimLoanTransferId('demo-claim-jeju')}`);
     fireEvent.click(within(row).getByRole('button', { name: '민지에게 지급 · 제주 항공권 취소' }));
     await act(async () => {
@@ -198,6 +214,7 @@ describe('저수지 기록 (#loan)', () => {
       await L(h).repayLoan(50_000);
     });
     const loan = await screen.findByRole('region', { name: '저수지 · 갚을 돈 15만' });
+    expand(loan, '저수지 기록');
     await act(async () => {
       fireEvent.click(within(loan).getByRole('button', { name: '저수지에 갚음 취소' }));
     });

@@ -263,6 +263,32 @@ describe('schema', () => {
     expect(decodeTable('expenses', encodeTable('expenses', [{ ...ex, excluded: true }]))[0]!.excluded).toBe(true);
   });
 
+  it('일정 음력 열: 없거나 비면 양력, 여러 꼴을 MM-DD 로 읽고 쓸 때는 MM-DD 또는 빈 칸', () => {
+    const old = decodeTable('events', [['id', '날짜', '이름', '반복'], ['x', '2027-02-07', '설날', '매년']]);
+    expect(old[0]!.lunar).toBeUndefined();
+    expect(old[0]!.repeat).toBe('yearly');
+    // 시트가 '8-15' 를 날짜로 바꾼 시리얼(2026-08-15 = 46249)
+    const serial = Math.round((Date.UTC(2026, 7, 15) - Date.UTC(1899, 11, 30)) / 86_400_000);
+    const rows = decodeTable('events', [
+      ['id', '날짜', '이름', '반복', '음력'],
+      ['a', '2027-02-07', '설날', '매년', '01-01'],
+      ['b', '2027-09-15', '추석', '매년', '8-15'],
+      ['c', '2027-04-10', '생신', '매년', '3월 4일'],
+      ['d', '2027-04-10', '생신', '매년', serial],
+      ['e', '2027-04-10', '생신', '매년', ''],
+      ['f', '2027-04-10', '생신', '매년', '13-40'],
+      ['g', '2027-04-10', '생신', '매년', '2026-08-15'],
+      ['h', '2027-04-10', '생신', '매년', null],
+    ]);
+    expect(rows.map((r) => r.lunar)).toEqual(['01-01', '08-15', '03-04', '08-15', undefined, undefined, '08-15', undefined]);
+    const headers = canonicalHeaders('events');
+    expect(headers[headers.length - 1]).toBe('음력');
+    const ev = sampleLedger().events[0]!;
+    expect(encodeRow('events', ev)[headers.indexOf('음력')]).toBe('');
+    expect(encodeRow('events', { ...ev, lunar: '1-1' })[headers.indexOf('음력')]).toBe('01-01');
+    expect(decodeTable('events', encodeTable('events', [{ ...ev, lunar: '08-15' }]))[0]!.lunar).toBe('08-15');
+  });
+
   it('여행 열(여행id · 여행항목)이 없거나 비면 여행 아님으로 읽고, 여행 탭 항목예산은 한글 JSON', () => {
     const old = decodeTable('expenses', [['id', '날짜', '금액', '통장'], ['x', '2026-11-01', 1000, 'a']]);
     expect(old[0]!.tripId).toBeNull();

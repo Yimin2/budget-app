@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { findRecurringCandidates, recurringMessage } from '@/domain';
+import { findRecurringCandidates, isCoveredByAnnual, recurringMessage } from '@/domain';
 import type { Category, ISODate, LedgerData, RecurringCandidate } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, Card, Icon, isIconName, useToast } from '@/ui';
@@ -23,7 +23,11 @@ export function RecurringCard({ data, today, categories }: { data: LedgerData; t
   const repeatId = useId();
   const [yearly, setYearly] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const list = useMemo(() => findRecurringCandidates(data, today).slice(0, RECURRING_SHOWN), [data, today]);
+  // '매년 일정 한 번에 등록' 체크 목록이 다루는 일(명절 · 생신 · 기념일 …)은 여기서 다시 제안하지 않아요
+  const list = useMemo(
+    () => findRecurringCandidates(data, today).filter((c) => !isCoveredByAnnual(data, c.name)).slice(0, RECURRING_SHOWN),
+    [data, today],
+  );
   if (list.length === 0) return null;
 
   async function add(c: RecurringCandidate) {
@@ -81,7 +85,7 @@ export function RecurringCard({ data, today, categories }: { data: LedgerData; t
           <h2 id={titleId} className={styles.insightTitle}>
             매년 돌아오는 일
           </h2>
-          <p className={styles.recurringSub}>지난 기록에서 해마다 나올 만한 지출을 찾았어요</p>
+          <p className={styles.recurringSub}>위 목록에 없는 일 중 지난 기록에서 해마다 나올 만한 지출을 찾았어요</p>
         </div>
       </div>
       <ul className={styles.recurringList}>

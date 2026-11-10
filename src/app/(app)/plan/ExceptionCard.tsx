@@ -5,6 +5,7 @@ import { effectiveExclusions, exclusionPreviewMessage, formatWon } from '@/domai
 import type { EventProjection, ExceptionCandidate, ExclusionDraft, ISODate, LedgerData } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, Card, Icon, cx, useToast } from '@/ui';
+import { ExpandButton } from '../_components/ExpandButton';
 import { dateLabel, errorText, monthLabel } from './selectors';
 import styles from './events.module.css';
 
@@ -29,7 +30,8 @@ function reasonText(c: ExceptionCandidate): string {
 
 /**
  * '예외 지출 빼기' (PLAN 4-2): 지난 이벤트통장 지출 중 한 번뿐인 큰 지출을 체크하면 평소 쓰는 돈과 12개월 예측이 바로 다시 그려져요.
- * [저장]을 누르면 그때 지출의 '예외' 칸을 고쳐요. [되돌리기]나 화면을 떠나면 그대로예요
+ * [저장]을 누르면 그때 지출의 '예외' 칸을 고쳐요. [되돌리기]나 화면을 떠나면 그대로예요.
+ * 처음에는 접힌 요약 한 줄("예외 3건 · 후보 5건")과 [펼치기]만. 같은 자리에서 펼치고 [접기]로 접어요. 미리 보는 중에는 펼친 채로 있어요
  */
 export function ExceptionCard({ data, today, candidates, before, after, draft, onChange }: ExceptionCardProps) {
   const ledger = useLedger();
@@ -37,6 +39,8 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
   const titleId = useId();
   const ids = useId().replace(/:/g, '');
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
   const changes = useMemo(() => effectiveExclusions(data, draft), [data, draft]);
   const message = after && changes.length > 0 ? exclusionPreviewMessage(before, after, today) : '';
 
@@ -65,6 +69,8 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
   }
 
   const previewing = changes.length > 0;
+  const open = expanded || previewing;
+  const markedCount = candidates.filter((c) => checkedOf(c)).length;
   const shortages = (after ?? before).shortages;
   return (
     <Card as="section" className={cx(styles.exception, previewing && styles.exceptionOn)} aria-labelledby={titleId}>
@@ -74,68 +80,84 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
           <h2 id={titleId} className={styles.insightTitle}>
             예외 지출 빼기
           </h2>
+          <p className={styles.recurringSub} data-testid="exception-summary">
+            예외 {markedCount}건 · 후보 {candidates.length - markedCount}건
+          </p>
+        </div>
+        <ExpandButton
+          open={open}
+          onToggle={() => setExpanded(!open)}
+          controls={bodyId}
+          openLabel="펼치기"
+          label="예외 지출 빼기"
+          disabled={previewing}
+        />
+      </div>
+
+      {open ? (
+        <div id={bodyId} className={styles.expandBody}>
           <p className={styles.recurringSub}>
             결혼식 축의금처럼 한 번뿐이었던 큰 지출을 빼면 ‘평소 쓰는 돈’과 예상 잔액을 다시 계산해요. 잔액에는 그대로 쓴 돈으로 들어가요
           </p>
-        </div>
-      </div>
 
-      <ul className={styles.exceptionList}>
-        {candidates.map((c) => {
-          const checked = checkedOf(c);
-          const id = `${ids}-${c.expense.id}`;
-          const changed = draft[c.expense.id] !== undefined;
-          return (
-            <li key={c.expense.id} className={cx(styles.exceptionRow, checked && styles.exceptionChecked, changed && styles.exceptionChanged)}>
-              <input
-                id={id}
-                type="checkbox"
-                checked={checked}
-                disabled={busy}
-                aria-label={`‘${c.name}’ 예외로 빼기`}
-                onChange={(e) => toggle(c, e.target.checked)}
-              />
-              <label htmlFor={id} className={styles.exceptionText}>
-                <span className={styles.exceptionName}>{c.name}</span>
-                <span className={styles.exceptionMeta}>
-                  {dateLabel(c.expense.date, today, false)}
-                  <span className={styles.exceptionTag}>{reasonText(c)}</span>
-                  {c.marked && c.reason !== 'marked' ? <span className={styles.exceptionTag}>예외로 표시함</span> : null}
-                </span>
-              </label>
-              <span className={styles.exceptionAmount}>{formatWon(c.expense.amount)}</span>
-            </li>
-          );
-        })}
-      </ul>
+          <ul className={styles.exceptionList}>
+            {candidates.map((c) => {
+              const checked = checkedOf(c);
+              const id = `${ids}-${c.expense.id}`;
+              const changed = draft[c.expense.id] !== undefined;
+              return (
+                <li key={c.expense.id} className={cx(styles.exceptionRow, checked && styles.exceptionChecked, changed && styles.exceptionChanged)}>
+                  <input
+                    id={id}
+                    type="checkbox"
+                    checked={checked}
+                    disabled={busy}
+                    aria-label={`‘${c.name}’ 예외로 빼기`}
+                    onChange={(e) => toggle(c, e.target.checked)}
+                  />
+                  <label htmlFor={id} className={styles.exceptionText}>
+                    <span className={styles.exceptionName}>{c.name}</span>
+                    <span className={styles.exceptionMeta}>
+                      {dateLabel(c.expense.date, today, false)}
+                      <span className={styles.exceptionTag}>{reasonText(c)}</span>
+                      {c.marked && c.reason !== 'marked' ? <span className={styles.exceptionTag}>예외로 표시함</span> : null}
+                    </span>
+                  </label>
+                  <span className={styles.exceptionAmount}>{formatWon(c.expense.amount)}</span>
+                </li>
+              );
+            })}
+          </ul>
 
-      <div className={styles.exceptionPreview} aria-live="polite">
-        {previewing ? (
-          <>
-            <p className={styles.exceptionMsg}>{message}</p>
-            <p className={styles.recurringSub}>
-              모자라는 달:{' '}
-              {shortages.length === 0
-                ? '없어요'
-                : shortages.map((s) => `${monthLabel(s.month, today, '이번 달')} ${formatWon(s.amount)}`).join(' · ')}
+          <div className={styles.exceptionPreview} aria-live="polite">
+            {previewing ? (
+              <>
+                <p className={styles.exceptionMsg}>{message}</p>
+                <p className={styles.recurringSub}>
+                  모자라는 달:{' '}
+                  {shortages.length === 0
+                    ? '없어요'
+                    : shortages.map((s) => `${monthLabel(s.month, today, '이번 달')} ${formatWon(s.amount)}`).join(' · ')}
+                </p>
+              </>
+            ) : (
+              <p className={styles.recurringSub}>체크하면 위 예측이 바로 바뀌어요. 저장하기 전까지는 그대로예요</p>
+            )}
+          </div>
+
+          <div className={styles.applyRow}>
+            <Button icon="check" onClick={() => void save()} loading={busy} disabled={!previewing}>
+              저장
+            </Button>
+            <Button variant="outline" onClick={() => onChange({})} disabled={busy || !previewing}>
+              되돌리기
+            </Button>
+            <p className={styles.applyNote}>
+              {previewing ? `${changes.length}건을 바꿔 봤어요. 누르기 전에는 저장하지 않아요` : '아직 바꾼 것이 없어요'}
             </p>
-          </>
-        ) : (
-          <p className={styles.recurringSub}>체크하면 위 예측이 바로 바뀌어요. 저장하기 전까지는 그대로예요</p>
-        )}
-      </div>
-
-      <div className={styles.applyRow}>
-        <Button icon="check" onClick={() => void save()} loading={busy} disabled={!previewing}>
-          저장
-        </Button>
-        <Button variant="outline" onClick={() => onChange({})} disabled={busy || !previewing}>
-          되돌리기
-        </Button>
-        <p className={styles.applyNote}>
-          {previewing ? `${changes.length}건을 바꿔 봤어요. 누르기 전에는 저장하지 않아요` : '아직 바꾼 것이 없어요'}
-        </p>
-      </div>
+          </div>
+        </div>
+      ) : null}
     </Card>
   );
 }

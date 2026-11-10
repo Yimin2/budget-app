@@ -1,11 +1,11 @@
 'use client';
 
 import { useId, useState, type FormEvent } from 'react';
-import { formatWon, seriesAnchorDay } from '@/domain';
+import { formatWon, nextEventDate } from '@/domain';
 import type { PlannedEvent } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, DateInput, Dialog, Field, Icon, MoneyInput, useToast } from '@/ui';
-import { dateLabel, defaultCompleteDate, errorText, nextOccurrence, REPEAT_LABEL } from './selectors';
+import { dateLabel, defaultCompleteDate, errorText, REPEAT_LABEL } from './selectors';
 import styles from './events.module.css';
 
 export interface CompleteDialogProps {
@@ -35,11 +35,7 @@ export function CompleteDialog({ event, onClose }: CompleteDialogProps) {
   const [saving, setSaving] = useState(false);
 
   const account = ledger.activeAccounts.find((a) => a.id === event.accountId) ?? null;
-  const next = nextOccurrence(
-    event.date,
-    event.repeat,
-    event.repeat === 'none' ? undefined : seriesAnchorDay(ledger.data?.events ?? [], event),
-  );
+  const next = nextEventDate(ledger.data?.events ?? [], event);
   const diff = amount === null ? 0 : paid + amount - event.amount;
 
   async function submit(e: FormEvent) {
