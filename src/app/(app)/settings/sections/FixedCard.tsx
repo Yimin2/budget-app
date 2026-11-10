@@ -81,8 +81,11 @@ export function subItemsSummary(f: Pick<FixedExpense, 'subItems'>, date: string)
     .join(' · ');
 }
 
-/** 고정 지출: 고정비 하나의 목록을 사람별 탭으로. 결제일에 자동 기록 (생활비 항목 예산은 LivingCard) */
-export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
+/**
+ * 고정 지출: 고정비 하나의 목록을 사람별 탭으로. 결제일에 자동 기록 (생활비 항목 예산은 LivingCard).
+ * accountId 를 주면 그 통장의 고정비만 카드 틀 없이 보여 줘요 (예산 화면 통장 카드 안, 새 고정비도 그 통장)
+ */
+export function FixedCard({ ledger, accountId }: { ledger: ReadyLedger; accountId?: string }) {
   const { busy, run } = useRunner();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
@@ -107,9 +110,10 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   const keyOf = (f: FixedExpense) => ownerKeyOf(accounts.find((a) => a.id === f.accountId));
   const myKey = ledger.myLivingAccountId ? ownerKeyOf(ledger.activeAccounts.find((a) => a.id === ledger.myLivingAccountId)) : null;
   const owners = useOwnerFilter(items.map(keyOf), ledger.data, undefined, myKey);
-  const shown = items.filter((f) => owners.matches(keyOf(f)));
+  const shown = accountId ? items.filter((f) => f.accountId === accountId) : items.filter((f) => owners.matches(keyOf(f)));
 
   function defaultAccountId(): string {
+    if (accountId) return accountId;
     // 사람별 생활비 통장이 있으면 내 생활비 통장 (고정비도 통장 주인의 것이에요)
     return ledger.myLivingAccountId ?? (ledger.accountByRole('fixed') ?? ledger.accountByRole('allowance') ?? accounts[0])?.id ?? '';
   }
@@ -308,17 +312,14 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   const setItem = (key: number, patch: Partial<ItemDraft>) =>
     draft && setDraft({ ...draft, items: draft.items.map((x) => (x.key === key ? { ...x, ...patch } : x)) });
 
-  return (
-    <Card id="st-fixed" title="고정 지출">
-      <p className="st-desc">
-        고정비는 결제일에 나가는 통장에서 지출로 자동 기록돼요. 용돈은 매달 배분에서 용돈 통장으로 보내고, 용돈 통장에서 나가는 십일조 · 헌금도
-        여기에 그 통장의 고정비로 넣어요.
-      </p>
-
-      <OwnerTabs filter={owners} label="누구 고정 지출" />
-
+  const body = (
+    <>
       {shown.length === 0 ? (
-        <EmptyState icon="receipt" headingLevel={3} title="고정 지출이 없어요" description="월세·통신비처럼 매달 나가는 돈을 등록해 주세요." />
+        accountId ? (
+          <p className="st-desc">이 통장에서 나가는 고정비가 없어요.</p>
+        ) : (
+          <EmptyState icon="receipt" headingLevel={3} title="고정 지출이 없어요" description="월세·통신비처럼 매달 나가는 돈을 등록해 주세요." />
+        )
       ) : (
         <ul className="list" aria-label="고정비">
           {shown.map((f) => (
@@ -544,6 +545,18 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
         onConfirm={() => void applyConfirm()}
         onCancel={() => setConfirm(null)}
       />
+    </>
+  );
+
+  if (accountId) return <div className="bd-embed">{body}</div>;
+  return (
+    <Card id="st-fixed" title="고정 지출">
+      <p className="st-desc">
+        고정비는 결제일에 나가는 통장에서 지출로 자동 기록돼요. 용돈은 매달 배분에서 용돈 통장으로 보내고, 용돈 통장에서 나가는 십일조 · 헌금도
+        여기에 그 통장의 고정비로 넣어요.
+      </p>
+      <OwnerTabs filter={owners} label="누구 고정 지출" />
+      {body}
     </Card>
   );
 }

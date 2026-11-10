@@ -306,7 +306,8 @@ function computeLivingFor(data: LedgerData, today: ISODate, livingAccountId: Id 
     b.dates.add(e.date);
     if (e.date === today) b.spentToday += e.amount;
   }
-  const daysOff = new Set(data.settings.daysOff ?? []);
+  // 회사 쉬는 날(설정 '쉬는날')은 더 쓰지 않아요 (8-3). 시트에 남아 있어도 지우지 않고 셈에서만 빼요 — 고칠 화면이 없어 보이지 않게 영향을 주지 않게
+  const daysOff = new Set<string>();
 
   const items: LivingItem[] = [...buckets.values()]
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, 'ko'))

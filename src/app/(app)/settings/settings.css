@@ -145,6 +145,13 @@
   }
 }
 
+.bd-embed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .st-desc {
   margin: 0;
   font-size: 14px;
@@ -651,25 +658,6 @@
   font-weight: 600;
   color: var(--primary);
 }
-.st-daysoff {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
-}
-.st-daysoff > h3 {
-  margin: 0;
-}
-.st-daysoff-add {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-}
-.st-daysoff-add > :first-child {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 /* 생활비 예산 */
 .st-label {
   font-size: 14px;

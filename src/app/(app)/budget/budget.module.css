@@ -1,0 +1,308 @@
+/* 예산 화면 시각화 (작업정리 8-3): 월급날 돈 흐름 · 통장별 카드. 색은 모두 토큰 (라이트 · 다크 함께) */
+
+/* ───────── 월급날 돈 흐름 ───────── */
+.flowGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+@media (min-width: 1024px) {
+  .flowGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6);
+  }
+}
+.flowCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.flowHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.flowTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.flowSub {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.source {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 22px;
+}
+.sourceName {
+  font-weight: 700;
+}
+.sourceAmount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* 월급통장에서 갈라져 나가는 선 */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 0 0 var(--space-3);
+  padding: var(--space-2) 0 0 var(--space-4);
+  list-style: none;
+  border-left: 2px solid var(--border-strong);
+}
+.row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.row::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--space-4) - 2px);
+  top: 11px;
+  width: calc(var(--space-4) - var(--space-1));
+  border-top: 2px solid var(--border-strong);
+}
+.rowLabel {
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.track {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
+.bar {
+  display: block;
+  width: var(--w, 0%);
+  height: var(--h, 12px);
+  border-radius: var(--radius-xs);
+  background: var(--chart-1);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar {
+    transition: width var(--duration-base, 200ms) var(--ease-out, ease-out);
+  }
+}
+@media (min-width: 768px) {
+  .row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+  }
+}
+.kFixed {
+  background: var(--chart-1);
+}
+.kAuto {
+  background: var(--chart-2);
+}
+.kRemainder {
+  background: var(--chart-3);
+}
+.kLeft {
+  background: var(--chart-6);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-xs);
+}
+.summaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.summaryText {
+  margin: 0;
+  flex: 1 1 16rem;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.warn {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--warning-text);
+}
+.note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+
+/* ───────── 통장별 카드 ───────── */
+.accountGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (min-width: 1280px) {
+  .accountGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6);
+  }
+}
+.accountCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.accHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.accTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.blockRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.blockText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+.blockLabel {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.blockValue {
+  font-size: 15px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.inList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  font-size: 14px;
+  line-height: 22px;
+}
+.inList li {
+  display: flex;
+  flex-direction: column;
+}
+.inlineLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--primary-text);
+  font-weight: 700;
+}
+.outList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.outRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  scroll-margin-top: var(--space-6);
+}
+.outRow:focus {
+  outline: none;
+}
+.outRow:focus-visible {
+  outline: 2px solid var(--focus, var(--primary));
+  outline-offset: 2px;
+}
+.outText {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1);
+  flex: 1 1 10rem;
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+.outAmount {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+.outBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
