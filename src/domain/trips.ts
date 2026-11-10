@@ -144,6 +144,52 @@ export function tripStatus(data: LedgerData, trip: Trip, today: ISODate): TripSt
   };
 }
 
+/** 예산 대비 쓴 정도: 넘으면 over, 90% 이상이면 near, 아니면 ok. 비교할 예산이 없으면 쓴 돈이 있을 때 near */
+export type TripSpendState = 'ok' | 'near' | 'over';
+
+export function tripSpendState(spent: Won, limit: Won | null): TripSpendState {
+  if (limit === null || limit <= 0) return spent > 0 ? 'near' : 'ok';
+  if (spent > limit) return 'over';
+  return spent >= limit * 0.9 ? 'near' : 'ok';
+}
+
+/** 항목 예산이 없는 항목들이 함께 쓰는 나머지 예산 (총예산 − 항목 예산 합) */
+export interface TripLeftoverPool {
+  budget: Won;
+  /** 예산 없는 항목들의 쓴 돈 합 */
+  spent: Won;
+  /** budget − spent (음수 = 넘음) */
+  remaining: Won;
+}
+
+/**
+ * 항목 한 줄의 예산 기준
+ * - own: 항목 예산이 있음 → 항목 예산 vs 그 항목 쓴 돈
+ * - pool: 항목 예산이 없고 나머지 예산이 있음 → 나머지 예산 vs 예산 없는 항목들 쓴 돈 합 (함께 씀)
+ * - outside: 항목 예산도 나머지 예산도 없음 → 쓴 돈이 있으면 '예산 밖'
+ */
+export interface TripItemLine extends TripItemStatus {
+  basis: 'own' | 'pool' | 'outside';
+  state: TripSpendState;
+}
+
+/** 항목별 줄 + 나머지 예산. 나머지 예산 = 총예산 − 항목 예산 합 (총예산이 없거나 0 이하면 null) */
+export function tripItemLines(s: Pick<TripStatus, 'trip' | 'items' | 'itemBudgetTotal'>): {
+  pool: TripLeftoverPool | null;
+  lines: TripItemLine[];
+} {
+  const leftover = s.trip.budget > 0 ? s.trip.budget - s.itemBudgetTotal : 0;
+  const poolSpent = s.items.reduce((sum, it) => (it.budget === null ? sum + it.spent : sum), 0);
+  const pool = leftover > 0 ? { budget: leftover, spent: poolSpent, remaining: leftover - poolSpent } : null;
+  const poolState = pool ? tripSpendState(pool.spent, pool.budget) : 'ok';
+  const lines = s.items.map((it): TripItemLine => {
+    if (it.budget !== null) return { ...it, basis: 'own', state: tripSpendState(it.spent, it.budget) };
+    if (pool) return { ...it, basis: 'pool', state: poolState };
+    return { ...it, basis: 'outside', state: it.spent > 0 ? 'near' : 'ok' };
+  });
+  return { pool, lines };
+}
+
 const PHASE_ORDER: Record<TripStatus['phase'], number> = { ongoing: 0, upcoming: 1, past: 2 };
 
 /** 지우지 않은 여행 모두: 여행 중 → 다가오는 여행(가까운 순) → 지난 여행(최근 순) */

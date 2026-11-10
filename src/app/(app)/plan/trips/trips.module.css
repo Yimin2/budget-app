@@ -155,12 +155,17 @@
   flex: none;
   color: var(--text-muted);
 }
-.over {
+/* 쓴 정도 색: 보통은 기본 · 90% 이상 warning · 넘으면 danger. 글자 토큰이라 밝은 · 어두운 화면 모두 4.5:1 이상.
+   늘 아이콘 + 글자와 함께 써요 */
+.onTrack {
+  color: var(--primary-text);
+}
+.toneWarning {
+  color: var(--warning-text);
+}
+.toneDanger {
   color: var(--danger-text);
   font-weight: 700;
-}
-.ok {
-  color: var(--success-text);
 }
 
 /* ───────── 여행 하나 ───────── */
@@ -225,7 +230,10 @@
     line-height: 30px;
   }
 }
-.overStat dd {
+.stat.toneWarning dd {
+  color: var(--warning-text);
+}
+.stat.toneDanger dd {
   color: var(--danger-text);
 }
 .statusLine {
@@ -266,9 +274,35 @@
 }
 .itemLeft {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-size: 14px;
   line-height: 20px;
   color: var(--text-muted);
+}
+.item.toneWarning,
+.item.toneDanger {
+  color: inherit;
+  font-weight: inherit;
+}
+.item.toneWarning .itemLeft,
+.item.toneWarning .itemNums {
+  color: var(--warning-text);
+  font-weight: 500;
+}
+.item.toneDanger .itemLeft,
+.item.toneDanger .itemNums {
+  color: var(--danger-text);
+  font-weight: 700;
+}
+.item.toneWarning .itemIcon {
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+}
+.item.toneDanger .itemIcon {
+  background: var(--danger-subtle);
+  color: var(--danger-text);
 }
 .itemNums {
   font-size: 14px;

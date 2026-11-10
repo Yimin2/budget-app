@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeHarness } from '../testHarness';
 import { TripView } from './TripScreen';
-import { itemBudgetHint, projectionNote, remainingText, spendTone, tripPhaseText } from './selectors';
+import { itemBudgetHint, itemLineText, newestFirst, projectionNote, remainingText, spendTone, tripPhaseText } from './selectors';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -39,10 +39,19 @@ describe('여행 화면', () => {
     const pays = screen.getByRole('list', { name: '이 여행에 낸 돈' });
     const rows = within(pays).getAllByRole('listitem');
     expect(rows).toHaveLength(2);
-    expect(rows[0]!.textContent).toContain('제주 숙소 예약금');
-    expect(rows[0]!.textContent).toContain('숙박 · 이벤트통장');
-    expect(rows[1]!.textContent).toContain('제주 항공권');
-    expect(rows[1]!.textContent).toContain('민지 돌려받기 전');
+    // 최근 날짜 먼저
+    expect(rows[0]!.textContent).toContain('제주 항공권');
+    expect(rows[0]!.textContent).toContain('민지 돌려받기 전');
+    expect(rows[1]!.textContent).toContain('제주 숙소 예약금');
+    expect(rows[1]!.textContent).toContain('숙박 · 이벤트통장');
+
+    // 항목 줄 색 · 문구: 항공은 다 써서 warning, 숙박은 보통
+    const itemRow = (name: string) => screen.getByRole('progressbar', { name: `${name} 예산 사용` }).closest('li')!;
+    expect(itemRow('항공').textContent).toContain('다 썼어요');
+    expect(itemRow('항공').textContent).toContain('30만 / 30만');
+    expect(itemRow('항공').className).toMatch(/toneWarning/);
+    expect(itemRow('숙박').textContent).toContain('15만 남음');
+    expect(itemRow('숙박').className).not.toMatch(/tone/);
   });
 
   it('지출 기록: 여행과 이벤트통장을 골라 두고, 기록하면 여행에 묶여요', async () => {
@@ -104,6 +113,32 @@ describe('여행 화면 문구', () => {
     expect(itemBudgetHint(500, items)).toBe('항목 합 600원이 총예산보다 100원 많아요');
     expect(itemBudgetHint(1000, items)).toBe('항목 합 600원 · 나머지 400원은 항목 없이 써요');
     expect(itemBudgetHint(null, { ...items, flight: null })).toBeNull();
+  });
+
+  it('항목 줄 문구: 항목 예산 · 나머지 예산 · 예산 밖', () => {
+    const own = { item: 'flight' as const, budget: 300_000, spent: 330_000, remaining: -30_000, basis: 'own' as const, state: 'over' as const };
+    expect(itemLineText(own, null)).toEqual({ status: '3만 넘었어요', detail: '33만 / 30만' });
+    expect(itemLineText({ ...own, spent: 250_000, remaining: 50_000, state: 'ok' }, null).status).toBe('5만 남음');
+
+    const pool = { budget: 300_000, spent: 150_000, remaining: 150_000 };
+    const food = { item: 'food' as const, budget: null, spent: 120_000, remaining: null, basis: 'pool' as const, state: 'ok' as const };
+    expect(itemLineText(food, pool)).toEqual({ status: '나머지 15만 남음', detail: '나머지 예산 30만 중 12만 씀 · 함께 15만' });
+    expect(itemLineText(food, { ...pool, spent: 120_000, remaining: 180_000 }).detail).toBe('나머지 예산 30만 중 12만 씀');
+    expect(itemLineText(food, { budget: 300_000, spent: 330_000, remaining: -30_000 }).status).toBe('나머지 3만 넘었어요');
+
+    const outside = { ...food, spent: 40_000, basis: 'outside' as const, state: 'near' as const };
+    expect(itemLineText(outside, null).status).toBe('예산 밖 4만 씀');
+    expect(itemLineText({ ...outside, spent: 0, state: 'ok' }, null)).toEqual({ status: '', detail: '' });
+  });
+
+  it('낸 돈은 최근 날짜 먼저, 같은 날이면 나중에 기록한 것 먼저', () => {
+    const e = (id: string, date: string, createdAt: string) => ({ id, date, createdAt });
+    const sorted = newestFirst([
+      e('a', '2026-11-01', '2026-11-01T01:00:00Z'),
+      e('b', '2026-11-03', '2026-11-03T01:00:00Z'),
+      e('c', '2026-11-01', '2026-11-02T01:00:00Z'),
+    ]);
+    expect(sorted.map((x) => x.id)).toEqual(['b', 'c', 'a']);
   });
 
   it('지난 여행의 남은 예산은 예측에 넣지 않는다고 알려요', () => {

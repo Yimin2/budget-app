@@ -4,8 +4,8 @@ import { accountBalance } from './balances';
 import { DEMO_TRIP_ID, createDemoLedger } from './defaults';
 import { projectEventAccount, suggestShortageFixes } from './events';
 import {
-  daysBetween, linkableTrips, spreadTripRemaining, tripBudget, tripItemForCategory, tripOutflows, tripPeriodText,
-  tripStatus, tripStatuses, validateTrip,
+  daysBetween, linkableTrips, spreadTripRemaining, tripBudget, tripItemForCategory, tripItemLines, tripOutflows, tripPeriodText,
+  tripSpendState, tripStatus, tripStatuses, validateTrip,
 } from './trips';
 import { judgeEvent, judgeInstallment } from './verdict';
 import type { Expense, LedgerData, Trip } from './types';
@@ -79,6 +79,56 @@ describe('여행 상태', () => {
     expect(tripStatuses(d, TODAY).map((s) => s.trip.id)).toEqual(['now', 'soon', 'later', 'past']);
     expect(tripStatuses(d, TODAY).map((s) => s.phase)).toEqual(['ongoing', 'upcoming', 'upcoming', 'past']);
     expect(linkableTrips(d, TODAY, 'gone').map((t) => t.id)).toContain('gone');
+  });
+});
+
+describe('항목별 예산 기준 (나머지 예산)', () => {
+  it('항목 예산 없는 항목은 총예산 − 항목 예산 합을 함께 쓴다', () => {
+    // 총예산 90만, 항목 예산 60만 → 나머지 30만. 식비 12만 · 기타 3만 = 15만 씀
+    const d = ledger({
+      trips: [trip()],
+      expenses: [
+        tripExpense({ amount: 280_000, tripItem: 'flight' }),
+        tripExpense({ amount: 120_000, tripItem: 'food' }),
+        tripExpense({ amount: 30_000, tripItem: null }),
+      ],
+    });
+    const { pool, lines } = tripItemLines(tripStatus(d, d.trips[0]!, TODAY));
+    expect(pool).toEqual({ budget: 300_000, spent: 150_000, remaining: 150_000 });
+    expect(lines.map((l) => [l.item, l.basis, l.state])).toEqual([
+      ['flight', 'own', 'near'],
+      ['stay', 'own', 'ok'],
+      ['food', 'pool', 'ok'],
+      ['other', 'pool', 'ok'],
+    ]);
+  });
+
+  it('나머지 예산을 넘으면 예산 없는 항목 모두 over', () => {
+    const d = ledger({
+      trips: [trip()],
+      expenses: [tripExpense({ amount: 250_000, tripItem: 'food' }), tripExpense({ amount: 80_000, tripItem: 'tour' })],
+    });
+    const { pool, lines } = tripItemLines(tripStatus(d, d.trips[0]!, TODAY));
+    expect(pool).toEqual({ budget: 300_000, spent: 330_000, remaining: -30_000 });
+    expect(lines.filter((l) => l.basis === 'pool').map((l) => l.state)).toEqual(['over', 'over']);
+  });
+
+  it('총예산이 없거나 나머지가 없으면 예산 밖', () => {
+    for (const t of [trip({ budget: 0 }), trip({ budget: 600_000 }), trip({ budget: 500_000 })]) {
+      const d = ledger({ trips: [t], expenses: [tripExpense({ amount: 40_000, tripItem: 'food' })] });
+      const { pool, lines } = tripItemLines(tripStatus(d, t, TODAY));
+      expect(pool).toBeNull();
+      expect(lines.find((l) => l.item === 'food')).toMatchObject({ basis: 'outside', state: 'near', spent: 40_000 });
+    }
+  });
+
+  it('쓴 정도: 90% 이상 near, 넘으면 over, 예산 없으면 쓴 돈이 있을 때만 near', () => {
+    expect(tripSpendState(89, 100)).toBe('ok');
+    expect(tripSpendState(90, 100)).toBe('near');
+    expect(tripSpendState(100, 100)).toBe('near');
+    expect(tripSpendState(101, 100)).toBe('over');
+    expect(tripSpendState(0, null)).toBe('ok');
+    expect(tripSpendState(1, null)).toBe('near');
   });
 });
 
