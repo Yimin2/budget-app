@@ -41,7 +41,7 @@ export interface SettleMonth {
 }
 
 /** 오래된 것 먼저: 날짜 → 기록한 순서(createdAt) → 기록 목록 순서 */
-const oldest = (a: SettleRow, b: SettleRow) =>
+const byOldest = (order: Map<Id, number>) => (a: SettleRow, b: SettleRow) =>
   a.expense.date !== b.expense.date
     ? a.expense.date < b.expense.date
       ? -1
@@ -50,9 +50,10 @@ const oldest = (a: SettleRow, b: SettleRow) =>
       ? a.expense.createdAt < b.expense.createdAt
         ? -1
         : 1
-      : 0; // 같으면 기록 목록 순서 그대로 (안정 정렬, id 는 무작위라 쓰지 않아요)
+      : (order.get(a.expense.id) ?? 0) - (order.get(b.expense.id) ?? 0); // 같으면 지출 탭에 기록된 순서 (id 는 무작위라 쓰지 않아요)
 
-function toMonths(rows: SettleRow[]): SettleMonth[] {
+function toMonths(rows: SettleRow[], order: Map<Id, number>): SettleMonth[] {
+  const oldest = byOldest(order);
   const byMonth = new Map<YearMonth, SettleRow[]>();
   for (const r of rows) byMonth.set(r.month, [...(byMonth.get(r.month) ?? []), r]);
   return [...byMonth.entries()]
@@ -105,7 +106,7 @@ export function settleList(data: LedgerData, s: Settlement): SettleMonth[] {
   for (const [id, p] of paid) {
     if (!seen.has(id) && p.expense.date) push(p.expense, p.expense.amount, eventRecordStatus(data, p.expense, live));
   }
-  return toMonths(rows);
+  return toMonths(rows, new Map(data.expenses.map((e, i) => [e.id, i])));
 }
 
 /** 사람 필터: 지출을 실제로 쓴 사람의 키(expenseSpender, 사람이면 멤버 이메일 소문자)가 같은 줄만. 합계도 다시 센다 */
@@ -113,7 +114,10 @@ export function filterSettleList(data: LedgerData, months: SettleMonth[], person
   if (!personKey) return months;
   const people = ledgerPeople(data);
   const key = personKey.trim().toLowerCase();
-  return toMonths(months.flatMap((m) => m.rows).filter((r) => expenseSpender(data, r.expense, people).key === key));
+  return toMonths(
+    months.flatMap((m) => m.rows).filter((r) => expenseSpender(data, r.expense, people).key === key),
+    new Map(data.expenses.map((e, i) => [e.id, i])),
+  );
 }
 
 /** 줄 돈만: 고를 수 있는 줄만 남기고, 줄 돈이 없는 달은 뺀다 (합계는 그달 모든 기록 그대로) */
