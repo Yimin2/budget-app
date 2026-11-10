@@ -27,10 +27,16 @@ describe('예산 — 부부 예시', () => {
 
     const rules = card('매달 배분');
     const preview = within(rules).getByRole('list', { name: '월급날마다 보내는 돈' });
-    expect(within(preview).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+    expect(within(preview).getAllByRole('listitem').map((li) => li.firstChild?.textContent)).toEqual([
       '21일: 320만 → 생활비(민지) 90만 · 생활비(준호) 110만 · 이벤트 30만 · 나머지 90만 → 저수지',
       '25일: 280만 → 용돈(민지) 40만 · 용돈(준호) 35만 · 저축투자 100만 · 나머지 105만 → 저수지',
     ]);
+    // 나머지 예상 (PLAN 4-15): 다음 회차 예상과 매달 약
+    expect(within(preview).getByText('나머지 전부 → 저수지 · 다음 21일 예상 900,000원')).toBeTruthy();
+    expect(within(preview).getByText('저수지로 매달 약 105만원')).toBeTruthy();
+    // 다음 배분에 필요한 금액: 생활비 · 용돈 통장마다 한 줄
+    const needs = card('다음 배분에 필요한 금액');
+    expect(within(needs).getByText(/^생활비\(민지\)/)).toBeTruthy();
     expect(within(rules).getByText('나머지 → 저수지통장').nextSibling?.textContent).toBe('1,950,000원');
     expect(within(rules).queryByText(/수입보다/)).toBeNull();
     expect(within(rules).getAllByText('나머지 전부')).toHaveLength(2);

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useId, useMemo, useState } from 'react';
 import {
-  ledgerPeople, formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, livingDayNote, scheduleLabel,
+  ledgerPeople, formatDateKo, formatMan, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, livingDayNote, scheduleLabel,
   withSubject,
 } from '@/domain';
 import type { Favorite, LivingItem, LivingStatus, LivingView } from '@/domain';
@@ -15,6 +15,7 @@ import {
 import { ClaimsCard, LedgerSwitcher, SettlementCard } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
 import { ProjectionChart } from './ProjectionChart';
+import { hasMonthSpent, monthSpent } from './monthSpent';
 import { errorMessage, expenseTitle, recentExpenses, shortageBannerText, upcomingEvents } from './selectors';
 import styles from './home.module.css';
 
@@ -92,6 +93,11 @@ function HomeBody() {
         </Button>
         <FavoriteChips favorites={data.favorites} />
         {living && living.items.length > 0 ? <LivingItemsCard living={living} owner={selected?.name ?? null} /> : null}
+        <MonthSpentCard
+          statuses={selected ? [selected.status] : multi ? views.map((v) => v.status) : ledger.living ? [ledger.living] : []}
+          livingAccountId={selected?.accountId ?? null}
+          owner={selected?.name ?? null}
+        />
         {wide ? <RecentExpenses /> : null}
       </div>
       <div className={styles.col}>
@@ -347,6 +353,66 @@ function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner
             </div>
           </li>
         ))}
+      </ul>
+    </Card>
+  );
+}
+
+/* ───────── 이번 달 쓴 돈 (기타 · 용돈 · 이벤트통장) ───────── */
+
+/** 보이는 사람(사람 선택을 따라가요, 선택이 없으면 모두 합쳐)의 기타(예산 없음) · 용돈과 이벤트통장. 보일 줄이 없으면 카드도 없어요 */
+function MonthSpentCard({
+  statuses,
+  livingAccountId,
+  owner,
+}: {
+  statuses: LivingStatus[];
+  livingAccountId: string | null;
+  owner: string | null;
+}) {
+  const ledger = useLedger();
+  const heading = useCardTitle(owner ? `이번 달 쓴 돈 · ${owner}` : '이번 달 쓴 돈');
+  const summary = monthSpent(ledger.data!, ledger.today, {
+    statuses,
+    livingAccountId,
+    balances: ledger.balances,
+    eventProjection: ledger.eventProjection,
+  });
+  if (!hasMonthSpent(summary)) return null;
+  const { etc, allowance, event } = summary;
+  return (
+    <Card as="section" {...heading} className={cx(styles.cardGap, styles.oSpent)}>
+      <ul className={cx('list', styles.listTop)}>
+        {etc ? (
+          <li>
+            <ListRow
+              icon="dots"
+              href={etc.href}
+              title="기타 (예산 없음)"
+              subtitle={`${formatWon(etc.amount)} · ${etc.count}건`}
+            />
+          </li>
+        ) : null}
+        {allowance ? (
+          <li>
+            <ListRow
+              icon="wallet"
+              href={allowance.href}
+              title="용돈"
+              subtitle={`${formatMan(allowance.spent)} 썼어요 · 남은 돈 ${formatMan(allowance.balance)}`}
+            />
+          </li>
+        ) : null}
+        {event ? (
+          <li>
+            <ListRow
+              icon="calendar"
+              href={event.href}
+              title="이벤트통장"
+              subtitle={`${formatMan(event.spent)} 썼어요 · 적립 ${formatMan(event.contribution)} · 잔액 ${formatMan(event.balance)}`}
+            />
+          </li>
+        ) : null}
       </ul>
     </Card>
   );

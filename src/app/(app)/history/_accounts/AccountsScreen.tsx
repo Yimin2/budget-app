@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
-import { formatWon, monthOf } from '@/domain';
+import { formatWon, monthOf, remainderViews } from '@/domain';
 import type { Account, Id, Won } from '@/domain/types';
 import { useLedger } from '@/state';
 import { Badge, Button, Card, EmptyState, Icon, Money, PageHeader, Skeleton, StatTile, cx } from '@/ui';
@@ -126,7 +126,7 @@ function OverviewBody({ ledger }: { ledger: ReadyLedger }) {
         </section>
       </div>
       <aside className={styles.side} aria-label="매달 배분">
-        <FlowCard flow={flow} thisYear={thisYear} />
+        <FlowCard flow={flow} thisYear={thisYear} remainders={remainderViews(data, today)} />
       </aside>
     </div>
   );

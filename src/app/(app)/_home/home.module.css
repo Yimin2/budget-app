@@ -28,6 +28,10 @@
 .oItems {
   order: 3;
 }
+/* 이번 달 쓴 돈: 항목별 생활비 바로 아래 (같은 순서 안에서 DOM 순서) */
+.oSpent {
+  order: 3;
+}
 .oBanner {
   order: 4;
 }

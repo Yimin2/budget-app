@@ -295,3 +295,35 @@ describe('state — 체험 모드 흐름', () => {
     expect(opened).toBeNull();
   });
 });
+
+describe('state — 고정비 금액 변경 · 배분 금액 맞추기 (PLAN 4-15)', () => {
+  it('changeRuleAmount with fromMonth splits the rule at that month', async () => {
+    const r = setup();
+    await startDemo(r);
+    const L = () => r.result.current.ledger;
+    await act(async () => {
+      await L().changeRuleAmount('demo-rule-event', 420_000, '2027-02');
+    });
+    const rules = L().data!.rules.filter((x) => x.toAccountId === 'demo-acc-event' && !x.deleted);
+    expect(rules.find((x) => x.id === 'demo-rule-event')?.endMonth).toBe('2027-01');
+    expect(rules.find((x) => x.id !== 'demo-rule-event')).toMatchObject({ amount: 420_000, startMonth: '2027-02', endMonth: null });
+  });
+
+  it('changeFixedAmount keeps past records, adds a dated segment, and retrying does not duplicate', async () => {
+    const r = setup();
+    await startDemo(r);
+    const L = () => r.result.current.ledger;
+    await act(async () => {
+      await L().changeFixedAmount('demo-fixed-phone', 130_000, '2026-12-20');
+    });
+    await act(async () => {
+      await expect(L().changeFixedAmount('demo-fixed-phone', 130_000, '2026-11-01')).rejects.toThrow();
+    });
+    const rows = L().data!.fixedExpenses.filter((f) => f.id.startsWith('demo-fixed-phone'));
+    expect(rows.map((f) => [f.id, f.amount, f.endDate ?? null, f.startDate ?? null])).toEqual([
+      ['demo-fixed-phone', 120_000, '2026-12-19', null],
+      ['demo-fixed-phone@2026-12-20', 130_000, null, '2026-12-20'],
+    ]);
+    expect(L().data!.expenses.filter((e) => e.fixedExpenseId === 'demo-fixed-phone').every((e) => e.amount === 120_000)).toBe(true);
+  });
+});
