@@ -108,6 +108,32 @@ describe('이번 달 정산 — 상태 계층', () => {
     expect(L(r).settlement!.pay.map((g) => g.name)).toEqual(['민지']);
   });
 
+  it('[지급했어요]는 지급할 수 있는 돈을 넘는 이벤트통장 청구를 거절해요 (아무것도 쓰지 않음), 빌려 지급은 돼요', async () => {
+    const r = setup();
+    await startDemo(r);
+    const cat = L(r).data!.categories.find((c) => !c.deleted && c.defaultAccountRole === 'event')!.id;
+    await act(async () => {
+      await L(r).addExpense({ date: '2026-11-04', amount: 900_000, accountId: 'demo-acc-event', categoryId: cat, memo: '바다 결혼 선물', paidBy: '민지' });
+    });
+    const id = L(r).data!.expenses.find((e) => e.memo === '바다 결혼 선물')!.id;
+    const payable = L(r).settlement!.payable;
+    expect(payable).toBeLessThan(900_000);
+    const before = (await stored(r)).transfers.length;
+    await act(async () => {
+      await expect(L(r).settleClaims([id])).rejects.toThrow(/이벤트통장에서 줄 수 있는 돈.*저수지에서 빌려 지급해 주세요/);
+      await expect(L(r).settleClaims(['demo-claim-jeju', id])).rejects.toThrow(/저수지에서 빌려 지급해 주세요/);
+    });
+    expect((await stored(r)).transfers.length).toBe(before);
+    expect(L(r).data!.transfers.some((t) => t.id === claimTransferId(id) && !t.deleted)).toBe(false);
+    // 안에 드는 것만은 되고, 넘는 것은 빌려서
+    await act(async () => {
+      await L(r).settleClaims(['demo-claim-jeju']);
+      await L(r).borrowAndSettleClaims([id]);
+    });
+    expect(L(r).data!.transfers.some((t) => t.id === claimLoanTransferId(id) && !t.deleted)).toBe(true);
+    expect(L(r).settlement!.loan.balance).toBe(900_000);
+  });
+
   it('[갚았어요]는 이번 달 loanpay:<월> 하나 (다시 눌러도), 되돌리기로 지워요', async () => {
     const r = setup();
     await startDemo(r);

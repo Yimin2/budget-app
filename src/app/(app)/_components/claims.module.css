@@ -607,3 +607,7 @@
     animation: none;
   }
 }
+.oneLineWarn {
+  color: var(--warning-text);
+  font-weight: 500;
+}

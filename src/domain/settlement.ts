@@ -2,11 +2,15 @@
  * 이번 달 정산 · 저수지에서 빌린 돈 — PLAN 4-9 (정산) · 4-2 (예측).
  *
  * 정산 (매달 정산일 = 이벤트통장 적립일):
- * - 지급할 수 있는 돈 = max(0, 정산일의 이벤트통장 잔액(그날 들어올 적립 포함) − 이번 달 아직 안 쓴 일정 · 여행 · 할부)
+ * - 쓸 수 있는 돈 = max(0, 정산일의 이벤트통장 잔액 + 그날까지 들어올 적립 · 수입 · 예정 이체) — 잔액이 음수면 들어올 돈이 먼저 메운다
  *   (정산일이 지났으면 오늘 기준. 아직 안 돌려준 청구는 잔액에 없으니 따로 빼지 않는다)
  * - 이번 정산에 들어가는 청구 = 정산일(오늘이 더 늦으면 오늘)까지 돌려줄 날이 된 아직 안 돌려준 청구
- * - 이벤트통장 청구는 지출 날짜가 오래된 것부터 지급할 수 있는 돈 안에서 나눈다. 청구는 쪼개지 않는다:
+ * - 이벤트통장 청구는 ① 지난달부터 못 준 청구(돌려줄 날이 이번 달 첫날 전)를 쓸 수 있는 돈 전체에서 먼저
+ *   ② 이번 달 청구는 그 뒤 이번 달 아직 안 쓴 일정 · 여행 · 할부를 뺀 남은 돈에서 나눈다. 둘 다 지출 날짜가 오래된 것부터, 청구는 쪼개지 않는다:
  *   다음 청구가 안 들어가면 건너뛰고 그 뒤의 더 작은 청구를 넣어 본다 (first-fit). 안 들어간 청구는 '다음 달로 넘어가요'
+ *   지급할 수 있는 돈 = 지난달 청구로 먼저 주는 돈 + max(0, 쓸 수 있는 돈 − 그 돈 − 이번 달 일정). 지난달 청구를 주고 일정이 모자라면
+ *   막지 않고 '이 돈을 먼저 돌려주면 ○월 일정에 ○원이 모자라요' (예측은 지난 청구를 이번 달 나갈 돈으로 이미 뺀다)
+ * - [지급했어요](이벤트통장에서 바로 지급)는 지급할 수 있는 돈 안에 드는 청구만. 넘는 것은 [저수지에서 빌려 지급]으로만 (settleRefusal)
  * - 고정지출통장(생활비) 청구는 그 통장에서 돌려주므로 금액 한도 없이 이번 달 지급에 들어간다
  * - 저수지통장 청구 중 이벤트 지출(이벤트 카테고리 · 일정 · 여행)은 이벤트통장에 돈이 없어 저수지 돈으로 낸 것이라
  *   '저수지에서 빌려 지급'할 청구로 묶는다 (사람에게 줄 돈이고, 저수지는 받는 쪽이 아니다). 지급하면 지출을 이벤트통장으로 옮기고 빌린 이체 loan:claim:<지출id>(저수지 → 이벤트통장)와
@@ -34,6 +38,7 @@ import { projectEventAccount } from './events';
 import { autoTransferId } from './ids';
 import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isComputedRule, projectRemainders, ruleAmountFor } from './income';
 import { firstAccountByRole } from './internal';
+import { formatMan, formatWon } from './money';
 import { ruleOccurrenceDate } from './recurring';
 import type { EventProjection, Expense, Id, ISODate, LedgerData, PendingClaim, Transfer, Won, YearMonth } from './types';
 
@@ -235,12 +240,30 @@ export interface Settlement {
   asOf: ISODate;
   eventAccountId: Id | null;
   reservoirAccountId: Id | null;
-  /** 정산 기준일의 이벤트통장 잔액 (그날까지 들어올 적립 포함) */
+  /** 이번 달 첫날 (이날 전에 돌려줄 날이 된 청구 = 지난달부터 못 준 청구) */
+  monthStart: ISODate;
+  /** 정산 기준일의 이벤트통장 잔액 (그날까지 들어올 적립 포함) = recorded + incoming */
   balance: Won;
+  /** 정산 기준일까지 기록된 이벤트통장 잔액 (지갑에 있는 돈, 음수면 모자란 돈) */
+  recorded: Won;
+  /** 정산 기준일까지 들어오거나(+) 나갈(−) 아직 기록 안 된 이번 달 적립 · 수입 · 예정 이체 */
+  incoming: Won;
+  /** 그 돈이 들어오는 날 (하루뿐일 때만, 여러 날이거나 없으면 null) */
+  incomingOn: ISODate | null;
+  /** 이벤트통장이 모자란 돈 = max(0, −recorded) */
+  shortfall: Won;
+  /** 쓸 수 있는 돈 = max(0, balance) (잔액이 음수면 들어올 돈이 먼저 메운다) */
+  available: Won;
   /** 이번 달 아직 안 쓴 일정 · 여행 · 할부 */
   reserved: Won;
-  /** 지급할 수 있는 돈 = max(0, balance − reserved) */
+  /** 지난달부터 못 준 이벤트통장 청구 중 먼저 돌려줄 합 (available 안에서 오래된 순 first-fit) */
+  oldPay: Won;
+  /** 이번 달 청구에 쓸 수 있는 돈 = max(0, available − oldPay − reserved) */
+  freshLimit: Won;
+  /** 지급할 수 있는 돈 = oldPay + freshLimit */
   payable: Won;
+  /** 지난달 청구를 먼저 돌려주면 이번 달 일정에 모자라는 돈 (없으면 null) */
+  plannedShort: { month: YearMonth; amount: Won } | null;
   /** 이번 달 지급 (사람별) — 이벤트통장 몫(한도 안) + 고정지출통장 몫 */
   pay: PersonClaims[];
   payTotal: Won;
@@ -298,6 +321,42 @@ function estimateCarry(data: LedgerData, today: ISODate, carried: PendingClaim[]
   return out;
 }
 
+/**
+ * 이벤트통장 청구의 한도: 지난달부터 못 준 청구(old)는 쓸 수 있는 돈 전체 안에서 오래된 순 first-fit,
+ * 이번 달 청구는 그 뒤 이번 달 일정 · 여행 · 할부를 뺀 남은 돈 안에서
+ */
+function eventLimits(available: Won, reserved: Won, old: PendingClaim[]) {
+  const oldAlloc = allocateClaims(old, available);
+  const oldPaid = sumOf(oldAlloc.paid);
+  return { oldAlloc, oldPaid, freshLimit: Math.max(0, available - oldPaid - reserved) };
+}
+
+/** 정산 기준일까지 아직 기록 안 된 이번 달 적립 · 수입 · 예정 이체가 모두 같은 날이면 그날, 아니면 null */
+function scheduledDate(data: LedgerData, accountId: Id, today: ISODate, asOf: ISODate): ISODate | null {
+  const month = monthOf(today);
+  const dates = new Set<ISODate>();
+  const transferIds = new Set(data.transfers.map((t) => t.id));
+  for (const r of data.rules) {
+    if (r.deleted || (r.toAccountId !== accountId && r.fromAccountId !== accountId)) continue;
+    const date = ruleOccurrenceDate(data, r, month);
+    if (date !== null && date <= asOf && !transferIds.has(autoTransferId(r.id, month))) dates.add(date);
+  }
+  for (const p of activeIncomePlans(data, month, accountId)) {
+    const date = incomePlanOccurrenceDate(data, p, month);
+    if (date !== null && date <= asOf && !transferIds.has(incomeRecordId(p.id, month))) dates.add(date);
+  }
+  for (const t of data.transfers) {
+    if (t.deleted || t.status !== 'planned' || monthOf(t.date) !== month || t.date > asOf) continue;
+    if (t.toAccountId === accountId || t.fromAccountId === accountId) dates.add(t.date);
+  }
+  return dates.size === 1 ? [...dates][0]! : null;
+}
+
+/** 지난달부터 못 준 청구인지 (돌려줄 날이 이번 달 첫날 전) — 정산 화면의 '지난달부터' 표시 */
+export function isCarriedOverClaim(s: Pick<Settlement, 'monthStart'>, c: PendingClaim): boolean {
+  return c.due < s.monthStart;
+}
+
 /** 이번 달 정산 */
 export function computeSettlement(data: LedgerData, today: ISODate, projection?: EventProjection): Settlement {
   const date = settleDateOf(data, today);
@@ -308,7 +367,11 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
   const m0 = proj.months[0];
   const reserved = m0 ? m0.planned + (m0.trips ?? 0) + (m0.installments ?? 0) : 0;
   const balance = eventAcc ? balanceWithScheduled(data, eventAcc.id, today, asOf) : 0;
-  const payable = Math.max(0, balance - reserved);
+  const recorded = eventAcc ? accountBalance(data, eventAcc.id, asOf) : 0;
+  const incoming = balance - recorded;
+  const incomingOn = eventAcc && incoming !== 0 ? scheduledDate(data, eventAcc.id, today, asOf) : null;
+  const available = Math.max(0, balance);
+  const monthStart = dateInMonth(monthOf(today), 1);
 
   const pending = pendingClaims(data, today);
   const reservoirClaims: PendingClaim[] = [];
@@ -323,7 +386,19 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
     else if (src === 'event') eventDue.push(c);
     else otherDue.push(c);
   }
-  const alloc = allocateClaims(eventDue, payable);
+  // 지난달부터 못 준 청구를 먼저 (이번 달 일정보다도 먼저), 이번 달 청구는 이번 달 일정을 뺀 남은 돈 안에서
+  const limits = eventLimits(available, reserved, eventDue.filter((c) => c.due < monthStart));
+  const oldAlloc = limits.oldAlloc;
+  const freshAlloc = allocateClaims(
+    eventDue.filter((c) => c.due >= monthStart),
+    limits.freshLimit,
+  );
+  const alloc = { paid: [...oldAlloc.paid, ...freshAlloc.paid], carried: [...oldAlloc.carried, ...freshAlloc.carried] };
+  const oldPay = limits.oldPaid;
+  const freshLimit = limits.freshLimit;
+  const payable = oldPay + freshLimit;
+  const afterOld = available - oldPay;
+  const plannedShort = oldPay > 0 && reserved > afterOld ? { month: monthOf(today), amount: reserved - afterOld } : null;
   const eventPayTotal = sumOf(alloc.paid);
   const pay = groupByPerson([...alloc.paid, ...otherDue].sort(oldestFirst));
   const estimates = estimateCarry(data, today, alloc.carried);
@@ -365,9 +440,18 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
     asOf,
     eventAccountId: eventAcc?.id ?? null,
     reservoirAccountId: reservoirAcc?.id ?? null,
+    monthStart,
     balance,
+    recorded,
+    incoming,
+    incomingOn,
+    shortfall: Math.max(0, -recorded),
+    available,
     reserved,
+    oldPay,
+    freshLimit,
     payable,
+    plannedShort,
     pay,
     payTotal: sumOf(pay),
     eventPayTotal,
@@ -440,18 +524,21 @@ export interface SelectionCheck {
   total: Won;
   /** 이벤트통장에서 돌려줄 몫 (지급할 수 있는 돈과 견준다) */
   eventTotal: Won;
-  /** 지급할 수 있는 돈보다 많은 금액 (0 이면 맞음) */
+  /** 지급할 수 있는 돈에 안 드는 이벤트통장 청구의 합 = 저수지에서 빌려 줄 돈 (0 이면 맞음) */
   excess: Won;
   fits: boolean;
-  /** 지급할 수 있는 돈 안에 드는 청구 (이벤트통장 몫은 오래된 순 first-fit, 다른 통장 몫은 모두) */
+  /** 지급할 수 있는 돈 안에 드는 청구 (이벤트통장 몫은 지난달 청구 먼저 · 오래된 순 first-fit, 다른 통장 몫은 모두) */
   within: Id[];
-  /** 안 드는 이벤트통장 청구 — [저수지에서 빌려 지급] 대상 */
+  /** 안 드는 이벤트통장 청구 — [저수지에서 빌려 지급]으로만 줄 수 있다 */
   over: Id[];
+  /** 이벤트통장에서 바로 지급하는(안에 드는) 이벤트통장 청구의 합 */
+  withinEventTotal: Won;
 }
 
 /**
  * 고른 청구가 지급할 수 있는 돈 안에 드는지 다시 본다. 이벤트통장 청구만 한도와 견주고(고정지출 · 저수지 청구는 한도 없음),
- * 넘으면 오래된 순 first-fit 으로 안에 드는 것과 넘는 것을 나눈다
+ * 지난달부터 못 준 청구는 쓸 수 있는 돈 전체 안에서 먼저, 이번 달 청구는 이번 달 일정을 뺀 남은 돈 안에서
+ * 오래된 순 first-fit 으로 안에 드는 것과 넘는 것을 나눈다. 지난달 청구 몫으로 먼저 잡아 둔 돈(oldPay)은 이번 달 청구에 쓰지 않는다
  */
 export function checkSettlementSelection(data: LedgerData, s: Settlement, selected: Iterable<Id>): SelectionCheck {
   const ids = new Set(selected);
@@ -460,18 +547,84 @@ export function checkSettlementSelection(data: LedgerData, s: Settlement, select
   const claims = all.filter((c) => ids.has(c.expense.id) && !seen.has(c.expense.id) && seen.add(c.expense.id)).sort(oldestFirst);
   const event = claims.filter((c) => claimSource(data, c.accountId) === 'event');
   const eventTotal = sumOf(event);
-  const alloc = allocateClaims(event, s.payable);
-  const overSet = new Set(alloc.carried.map((c) => c.expense.id));
-  const excess = Math.max(0, eventTotal - s.payable);
+  const old = allocateClaims(
+    event.filter((c) => isCarriedOverClaim(s, c)),
+    s.available,
+  );
+  const earmark = Math.max(sumOf(old.paid), s.oldPay);
+  const fresh = allocateClaims(
+    event.filter((c) => !isCarriedOverClaim(s, c)),
+    Math.max(0, s.available - earmark - s.reserved),
+  );
+  const overClaims = [...old.carried, ...fresh.carried].sort(oldestFirst);
+  const overSet = new Set(overClaims.map((c) => c.expense.id));
+  const excess = sumOf(overClaims);
   return {
     claims,
     total: sumOf(claims),
     eventTotal,
     excess,
-    fits: excess === 0,
+    fits: overClaims.length === 0,
     within: claims.filter((c) => !overSet.has(c.expense.id)).map((c) => c.expense.id),
-    over: alloc.carried.map((c) => c.expense.id),
+    over: overClaims.map((c) => c.expense.id),
+    withinEventTotal: eventTotal - excess,
   };
+}
+
+/**
+ * [지급했어요]로 이벤트통장에서 바로 지급할 수 있는지 (상태 계층이 쓰기 전에 본다). 안 되면 이유, 되면 null
+ */
+export function settleRefusal(data: LedgerData, s: Settlement, expenseIds: Iterable<Id>): string | null {
+  const check = checkSettlementSelection(data, s, expenseIds);
+  if (check.fits) return null;
+  return s.payable > 0
+    ? `이벤트통장에서 줄 수 있는 돈은 ${formatWon(s.payable)}이에요. 넘는 ${formatWon(check.excess)}은 저수지에서 빌려 지급해 주세요`
+    : `이벤트통장에서 줄 수 있는 돈이 없어요. ${formatWon(check.excess)}은 저수지에서 빌려 지급해 주세요`;
+}
+
+/** 정산 화면 막대의 안내: 이벤트통장에서 줄 수 있는 돈과 저수지에서 빌려 줄 나머지 (넘는 것이 없으면 null) */
+export function selectionLimitText(s: Settlement, check: Pick<SelectionCheck, 'excess' | 'fits'>, canBorrow: boolean): string | null {
+  if (check.fits) return null;
+  const head = s.payable > 0 ? `이벤트통장에서 줄 수 있는 돈은 ${formatMan(s.payable)}이에요` : '이벤트통장에서 줄 수 있는 돈이 없어요';
+  return canBorrow ? `${head} · 나머지 ${formatMan(check.excess)}은 저수지에서 빌려 줄 수 있어요` : head;
+}
+
+/** 이벤트통장이 모자랄 때 한 줄: '이벤트통장이 12,000원 모자라요' (모자라지 않으면 null) */
+export function shortfallText(s: Pick<Settlement, 'shortfall'>): string | null {
+  return s.shortfall > 0 ? `이벤트통장이 ${formatWon(s.shortfall)} 모자라요` : null;
+}
+
+/**
+ * 정산 화면의 쉬운 설명:
+ * '지갑(이벤트통장)에 10만 있고, 21일에 50만 들어와요. 지난달에 못 준 돈 55만을 먼저 돌려줘요.
+ *  이 돈을 먼저 돌려주면 11월 일정에 5만이 모자라요.' / '… 이번 달 일정 10만을 빼면 줄 수 있는 돈은 50만이에요.'
+ */
+export function settleExplanation(s: Settlement): string {
+  const parts: string[] = [];
+  const short = s.recorded < 0;
+  const amount0 = formatMan(Math.abs(s.recorded));
+  if (s.incoming !== 0) {
+    const when = s.incomingOn ? `${Number(s.incomingOn.slice(8))}일에` : `${Number(s.asOf.slice(8))}일까지`;
+    const flow = s.incoming > 0 ? `${formatMan(s.incoming)} 들어와요` : `${formatMan(-s.incoming)} 나가요`;
+    const wallet = short ? `지갑(이벤트통장)이 ${amount0} 모자라고` : `지갑(이벤트통장)에 ${amount0} 있고`;
+    parts.push(`${wallet}, ${when} ${flow}.`);
+  } else {
+    parts.push(short ? `지갑(이벤트통장)이 ${amount0} 모자라요.` : `지갑(이벤트통장)에 ${amount0} 있어요.`);
+  }
+  if (s.oldPay > 0) parts.push(`지난달에 못 준 돈 ${formatMan(s.oldPay)}을 먼저 돌려줘요.`);
+  const month = Number(monthOf(s.asOf).slice(5));
+  if (s.plannedShort) {
+    parts.push(`이 돈을 먼저 돌려주면 ${Number(s.plannedShort.month.slice(5))}월 일정에 ${formatMan(s.plannedShort.amount)}이 모자라요.`);
+  } else {
+    const what = s.oldPay > 0 ? '더 줄 수 있는 돈은' : '줄 수 있는 돈은';
+    const amount = s.oldPay > 0 ? s.freshLimit : s.payable;
+    parts.push(
+      s.reserved > 0
+        ? `이번 달 일정 ${formatMan(s.reserved)}을 빼면 ${what} ${formatMan(amount)}이에요.`
+        : `${month}월에 남은 일정이 없어 ${what} ${formatMan(amount)}이에요.`,
+    );
+  }
+  return parts.join(' ');
 }
 
 /**
