@@ -81,7 +81,17 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
       : livingItems.length === 1
         ? livingItems[0]
         : undefined;
-  const needItem = source === 'living' && !livingMissing && !selectedItem;
+  // 예산을 아직 정하지 않은 생활비 카테고리 — 고르면 생활비 전체 기준으로 판단해요
+  const { activeCategories } = ledger;
+  const unbudgetedCategories: Category[] = useMemo(() => {
+    if (!living || !hasLivingBudget(living)) return [];
+    const budgeted = new Set(livingItems.map((i) => i.categoryId));
+    return activeCategories.filter((c) => sourceForCategory(c) === 'living' && !budgeted.has(c.id));
+  }, [living, livingItems, activeCategories]);
+  const pickedLooseCatId =
+    itemKey !== null && itemKey.startsWith('cat:') && unbudgetedCategories.some((c) => `cat:${c.id}` === itemKey) ? itemKey.slice(4) : null;
+  const pickedLooseCat = pickedLooseCatId ? (unbudgetedCategories.find((c) => c.id === pickedLooseCatId) ?? null) : null;
+  const needItem = source === 'living' && !livingMissing && !selectedItem && !pickedLooseCat;
   const eventCategories = hasEventAccount ? ledger.activeCategories.filter((c) => sourceForCategory(c) === 'event') : [];
   const activeTrips = hasEventAccount ? ledger.trips.filter((t) => t.phase !== 'past') : [];
   const pickedTrip = source === 'event' ? (activeTrips.find((t) => t.trip.id === tripId) ?? null) : null;
@@ -90,7 +100,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
   // 입력하는 동안은 이전 결과를 잠깐 보여 주고, 계산은 뒤에서 따라와요
   const deferredAmount = useDeferredValue(amount);
   const { judge, trips } = ledger;
-  const itemCategory = selectedItem ? selectedItem.categoryId : undefined;
+  const itemCategory = selectedItem ? selectedItem.categoryId : (pickedLooseCatId ?? undefined);
   // 생활비를 정하지 않았거나 항목을 고르지 않았으면 생활비 기준 판단을 하지 않아요 (모든 금액이 '비추천'으로 보이지 않게)
   const judgedTripId = source === 'event' && tripId !== null && trips.some((t) => t.trip.id === tripId && t.phase !== 'past') ? tripId : null;
   const verdict = useMemo(() => {
@@ -119,6 +129,11 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
 
   function pickItem(item: LivingItem) {
     setItemKey(livingItemKey(item.categoryId));
+    setSource('living');
+  }
+
+  function pickLooseCategory(cat: Category) {
+    setItemKey(`cat:${cat.id}`);
     setSource('living');
   }
 
@@ -166,7 +181,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
   }
 
   const picker =
-    livingItems.length > 0 || eventCategories.length > 0 ? (
+    livingItems.length > 0 || eventCategories.length > 0 || unbudgetedCategories.length > 0 ? (
       <section className={cx(styles.section, styles.cCategory)} aria-labelledby="check-pick-title">
         <h2 className={styles.groupLabel} id="check-pick-title">
           어디에 쓸까요?
@@ -185,6 +200,16 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
               onClick={() => pickItem(i)}
             >
               {i.name}
+            </Chip>
+          ))}
+          {unbudgetedCategories.map((c) => (
+            <Chip
+              key={`loose-${c.id}`}
+              icon={isIconName(c.icon) ? c.icon : 'dots'}
+              selected={source === 'living' && pickedLooseCat?.id === c.id}
+              onClick={() => pickLooseCategory(c)}
+            >
+              {c.name}
             </Chip>
           ))}
           {eventCategories.map((c) => (
@@ -337,7 +362,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
         <RecordSheet
           amount={amount}
           source={source}
-          categoryId={source === 'living' ? (selectedItem?.categoryId ?? null) : categoryId}
+          categoryId={source === 'living' ? (selectedItem?.categoryId ?? pickedLooseCat?.id ?? null) : categoryId}
           tripId={pickedTripId}
           spenderKey={livingAccountId ? (ledger.spenders.find((x) => x.livingAccountId === livingAccountId)?.key ?? null) : null}
           onClose={() => setSheetOpen(false)}

@@ -56,6 +56,20 @@ export function judgeLiving(living: LivingStatus, categoryId: Id | null, amount:
   const a = Math.max(0, amount);
   const item = findLivingItem(living, categoryId) ?? emptyItem('이 항목');
   const daysAfterToday = Math.max(0, living.daysLeft - 1);
+  // 예산을 정하지 않은 카테고리: 생활비 전체(하루에 나눠 쓰는 항목 합 · 남은 돈 합)로 판단해요
+  const hasOwnItem = categoryId !== null && living.items.some((i) => i.categoryId === categoryId);
+  if (!hasOwnItem && categoryId !== null && item.unbudgeted && item.monthBudget <= 0 && living.monthBudget > 0) {
+    const whole: LivingItem = {
+      categoryId: null, name: '생활비', icon: 'wallet',
+      spread: living.dailyBudget > 0 ? 'daily' : 'monthly',
+      base: living.monthBudget - living.carryIn, monthBudget: living.monthBudget, carryIn: living.carryIn,
+      spent: living.spent, spentToday: living.spentToday, remaining: living.remaining,
+      dailyBudget: living.dailyBudget > 0 ? living.dailyBudget : null,
+      todayAvailable: living.dailyBudget > 0 ? living.todayAvailable : null, unbudgeted: false,
+    };
+    const v = whole.spread === 'daily' ? judgeDaily(whole, daysAfterToday, a) : judgeMonthly(whole, living.month, daysAfterToday, a);
+    return { ...v, message: `예산이 없는 항목이라 생활비 전체로 봤어요. ${v.message}` };
+  }
   if (item.unbudgeted && item.monthBudget <= 0) {
     return {
       signal: 'bad',
