@@ -42,16 +42,18 @@ export interface Account {
 
 /**
  * 월배분 방식. fixed=정한 금액 보내기, remainder=나머지 전부 보내기 (PLAN 4-13).
- * remainder 는 그날 다른 배분이 다 나간 뒤 보내는 통장에 남은 돈을 모두 보낸다 (0 아래로는 보내지 않음)
+ * remainder 는 그날 다른 배분이 다 나간 뒤 보내는 통장에 남은 돈을 모두 보낸다 (0 아래로는 보내지 않음).
+ * auto 는 '필요한 만큼 (자동)': 생활비 · 용돈 통장으로 보내는 규칙만. 그 배분이 채우는 기간([그날, 다음 배분일))의
+ * 고정 결제(고정비 · 세부 항목 · 할부) + 생활비 항목 예산을 기록될 때 계산해 보낸다 (PLAN 4-15)
  */
-export type RuleKind = 'fixed' | 'remainder';
+export type RuleKind = 'fixed' | 'remainder' | 'auto';
 
 /** 월배분: 매달 dayOfMonth 일에 from → to 로 amount 이체 (remainder 는 그날 남은 돈 전부) */
 export interface AllocationRule {
   id: Id;
   fromAccountId: Id;
   toAccountId: Id;
-  /** fixed 의 금액. remainder 는 쓰지 않는다 (0) */
+  /** fixed 의 금액. remainder · auto 는 쓰지 않는다 (0) */
   amount: Won;
   dayOfMonth: number; // 1..31 (말일보다 크면 말일)
   startMonth: YearMonth;
@@ -133,6 +135,19 @@ export interface LivingSchedule {
   perWeek: number | null;
 }
 
+/**
+ * 고정비의 세부 항목 (PLAN 4-15). 예: 회비 = 목장 4만 + 초원 3만 + 가족 9만.
+ * 결제일에 살아 있는 항목(시작일 ≤ 결제일 ≤ 종료일)의 합이 그달 결제 금액이다
+ */
+export interface FixedSubItem {
+  name: string;
+  amount: Won;
+  /** 이 항목이 붙는 첫날 (없으면 처음부터) */
+  startDate?: ISODate | null;
+  /** 이 항목이 빠지는 마지막 날 (없으면 계속) */
+  endDate?: ISODate | null;
+}
+
 export interface FixedExpense {
   id: Id;
   name: string;
@@ -170,6 +185,15 @@ export interface FixedExpense {
   installmentCount?: number | null;
   /** 메모 (선택, 예: 가져온 파일의 설명). 시트 빈 셀은 '' */
   memo?: string;
+  /**
+   * 고정비(bill · allowance)만: 정확한 시작일 (PLAN 4-15). 이날 이후(포함) 첫 결제일부터 결제한다.
+   * 있으면 startMonth 는 첫 결제가 있는 달로 맞춘다. 시트 빈 셀 = 없음 (startMonth 만으로 셈)
+   */
+  startDate?: ISODate | null;
+  /** 고정비만: 해지 · 만기일. 이날 이전(포함) 마지막 결제일까지 결제한다. 있으면 endMonth 는 마지막 결제가 있는 달 */
+  endDate?: ISODate | null;
+  /** 고정비만: 세부 항목. 있으면 결제 금액 = 그 결제일에 살아 있는 항목 합 (amount 는 보기용 합계) */
+  subItems?: FixedSubItem[] | null;
   deleted: boolean;
 }
 

@@ -32,7 +32,7 @@ import { claimLoanTransferId, claimTransferId, isReservoirEventExpense, pendingC
 import { dateInMonth, monthOf } from './dates';
 import { projectEventAccount } from './events';
 import { autoTransferId } from './ids';
-import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isRemainderRule, projectRemainders, ruleAmountFor } from './income';
+import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isComputedRule, projectRemainders, ruleAmountFor } from './income';
 import { firstAccountByRole } from './internal';
 import { ruleOccurrenceDate } from './recurring';
 import type { EventProjection, Expense, Id, ISODate, LedgerData, PendingClaim, Transfer, Won, YearMonth } from './types';
@@ -127,12 +127,12 @@ export function balanceWithScheduled(data: LedgerData, accountId: Id, today: ISO
   let balance = accountBalance(data, accountId, asOf);
   const transferIds = new Set(data.transfers.map((t) => t.id));
   const rules = data.rules.filter((r) => !r.deleted && (r.toAccountId === accountId || r.fromAccountId === accountId));
-  const remainders = rules.some(isRemainderRule) ? projectRemainders(data, today, 1) : new Map<string, Won>();
+  const remainders = rules.some(isComputedRule) ? projectRemainders(data, today, 1) : new Map<string, Won>();
   for (const r of rules) {
     const date = ruleOccurrenceDate(data, r, month);
     if (date === null || date > asOf || transferIds.has(autoTransferId(r.id, month))) continue;
     const sign = (r.toAccountId === accountId ? 1 : 0) - (r.fromAccountId === accountId ? 1 : 0);
-    balance += sign * ruleAmountFor(r, month, remainders);
+    balance += sign * ruleAmountFor(r, month, remainders, data);
   }
   for (const p of activeIncomePlans(data, month, accountId)) {
     const date = incomePlanOccurrenceDate(data, p, month);

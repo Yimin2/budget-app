@@ -1,4 +1,6 @@
 import { compareMonth, dateInMonth, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
+import { autoRuleAmount, isAutoRule } from './allocation';
+import { billAmountOn, billChargeDate, billMemo, isDatedBill } from './bills';
 import { autoFixedExpenseId, autoTransferId } from './ids';
 import {
   installmentDay, installmentGroups, installmentMemo, installmentPayments, installmentPlanId, installmentRowEnd, isInstallment,
@@ -41,6 +43,13 @@ export function ruleOccurrenceDate(data: LedgerData, rule: AllocationRule, month
  * 할부의 결제일 빈 칸은 1일 (회차 계산 installmentPayments 와 같게 — 낸 것으로 세면서 기록은 안 하는 일이 없게)
  */
 export function fixedOccurrenceDate(data: LedgerData, f: FixedExpense, month: YearMonth): ISODate | null {
+  if (isDatedBill(f)) {
+    // 고정비 · 용돈: 시작일 · 해지일 · 결제일 (PLAN 4-15)
+    const date = billChargeDate(f, month);
+    if (date === null) return null;
+    const opening = latestOpeningDate(data, [f.accountId]);
+    return opening && date < opening ? null : date;
+  }
   const end = isInstallment(f) ? installmentRowEnd(f) : f.endMonth;
   if (isInstallment(f) && end === null) return null;
   const day = isInstallment(f) ? installmentDay(f) : f.dayOfMonth;
@@ -87,13 +96,17 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
       }
       continue;
     }
-    if (rule.amount <= 0) continue;
+    const auto = isAutoRule(rule);
+    if (!auto && rule.amount <= 0) continue;
     const from = firstMonth(rule.startMonth, latestOpeningDate(data, [rule.fromAccountId, rule.toAccountId]));
     for (const m of monthRange(from, thisMonth)) {
       const date = ruleOccurrenceDate(data, rule, m);
       if (date === null || date > today) continue;
       const id = autoTransferId(rule.id, m);
       if (transferIds.has(id)) continue;
+      // 필요한 만큼 (자동): 그 배분 기간의 고정 결제 + 생활비 항목 예산을 지금 정해 그대로 둔다. 0 이면 다음에 다시 (PLAN 4-15)
+      const amount = auto ? autoRuleAmount(data, rule, date) : rule.amount;
+      if (amount <= 0) continue;
       transferIds.add(id);
       transfers.push({
         id,
@@ -101,10 +114,10 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
         kind: 'transfer',
         fromAccountId: rule.fromAccountId,
         toAccountId: rule.toAccountId,
-        amount: rule.amount,
+        amount,
         status: 'done',
         ruleId: rule.id,
-        memo: '매달 배분',
+        memo: auto ? '매달 배분 (필요한 만큼)' : '매달 배분',
         author,
         createdAt: now,
         updatedAt: now,
@@ -116,14 +129,21 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
   const plans = installmentGroups(data.fixedExpenses);
   const payments = new Map([...plans].map(([id, rows]) => [id, installmentPayments(rows)]));
   for (const f of data.fixedExpenses) {
-    if (f.deleted || f.kind === 'living' || f.amount <= 0 || !isValidMonth(f.startMonth)) continue;
-    if (f.dayOfMonth === null && !isInstallment(f)) continue;
+    if (f.deleted || f.kind === 'living' || !isValidMonth(f.startMonth)) continue;
+    if (!isDatedBill(f) && f.amount <= 0) continue;
+    if (f.dayOfMonth === null && !isInstallment(f) && !f.startDate) continue;
     const from = firstMonth(f.startMonth, latestOpeningDate(data, [f.accountId]));
     const planPayments = isInstallment(f) ? (payments.get(installmentPlanId(f.id)) ?? []) : null;
     for (const m of monthRange(from, thisMonth)) {
       const date = fixedOccurrenceDate(data, f, m);
       if (date === null || date > today) continue;
       let memo = f.name;
+      let amount = f.amount;
+      if (isDatedBill(f)) {
+        amount = billAmountOn(f, date);
+        memo = billMemo(f, date);
+        if (amount <= 0) continue;
+      }
       if (planPayments) {
         const p = planPayments.find((x) => x.month === m);
         if (!p || p.rowId !== f.id) continue; // 같은 달을 맡은 다른 행이 있다
@@ -136,7 +156,7 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
       expenses.push({
         id,
         date,
-        amount: f.amount,
+        amount,
         accountId: f.accountId,
         categoryId: f.categoryId,
         memo,

@@ -1,6 +1,6 @@
 /* 통장 화면의 순수 함수. 화면과 떼어 테스트해요. */
 import {
-  expenseBalanceAccountId, isClaimExpense, isAutoFixedRecord, isCountedTransfer, isMonthActive, isRemainderRule, monthOf, paydayPlans,
+  expenseBalanceAccountId, isClaimExpense, isAutoFixedRecord, isCountedTransfer, isMonthActive, isRemainderRule, monthOf, paydayPlans, ruleAmountIn,
   plannedIncome,
 } from '@/domain';
 import type { Account, AccountRole, Expense, Id, ISODate, LedgerData, Transfer, Won, YearMonth } from '@/domain/types';
@@ -138,9 +138,11 @@ export function flowSummary(data: LedgerData, month: YearMonth): FlowSummary {
   const incomeIds = new Set(incomeAccounts.map((a) => a.id));
   const byTo = new Map<Id, Won>();
   for (const r of data.rules) {
-    if (r.deleted || r.amount <= 0 || !incomeIds.has(r.fromAccountId)) continue;
+    if (r.deleted || isRemainderRule(r) || !incomeIds.has(r.fromAccountId)) continue;
     if (!isMonthActive(month, r.startMonth, r.endMonth)) continue;
-    byTo.set(r.toAccountId, (byTo.get(r.toAccountId) ?? 0) + r.amount);
+    const amount = ruleAmountIn(data, r, month);
+    if (amount <= 0) continue;
+    byTo.set(r.toAccountId, (byTo.get(r.toAccountId) ?? 0) + amount);
   }
   const order = (id: Id) => data.accounts.find((a) => a.id === id)?.order ?? Number.MAX_SAFE_INTEGER;
   const fixedTotal = [...byTo.values()].reduce((s, v) => s + v, 0);

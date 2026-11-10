@@ -12,6 +12,7 @@
  *   (나중에 들어온 돈은 보내는 통장에 남아 다음 '나머지 전부 보내기' 때 함께 나간다)
  * - 같은 통장 · 같은 날에 나머지 규칙이 여럿이면 id 순서로 처음 규칙이 모두 가져간다 (설정 화면은 하나만 두게 한다)
  */
+import { autoRuleAmount, isAutoRule, windowNeed, type WindowNeed } from './allocation';
 import { accountBalance, expenseBalanceAccountId, isCountedTransfer } from './balances';
 import { addMonths, compareMonth, dateInMonth, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
 import { autoTransferId } from './ids';
@@ -138,7 +139,7 @@ export function remainderAmount(data: LedgerData, rule: AllocationRule, date: IS
   return Math.max(0, Math.round(min));
 }
 
-/** 한 통장 · 한 달의 배분 흐름에서 쓰는 사건 (같은 날은 수입 → 정한 금액 → 나머지 순) */
+/** 한 통장 · 한 달의 배분 흐름에서 쓰는 사건 (같은 날은 수입 → 정한 금액 → 자동 → 나머지 순) */
 interface FlowEvent {
   date: ISODate;
   order: number;
@@ -171,12 +172,24 @@ function ruleDate(data: LedgerData, rule: AllocationRule, month: YearMonth): ISO
  */
 export function projectRemainders(data: LedgerData, today: ISODate, horizonMonths: number): Map<string, Won> {
   const out = new Map<string, Won>();
-  const remainderRules = data.rules.filter((r) => !r.deleted && isRemainderRule(r));
-  if (remainderRules.length === 0) return out;
+  const computed = data.rules.filter((r) => !r.deleted && (isRemainderRule(r) || isAutoRule(r)));
+  if (computed.length === 0) return out;
   const thisMonth = monthOf(today);
   const last = addMonths(thisMonth, Math.max(1, horizonMonths) - 1);
   const recorded = new Set(data.transfers.filter((t) => !t.deleted).map((t) => t.id));
-  const sources = [...new Set(remainderRules.map((r) => r.fromAccountId))];
+  // 자동 규칙은 잔액과 상관없이 그 배분 기간의 필요한 금액 (PLAN 4-15)
+  const autoAmounts = new Map<string, Won>();
+  for (const r of computed) {
+    if (!isAutoRule(r)) continue;
+    for (const month of monthRange(thisMonth, last)) {
+      const date = ruleDate(data, r, month);
+      if (date === null) continue;
+      const amount = autoRuleAmount(data, r, date);
+      autoAmounts.set(`${r.id}:${month}`, amount);
+      out.set(`${r.id}:${month}`, amount);
+    }
+  }
+  const sources = [...new Set(computed.filter(isRemainderRule).map((r) => r.fromAccountId))];
   for (const source of sources) {
     const events: FlowEvent[] = [];
     for (const month of monthRange(thisMonth, last)) {
@@ -190,11 +203,12 @@ export function projectRemainders(data: LedgerData, today: ISODate, horizonMonth
         const date = ruleDate(data, r, month);
         if (date === null || recorded.has(autoTransferId(r.id, month))) continue;
         if (isRemainderRule(r)) {
-          if (r.fromAccountId === source) events.push({ date, order: 2, delta: 0, remainder: r, key: `${r.id}:${month}` });
+          if (r.fromAccountId === source) events.push({ date, order: 3, delta: 0, remainder: r, key: `${r.id}:${month}` });
           continue;
         }
-        const delta = (r.toAccountId === source ? r.amount : 0) - (r.fromAccountId === source ? r.amount : 0);
-        events.push({ date, order: delta >= 0 ? 0 : 1, delta, remainder: null, key: r.id });
+        const amount = isAutoRule(r) ? (autoAmounts.get(`${r.id}:${month}`) ?? 0) : r.amount;
+        const delta = (r.toAccountId === source ? amount : 0) - (r.fromAccountId === source ? amount : 0);
+        events.push({ date, order: delta >= 0 ? 0 : isAutoRule(r) ? 2 : 1, delta, remainder: null, key: r.id });
       }
     }
     events.sort(eventOrder);
@@ -210,17 +224,70 @@ export function projectRemainders(data: LedgerData, today: ISODate, horizonMonth
   return out;
 }
 
-/** 예측에서 규칙이 그달 보낼 금액 (정한 금액은 그대로, 나머지는 projectRemainders 예상) */
-export function ruleAmountFor(rule: AllocationRule, month: YearMonth, remainders: Map<string, Won>): Won {
+/** 나머지 · 자동 규칙이 있는지 (예측에서 projectRemainders 가 필요한지) */
+export function isComputedRule(rule: Pick<AllocationRule, 'kind'>): boolean {
+  return isRemainderRule(rule) || isAutoRule(rule);
+}
+
+/**
+ * 예측에서 규칙이 그달 보낼 금액 (정한 금액은 그대로, 나머지 · 자동은 projectRemainders 예상).
+ * 자동이 지도에 없으면(예측 기간 밖) data 로 바로 계산한다
+ */
+export function ruleAmountFor(rule: AllocationRule, month: YearMonth, remainders: Map<string, Won>, data?: LedgerData): Won {
+  if (isAutoRule(rule)) {
+    const v = remainders.get(`${rule.id}:${month}`);
+    if (v !== undefined) return v;
+    return data ? autoRuleAmount(data, rule, dateInMonth(month, rule.dayOfMonth)) : 0;
+  }
   return isRemainderRule(rule) ? (remainders.get(`${rule.id}:${month}`) ?? 0) : rule.amount;
+}
+
+/** 나머지 규칙 하나의 예상 (규칙 줄 · 미리보기 · 배분 흐름) */
+export interface RemainderEstimate {
+  rule: AllocationRule;
+  /** 다음 회차 날짜 (기록 전인 가장 이른 회차) */
+  nextDate: ISODate | null;
+  /** 다음 회차 예상 (수입 계획이 없으면 null = 알 수 없음) */
+  nextAmount: Won | null;
+  /** 한 달 월급날 흐름으로 본 매달 예상 (수입 계획이 없으면 null) */
+  monthly: Won | null;
+}
+
+/** 나머지 규칙마다 다음 회차 예상과 매달 예상 (수입 계획이 있는 보내는 통장만 금액을 안다) */
+export function remainderEstimates(data: LedgerData, today: ISODate): RemainderEstimate[] {
+  const month = monthOf(today);
+  const rules = data.rules.filter((r) => !r.deleted && isRemainderRule(r) && isValidMonth(r.startMonth) && (r.endMonth === null || compareMonth(r.endMonth, month) >= 0));
+  if (rules.length === 0) return [];
+  const projected = projectRemainders(data, today, 3);
+  const recorded = new Set(data.transfers.filter((t) => !t.deleted).map((t) => t.id));
+  return rules.map((rule) => {
+    const planned = (data.incomePlans ?? []).some((p) => !p.deleted && p.accountId === rule.fromAccountId);
+    let nextDate: ISODate | null = null;
+    let nextAmount: Won | null = null;
+    for (const m of monthRange(month, addMonths(month, 2))) {
+      const date = ruleDate(data, rule, m);
+      if (date === null || recorded.has(autoTransferId(rule.id, m))) continue;
+      nextDate = date;
+      nextAmount = planned ? (projected.get(`${rule.id}:${m}`) ?? 0) : null;
+      break;
+    }
+    // 매달 예상: 다음 달(한 달을 온전히 흘려 본 달) 월급날 흐름
+    const flowMonth = nextDate ? monthOf(nextDate) : month;
+    const monthly = planned
+      ? paydayPlans(data, flowMonth, rule.fromAccountId).reduce((s, p) => s + (p.remainder?.rule.id === rule.id ? p.remainder.amount : 0), 0)
+      : null;
+    return { rule, nextDate, nextAmount, monthly };
+  });
 }
 
 /* ---------- 월급날 배분 미리보기 ---------- */
 
 export interface PaydayLine {
   rule: AllocationRule;
-  /** 정한 금액, 나머지는 그날 남는 돈 예상 */
+  /** 정한 금액, 자동은 그 배분 기간의 필요한 금액, 나머지는 그날 남는 돈 예상 */
   amount: Won;
+  /** 자동 규칙의 내역 (고정비 · 할부 · 생활비 항목) */
+  need?: WindowNeed;
 }
 
 export interface PaydayPlan {
@@ -232,10 +299,12 @@ export interface PaydayPlan {
   /** 앞 월급날에서 남아 넘어온 돈 (나머지 규칙이 없을 때) */
   carried: Won;
   fixed: PaydayLine[];
+  /** 필요한 만큼 (자동) 배분 (정한 금액 뒤, 나머지 앞) */
+  auto: PaydayLine[];
   remainder: PaydayLine | null;
   /** 나머지 규칙이 없을 때 그날 뒤 보내는 통장에 남는 돈 (음수 = 모자람) */
   left: Won;
-  /** 정한 금액이 그날까지 들어온 돈보다 많은 금액 (아니면 0) */
+  /** 정한 금액 + 자동이 그날까지 들어온 돈보다 많은 금액 (아니면 0) */
   short: Won;
 }
 
@@ -250,7 +319,7 @@ export function paydayPlans(data: LedgerData, month: YearMonth, sourceAccountId:
   const get = (day: number) => {
     let p = days.get(day);
     if (!p) {
-      p = { day, income: 0, earners: [], carried: 0, fixed: [], remainder: null, left: 0, short: 0 };
+      p = { day, income: 0, earners: [], carried: 0, fixed: [], auto: [], remainder: null, left: 0, short: 0 };
       days.set(day, p);
     }
     return p;
@@ -267,17 +336,23 @@ export function paydayPlans(data: LedgerData, month: YearMonth, sourceAccountId:
     const p = get(dayOf(r.dayOfMonth));
     if (isRemainderRule(r)) {
       if (!p.remainder) p.remainder = { rule: r, amount: 0 };
+    } else if (isAutoRule(r)) {
+      const need = windowNeed(data, r.toAccountId, dateInMonth(month, r.dayOfMonth), r.dayOfMonth);
+      p.auto.push({ rule: r, amount: need.total, need });
     } else p.fixed.push({ rule: r, amount: r.amount });
   }
   // 정한 금액은 받는 통장 순서로 보여 준다
   const order = new Map(data.accounts.filter((a) => !a.deleted).sort((a, b) => a.order - b.order).map((a, i) => [a.id, i]));
-  for (const p of days.values()) p.fixed.sort((a, b) => (order.get(a.rule.toAccountId) ?? 999) - (order.get(b.rule.toAccountId) ?? 999));
+  for (const p of days.values()) {
+    p.fixed.sort((a, b) => (order.get(a.rule.toAccountId) ?? 999) - (order.get(b.rule.toAccountId) ?? 999));
+    p.auto.sort((a, b) => (order.get(a.rule.toAccountId) ?? 999) - (order.get(b.rule.toAccountId) ?? 999));
+  }
   const list = [...days.values()].sort((a, b) => a.day - b.day);
   let balance = 0;
   for (const p of list) {
     p.carried = balance;
     balance += p.income;
-    const fixed = p.fixed.reduce((s, l) => s + l.amount, 0);
+    const fixed = p.fixed.reduce((s, l) => s + l.amount, 0) + p.auto.reduce((s, l) => s + l.amount, 0);
     const available = balance;
     balance -= fixed;
     p.short = fixed > available ? fixed - Math.max(0, available) : 0;
@@ -314,4 +389,51 @@ export function conflictingRemainderRule(
         (rule.endMonth === null || r.startMonth <= rule.endMonth),
     ) ?? null
   );
+}
+
+/** '약 245만원' (만 원 아래면 원 단위 그대로) */
+export function aboutMan(n: Won): string {
+  const r = Math.round(n);
+  if (Math.abs(r) < 10000) return `${r.toLocaleString('en-US')}원`;
+  return `약 ${Math.round(r / 10000).toLocaleString('en-US')}만원`;
+}
+
+export interface RemainderView {
+  rule: AllocationRule;
+  /** 받는 통장 짧은 이름 ('저수지') */
+  toName: string;
+  /** '나머지 전부 → 저수지 · 다음 21일 예상 369,400원' */
+  text: string;
+  /** '다음 21일 예상 369,400원' 또는 '남는 돈이 없어요' (예상할 수 없으면 null) */
+  nextText: string | null;
+  /** 예상이 0 이하 (경고 색) */
+  empty: boolean;
+  /** '저수지로 매달 약 245만원' (수입 계획이 없으면 null) */
+  monthlyText: string | null;
+  monthly: Won | null;
+}
+
+/** 나머지 규칙마다 보여 줄 예상 문구 (규칙 줄 · 월급날 미리보기 · 배분 흐름 카드) */
+export function remainderViews(data: LedgerData, today: ISODate): RemainderView[] {
+  return remainderEstimates(data, today).map((e) => {
+    const acc = data.accounts.find((a) => a.id === e.rule.toAccountId);
+    const toName = (acc?.name ?? '지운 통장').replace(/통장$/, '') || '통장';
+    const empty = e.nextAmount !== null && e.nextAmount <= 0;
+    const nextText =
+      e.nextAmount === null || e.nextDate === null
+        ? null
+        : empty
+          ? '남는 돈이 없어요'
+          : `다음 ${Number(e.nextDate.slice(8, 10))}일 예상 ${e.nextAmount.toLocaleString('en-US')}원`;
+    const monthlyText = e.monthly !== null && e.monthly > 0 ? `${toName}로 매달 ${aboutMan(e.monthly)}` : null;
+    return {
+      rule: e.rule,
+      toName,
+      text: nextText ? `나머지 전부 → ${toName} · ${nextText}` : `나머지 전부 → ${toName}`,
+      nextText,
+      empty,
+      monthlyText,
+      monthly: e.monthly,
+    };
+  });
 }

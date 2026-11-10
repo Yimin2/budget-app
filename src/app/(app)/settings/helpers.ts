@@ -1,5 +1,7 @@
 /* 설정 화면의 순수 도우미 */
-import { addMonths, compareMonth, dateInMonth, formatMan, formatMonthKo, isMonthActive, isRemainderRule, monthOf, paydayPlans, plannedIncome } from '@/domain';
+import {
+  addMonths, compareMonth, dateInMonth, formatMan, formatMonthKo, isMonthActive, isRemainderRule, monthOf, paydayPlans, plannedIncome, ruleAmountIn,
+} from '@/domain';
 import type { Account, AccountRole, AllocationRule, FixedExpense, ISODate, LedgerData, Won, YearMonth } from '@/domain/types';
 
 export const ROLE_TEXT: Record<AccountRole, string> = {
@@ -51,7 +53,7 @@ export function allocationTotal(data: LedgerData, month: YearMonth, incomeAccoun
   const incomeIds = incomeIdsOf(data, incomeAccountId);
   return data.rules
     .filter((r) => !r.deleted && incomeIds.has(r.fromAccountId) && isMonthActive(month, r.startMonth, r.endMonth))
-    .reduce((s, r) => s + r.amount, 0);
+    .reduce((s, r) => s + ruleAmountIn(data, r, month), 0);
 }
 
 /**
@@ -86,7 +88,7 @@ export function referenceIncome(
 
 export interface IncomeSummary {
   account: Account;
-  /** 이번 달 이 통장에서 나가는 정한 금액 배분 합 */
+  /** 이번 달 이 통장에서 나가는 정한 금액 · 필요한 만큼(자동) 배분 합 */
   total: Won;
   /**
    * 비교할 수입: 이번 달 수입 계획 합(planned=true), 계획이 없으면 이번 달(없으면 지난달) 수입 기록
@@ -137,6 +139,7 @@ export function paydayPreviewLines(data: LedgerData, month: YearMonth, sourceAcc
   };
   return paydayPlans(data, month, sourceAccountId).map((p) => {
     const parts = p.fixed.map((l) => `${short(l.rule.toAccountId)} ${formatMan(l.amount)}`);
+    for (const l of p.auto) parts.push(`${short(l.rule.toAccountId)} ${formatMan(l.amount)}(자동)`);
     if (p.remainder) parts.push(`나머지 ${formatMan(p.remainder.amount)} → ${short(p.remainder.rule.toAccountId)}`);
     else if (p.left > 0 && p.income > 0) parts.push(`남는 돈 ${formatMan(p.left)}`);
     const head = p.income > 0 ? `${p.day}일: ${formatMan(p.income)}` : `${p.day}일`;

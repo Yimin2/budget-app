@@ -297,7 +297,7 @@ export const LEDGER_KIND_LABELS: Record<LedgerKind, string> = { shared: '공용'
 /** 생활비 항목 쓰는 방식. 빈 셀은 하루 (예전 생활비 한 줄도 지금처럼 하루에 나눠 써요) */
 export const SPREAD_LABELS: Record<LivingSpread, string> = { daily: '하루', monthly: '한달' };
 /** 매달 배분 방식. 빈 셀은 고정 (예전 배분은 모두 정한 금액) */
-export const RULE_KIND_LABELS: Record<RuleKind, string> = { fixed: '고정', remainder: '나머지' };
+export const RULE_KIND_LABELS: Record<RuleKind, string> = { fixed: '고정', remainder: '나머지', auto: '자동' };
 
 const role = enumCodec(ROLE_LABELS, 'other');
 
@@ -342,6 +342,60 @@ export const perWeekCodec: Codec = {
   dec: (c) => {
     const n = toNumber(c);
     return n !== null && n >= 1 && n <= 7 ? n : undefined;
+  },
+};
+
+/** 고정비 시작일 · 종료일 (PLAN 4-15). 나중에 더한 열이라 빈 칸 · 날짜가 아닌 값 = 없음 (없는 값으로 읽는다) */
+const laterDate: Codec = {
+  enc: (v) => (v ? String(v) : ''),
+  dec: (c) => {
+    const d = toISODate(c);
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
+  },
+};
+
+/**
+ * 고정비 세부 항목 <-> JSON [{"이름":"목장","금액":40000,"시작일":"2026-12-01","종료일":"2027-03-31"}].
+ * 읽을 때는 코드 키(name · amount · startDate · endDate)도 받는다. 빈 칸 · 읽을 수 없는 값 · 빈 목록 = 없음
+ */
+export const subItemsCodec: Codec = {
+  enc: (v) => {
+    if (!Array.isArray(v) || v.length === 0) return '';
+    const list = v
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+      .map((x) => {
+        const o: Record<string, unknown> = { 이름: String(x.name ?? '').trim(), 금액: Math.round(Number(x.amount) || 0) };
+        if (typeof x.startDate === 'string' && x.startDate) o['시작일'] = x.startDate;
+        if (typeof x.endDate === 'string' && x.endDate) o['종료일'] = x.endDate;
+        return o;
+      });
+    return list.length > 0 ? JSON.stringify(list) : '';
+  },
+  dec: (c) => {
+    if (isBlank(c) || typeof c !== 'string') return undefined;
+    try {
+      const parsed: unknown = JSON.parse(c);
+      if (!Array.isArray(parsed)) return undefined;
+      const out: { name: string; amount: number; startDate?: string; endDate?: string }[] = [];
+      for (const x of parsed) {
+        if (!x || typeof x !== 'object') continue;
+        const o = x as Record<string, unknown>;
+        const name = String(o['이름'] ?? o.name ?? '').trim();
+        const amount = toNumber((o['금액'] ?? o.amount) as RawCell);
+        if (!name || amount === null || amount < 0) continue;
+        const start = toISODate((o['시작일'] ?? o.startDate) as RawCell);
+        const end = toISODate((o['종료일'] ?? o.endDate) as RawCell);
+        out.push({
+          name,
+          amount,
+          ...(start && /^\d{4}-\d{2}-\d{2}$/.test(start) ? { startDate: start } : {}),
+          ...(end && /^\d{4}-\d{2}-\d{2}$/.test(end) ? { endDate: end } : {}),
+        });
+      }
+      return out.length > 0 ? out : undefined;
+    } catch {
+      return undefined;
+    }
   },
 };
 
@@ -420,6 +474,9 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       // 생활비 쓰는 날 (PLAN 4-1). 나중에 더한 열이라 빈 칸 = 매일 (예전 계산과 같다)
       c('useDays', '쓰는날', useDaysCodec), c('skipHolidays', '공휴일빼기', skipHolidaysCodec),
       c('perWeek', '주N회', perWeekCodec, ['주몇회']),
+      // 고정비 시작일 · 해지일 · 세부 항목 (PLAN 4-15). 나중에 더한 열이라 빈 칸 = 없음 (시작월 · 종료월 · 금액으로 셈)
+      c('startDate', '시작일', laterDate), c('endDate', '종료일', laterDate, ['해지일', '만기일']),
+      c('subItems', '세부', subItemsCodec, ['세부항목']),
     ],
   },
   events: {
