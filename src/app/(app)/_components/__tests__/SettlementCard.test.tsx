@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** 이번 달 정산 한 줄 요약 카드: '이번 달 줄 돈 ○만 (사람 ○만) · 날짜 [정산하기]' → /plan/settle */
+/** 이번 달 정산 한 줄 요약 카드: '이번 달 이벤트통장 쓴 돈 ○만 + 예정 ○만 · 들어올 돈 ○만 · 날짜 정산 ○만 [정산하기]' → /plan/settle */
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatShortDate } from '@/domain';
@@ -19,29 +19,31 @@ const eventCat = (h: ReturnType<typeof makeHarness>) =>
   L(h).data!.categories.find((c) => !c.deleted && c.defaultAccountRole === 'event')!.id;
 
 describe('이번 달 정산 한 줄 요약', () => {
-  it('이번 달 줄 돈 · 사람마다 · 정산일 한 줄과 [정산하기] → /plan/settle', async () => {
+  it('이번 달 이벤트통장 쓴 돈 + 예정 · 들어올 돈 · 정산일에 줄 돈 한 줄과 [정산하기] → /plan/settle', async () => {
     const h = makeHarness();
     render(<SettlementCard />, { wrapper: h.Wrapper });
     const card = await screen.findByRole('region', { name: '이번 달 정산' });
     expect(card.id).toBe('settlement');
     const date = formatShortDate(L(h).settlement!.date);
-    expect(within(card).getByTestId('settlement-line').textContent).toBe(`이번 달 줄 돈 30만 (민지 30만) · ${date} · 모두 이벤트통장에서 줄 수 있어요`);
-    expect(within(card).getByTestId('settlement-split').textContent).toBe(' · 모두 이벤트통장에서 줄 수 있어요');
+    expect(within(card).getByTestId('settlement-line').textContent).toBe(`이번 달 이벤트통장 쓴 돈 15만 + 예정 30만 · 들어올 돈 30만 · ${date} 정산 30만`);
+    expect(within(card).getByTestId('settlement-split').textContent).toBe(` · ${date} 정산 30만`);
+    // 예정에 든 청구는 이벤트통장에서 줄 수 있는 돈을 넘지 않아요
+    expect(L(h).settlement!.eventPayTotal).toBeLessThanOrEqual(L(h).settlement!.payable);
     expect(within(card).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
 
-    // 저수지 돈으로 낸 이벤트 청구도 사람에게 줄 돈으로 더해져요 (많은 순)
+    // 저수지 돈으로 낸 이벤트 청구는 이벤트통장 예정에 넣지 않고 옆에 따로 알려요
     await act(async () => {
       await L(h).addExpense({ date: '2026-10-02', amount: 24_000, accountId: 'demo-acc-reservoir', categoryId: eventCat(h), memo: '꽃', paidBy: '준호' });
     });
     await waitFor(() =>
       expect(within(card).getByTestId('settlement-line').textContent).toBe(
-        `이번 달 줄 돈 32.4만 (민지 30만 · 준호 2.4만) · ${date} · 이벤트통장에서 30만 · 저수지에서 빌려 2.4만`,
+        `이번 달 이벤트통장 쓴 돈 15만 + 예정 30만 · 들어올 돈 30만 · ${date} 정산 30만 · 저수지에서 빌려 2.4만`,
       ),
     );
     expect(card.textContent).not.toMatch(/저수지에 (쓸|줄) 돈|저수지에서 돌려받을|빌려 줄 돈/);
   });
 
-  it('지금 줄 돈이 없으면 "이번 달 줄 돈이 없어요"와 다음 정산 정보, 청구가 없으면 숨겨요', async () => {
+  it('지금 줄 돈이 없으면 "이번 달 정산할 돈은 없어요"와 다음 정산 정보, 청구가 없으면 숨겨요', async () => {
     const h = makeHarness();
     render(<SettlementCard />, { wrapper: h.Wrapper });
     const card = await screen.findByRole('region', { name: '이번 달 정산' });
@@ -49,7 +51,11 @@ describe('이번 달 정산 한 줄 요약', () => {
       await L(h).settleClaims(['demo-claim-jeju']);
     });
     const upcoming = L(h).settlement!.upcoming[0]!;
-    await waitFor(() => expect(within(card).getByTestId('settlement-line').textContent).toContain('이번 달 줄 돈이 없어요'));
+    await waitFor(() =>
+      expect(within(card).getByTestId('settlement-line').textContent).toBe(
+        `이번 달 이벤트통장 쓴 돈 45만 · 들어올 돈 30만 · 이번 달 정산할 돈은 없어요 · 다음 정산 ${formatShortDate(upcoming.due)} 2.4만`,
+      ),
+    );
     expect(card.textContent).toContain(`다음 정산 ${formatShortDate(upcoming.due)} 2.4만`);
     expect(within(card).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
 

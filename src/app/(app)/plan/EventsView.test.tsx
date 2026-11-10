@@ -38,7 +38,7 @@ describe('EventsView — 체험 가계부', () => {
     const h = await renderEvents();
     const card = screen.getByRole('region', { name: '이번 달 정산' });
     expect(card.id).toBe('settlement');
-    expect(within(card).getByTestId('settlement-line').textContent).toMatch(/^이번 달 줄 돈 30만 \(민지 30만\) · \d+\/\d+ · 모두 이벤트통장에서 줄 수 있어요$/);
+    expect(within(card).getByTestId('settlement-line').textContent).toMatch(/^이번 달 이벤트통장 쓴 돈 15만 \+ 예정 30만 · 들어올 돈 30만 · \d+\/\d+ 정산 30만$/);
     expect(within(card).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
     // 항목 목록 · 지급 버튼은 정산 화면에만 있어요
     expect(within(card).queryByRole('checkbox')).toBeNull();

@@ -5,7 +5,7 @@ import { claimLoanTransferId, claimMessageFor, claimTransferId, isClaimPaidFromR
 import { autoTransferId } from './ids';
 import { projectEventAccount } from './events';
 import {
-  allocateClaims, balanceWithScheduled, checkSettlementSelection, isCarriedOverClaim, selectionLimitText, settleExplanation, settleRefusal, shortfallText, claimsBySource, computeSettlement, defaultSettlementSelection, expenseLoanTransferId, followLoanTransfers,
+  allocateClaims, balanceWithScheduled, eventMonthUsage, eventUsageNoteText, checkSettlementSelection, isCarriedOverClaim, selectionLimitText, settleExplanation, settleRefusal, shortfallText, claimsBySource, computeSettlement, defaultSettlementSelection, expenseLoanTransferId, followLoanTransfers,
   loanCandidates, loanRepayId, loanStatus, planSettlement, settledReservoirEventClaims, settlementSplitText, settlementSummary, settleRoster,
 } from './settlement';
 import { usualHistory } from './usual';
@@ -694,5 +694,69 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     const d = base({ expenses: [due('m1', '민구', 550_000, '2026-10-05')] });
     const sum = settlementSummary(computeSettlement(d, TODAY));
     expect(settlementSplitText(sum)).toBe('이벤트통장에서 줄 수 있는 50만에 안 들어가 55만은 저수지에서 빌리거나 다음 달로');
+  });
+
+  it('카드 머리말은 이번 달 이벤트통장 쓴 돈 + 예정 · 들어올 돈, 줄 수 있는 돈보다 큰 줄 돈은 없어요 (eventMonthUsage)', () => {
+    const s = computeSettlement(base(), TODAY);
+    const u = eventMonthUsage(base(), s, TODAY);
+    expect(u).toEqual({
+      spent: 0,
+      planned: 150_000,
+      plannedClaims: 150_000,
+      incoming: 500_000,
+      unpaid: 550_000,
+      unpaidPeople: [{ name: '민구', amount: 550_000 }],
+    });
+    // 예정에 든 청구는 지급할 수 있는 돈을 넘지 않아요
+    expect(u.plannedClaims).toBeLessThanOrEqual(s.payable);
+    expect(eventUsageNoteText(u, settlementSummary(s))).toBe('11/21 정산 15만 · 못 준 돈 55만은 다음 달로 (민구)');
+  });
+
+  it('쓴 돈 = 오늘까지 이벤트통장 지출 + 돌려준 청구, 갚은 돈 · 빌린 이체 · 청구 지출 자체 · 지난달은 빼요. 오늘 뒤 기록과 남은 일정은 예정', () => {
+    const d = base({
+      events: [event({ id: 'ev-28', date: '2026-11-28', amount: 100_000, accountId: 'event' })],
+      expenses: [
+        due('m1', '민구', 550_000, '2026-10-05'),
+        due('g1', '기쁜', 130_000, '2026-10-20'),
+        due('g2', '기쁜', 20_000, '2026-10-28'),
+        expense({ id: 'x-nov', accountId: 'event', amount: 80_000, date: '2026-11-03', categoryId: 'cat-gift' }),
+        expense({ id: 'x-oct', accountId: 'event', amount: 70_000, date: '2026-10-30', categoryId: 'cat-gift' }),
+        expense({ id: 'x-later', accountId: 'event', amount: 30_000, date: '2026-11-25', categoryId: 'cat-gift' }),
+        expense({ id: 'x-res', accountId: 'res', amount: 90_000, date: '2026-11-04', categoryId: 'cat-gift' }),
+        // 이번 달에 이미 돌려준 청구 (저수지에서 빌려 지급)
+        due('p1', '기쁜', 40_000, '2026-11-02'),
+      ],
+      transfers: [
+        transfer({ id: claimLoanTransferId('p1'), date: '2026-11-06', amount: 40_000, fromAccountId: 'res', toAccountId: 'event' }),
+        transfer({ id: claimTransferId('p1'), date: '2026-11-06', amount: 40_000, fromAccountId: 'event', toAccountId: 'inc-g' }),
+        transfer({ id: loanRepayId('2026-11'), date: '2026-11-07', amount: 20_000, fromAccountId: 'event', toAccountId: 'res' }),
+      ],
+    });
+    const s = computeSettlement(d, TODAY);
+    const u = eventMonthUsage(d, s, TODAY);
+    expect(u.spent).toBe(80_000 + 40_000);
+    expect(u.plannedClaims).toBe(s.eventPayTotal);
+    expect(u.planned).toBe(100_000 + 30_000 + s.eventPayTotal);
+    expect(u.incoming).toBe(500_000);
+  });
+
+  it('들어올 돈은 이미 기록된 이번 달 적립도 세요 (두 번 세지 않아요) · 이벤트통장이 없으면 0', () => {
+    const d = base({
+      transfers: [transfer({ id: autoTransferId('r-ev', '2026-11'), date: '2026-11-21', amount: 500_000, fromAccountId: 'inc-m', toAccountId: 'event', ruleId: 'r-ev' })],
+    });
+    expect(eventMonthUsage(d, computeSettlement(d, TODAY), TODAY).incoming).toBe(500_000);
+    const none = base({ accounts: [minguAcc, gippeunAcc, reservoirAcc] });
+    const u = eventMonthUsage(none, computeSettlement(none, TODAY), TODAY);
+    expect([u.spent, u.planned, u.incoming]).toEqual([0, 0, 0]);
+  });
+
+  it('붙일 말: 두 명이면 사람마다 금액, 다른 통장 몫, 줄 돈이 없으면 그렇게 말해요', () => {
+    const sum = settlementSummary(computeSettlement(base(), TODAY));
+    const u = { spent: 0, planned: 0, plannedClaims: 0, incoming: 0, unpaid: 0, unpaidPeople: [] };
+    expect(
+      eventUsageNoteText({ ...u, unpaid: 700_000, unpaidPeople: [{ name: '민구', amount: 550_000 }, { name: '기쁜', amount: 150_000 }] }, sum),
+    ).toBe('못 준 돈 70만은 다음 달로 (민구 55만 · 기쁜 15만)');
+    expect(eventUsageNoteText(u, { ...sum, fromFixed: 30_000, borrow: 24_000 })).toBe('생활비 통장에서 3만 · 저수지에서 빌려 2.4만');
+    expect(eventUsageNoteText(u, { ...sum, total: 0 })).toBe('이번 달 정산할 돈은 없어요');
   });
 });

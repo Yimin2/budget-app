@@ -33,7 +33,7 @@
 import { accountBalance, isCountedTransfer } from './balances';
 import { isClaimExpense } from './balances';
 import { claimLoanTransferId, claimTransferId, isReservoirEventExpense, pendingClaims, settleDayOf } from './claims';
-import { dateInMonth, monthOf } from './dates';
+import { dateInMonth, formatShortDate, monthOf } from './dates';
 import { projectEventAccount } from './events';
 import { autoTransferId } from './ids';
 import { unrecordedInstallmentPayments } from './installments';
@@ -810,6 +810,109 @@ export function settlementSplitText(sum: SettlementSummary): string | null {
     parts.push(`${head}${formatMan(sum.rest)}은 저수지에서 빌리거나 다음 달로`);
   }
   return parts.join(' · ');
+}
+
+/** 이번 달 이벤트통장 쓴 돈 · 예정 · 들어올 돈 — 이벤트 화면 · 홈의 정산 한 줄 카드 머리말 (PLAN 4-9) */
+export interface EventMonthUsage {
+  /**
+   * 이번 달 1일 ~ 오늘 이벤트통장에서 실제로 나간 돈 = 이벤트통장 지출(청구 아닌 보통 지출) + 이벤트통장에서 돌려준 청구(claim:<지출id>).
+   * 저수지에서 빌려 돌려준 청구도 이벤트통장에서 나간 돈이라 넣는다 (빌린 이체 loan:은 들어온 쪽이라 셈에 없다).
+   * 저수지에 갚은 이체(loanpay:) · 다른 통장으로 옮긴 이체는 쓴 돈이 아니라 넣지 않는다
+   */
+  spent: Won;
+  /**
+   * 이번 달 남은 예정 = 아직 안 쓴 이번 달 일정 · 여행 · 할부(reservedThisMonth) + 오늘 뒤 날짜로 미리 기록한 이번 달 지출 · 돌려준 청구
+   * + 이번 달 이벤트통장에서 돌려줄 청구(지급할 수 있는 돈 안에 든 몫 = eventPayTotal, 한도를 넘지 않는다)
+   */
+  planned: Won;
+  /** planned 중 이번 달 이벤트통장에서 돌려줄 청구 */
+  plannedClaims: Won;
+  /** 이번 달 이벤트통장에 들어오는(들어온) 돈 = 이번 달 적립 · 수입 · 이체(기록된 것 + 아직 기록 안 된 매달 배분 · 수입 계획 · 예정 이체). 저수지에서 빌린 이체(loan:)는 뺀다 */
+  incoming: Won;
+  /** 이벤트통장에서 줄 수 있는 돈에 안 들어가 다음 달로 넘어가는 청구 합 (= carryTotal) */
+  unpaid: Won;
+  /** 그 사람마다 (많은 순) */
+  unpaidPeople: { name: string; amount: Won }[];
+}
+
+/** 이번 달 이벤트통장으로 들어오는 돈 (기록된 것 + 아직 기록 안 된 매달 배분 · 수입 계획 · 예정 이체, 빌린 이체 제외) */
+function monthIncoming(data: LedgerData, accountId: Id, today: ISODate): Won {
+  const month = monthOf(today);
+  let total = 0;
+  const transferIds = new Set(data.transfers.map((t) => t.id));
+  for (const t of data.transfers) {
+    if (t.toAccountId !== accountId || t.fromAccountId === accountId || monthOf(t.date) !== month || isLoanTransferId(t.id)) continue;
+    if (isCountedTransfer(data, t) || (!t.deleted && t.status === 'planned')) total += t.amount;
+  }
+  const rules = data.rules.filter((r) => !r.deleted && r.toAccountId === accountId && r.fromAccountId !== accountId);
+  const remainders = rules.some(isComputedRule) ? projectRemainders(data, today, 1) : new Map<string, Won>();
+  for (const r of rules) {
+    if (ruleOccurrenceDate(data, r, month) === null || transferIds.has(autoTransferId(r.id, month))) continue;
+    total += ruleAmountFor(r, month, remainders, data);
+  }
+  for (const p of activeIncomePlans(data, month, accountId)) {
+    if (incomePlanOccurrenceDate(data, p, month) === null || transferIds.has(incomeRecordId(p.id, month))) continue;
+    total += p.amount;
+  }
+  return total;
+}
+
+/** 이번 달 이벤트통장 쓴 돈 · 예정 · 들어올 돈 · 다음 달로 넘어가는 청구 (이벤트통장이 없으면 금액은 0) */
+export function eventMonthUsage(data: LedgerData, s: Settlement, today: ISODate): EventMonthUsage {
+  const unpaidPeople = s.carry
+    .map((g) => ({ name: g.name, amount: g.amount }))
+    .sort((a, b) => b.amount - a.amount || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const acc = s.eventAccountId;
+  if (!acc) return { spent: 0, planned: 0, plannedClaims: 0, incoming: 0, unpaid: s.carryTotal, unpaidPeople };
+  const month = monthOf(today);
+  const claimPrefix = claimTransferId('');
+  let spent = 0;
+  let ahead = 0;
+  const add = (date: ISODate, amount: Won) => {
+    if (date <= today) spent += amount;
+    else ahead += amount;
+  };
+  for (const e of data.expenses) {
+    if (e.deleted || isClaimExpense(e) || e.accountId !== acc || monthOf(e.date) !== month) continue;
+    add(e.date, e.amount);
+  }
+  for (const t of data.transfers) {
+    if (t.fromAccountId !== acc || monthOf(t.date) !== month || !t.id.startsWith(claimPrefix) || !isCountedTransfer(data, t)) continue;
+    add(t.date, t.amount);
+  }
+  const plannedClaims = s.eventPayTotal;
+  return {
+    spent,
+    planned: s.reserved + ahead + plannedClaims,
+    plannedClaims,
+    incoming: monthIncoming(data, acc, today),
+    unpaid: s.carryTotal,
+    unpaidPeople,
+  };
+}
+
+/**
+ * 한 줄 카드 머리말 옆(모바일은 둘째 줄)에 붙일 말: '11/21 정산 15만 · 못 준 돈 55만은 다음 달로 (민구)'.
+ * 생활비 통장 · 저수지에서 줄 몫이 있으면 함께, 줄 돈이 없으면 '이번 달 정산할 돈은 없어요'. 붙일 말이 없으면 null.
+ * 못 준 돈의 사람은 두 명까지만 (금액은 두 명일 때만)
+ */
+export function eventUsageNoteText(u: EventMonthUsage, sum: SettlementSummary): string | null {
+  const parts: string[] = [];
+  if (sum.total <= 0) parts.push('이번 달 정산할 돈은 없어요');
+  if (u.plannedClaims > 0) parts.push(`${formatShortDate(sum.date)} 정산 ${formatMan(u.plannedClaims)}`);
+  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatMan(sum.fromFixed)}`);
+  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatMan(sum.fromReservoir)}`);
+  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatMan(sum.borrow)}`);
+  if (u.unpaid > 0) {
+    const who =
+      u.unpaidPeople.length === 1
+        ? ` (${u.unpaidPeople[0]!.name})`
+        : u.unpaidPeople.length === 2
+          ? ` (${u.unpaidPeople.map((p) => `${p.name} ${formatMan(p.amount)}`).join(' · ')})`
+          : '';
+    parts.push(`못 준 돈 ${formatMan(u.unpaid)}은 다음 달로${who}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 export interface SettlePlan {
