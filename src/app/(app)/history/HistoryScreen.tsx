@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { SegmentedControl } from '@/ui';
 import { AccountsScreen } from './_accounts/AccountsScreen';
 import { ExpensesScreen } from './_expenses/ExpensesScreen';
+import { HistoryViewSwitch } from './HistoryViewSwitch';
 import { TransfersScreen } from './TransfersScreen';
 
 export type HistoryTab = 'expenses' | 'transfers' | 'accounts';
@@ -25,7 +26,7 @@ export function historyHref(tab: HistoryTab): string {
 }
 
 /**
- * '/history' 내역: 지출 · 이체 · 통장 잔액을 한 화면에서 탭으로 바꿔 봐요.
+ * '/history' 내역: 지출 · 이체 · 통장 잔액을 한 화면에서 탭으로 바꿔 봐요. 탭 위 [내역 · 통계]로 통계(/history/stats)에 가요.
  * ?tab=transfers · ?tab=accounts (&id=<통장 id> 면 통장 하나), 지출은 ?month= · ?account= · ?new=1
  */
 export function HistoryScreen() {
@@ -36,13 +37,16 @@ export function HistoryScreen() {
   const accountId = params?.get('id') || null;
 
   const switcher = (
-    <SegmentedControl
-      ariaLabel="내역 종류"
-      block
-      options={TABS}
-      value={tab}
-      onChange={(t) => router.replace(t === 'expenses' ? pathname : `${pathname}?tab=${t}`, { scroll: false })}
-    />
+    <>
+      <HistoryViewSwitch value="list" />
+      <SegmentedControl
+        ariaLabel="내역 종류"
+        block
+        options={TABS}
+        value={tab}
+        onChange={(t) => router.replace(t === 'expenses' ? pathname : `${pathname}?tab=${t}`, { scroll: false })}
+      />
+    </>
   );
 
   if (tab === 'accounts') return <AccountsScreen switcher={accountId ? undefined : switcher} />;

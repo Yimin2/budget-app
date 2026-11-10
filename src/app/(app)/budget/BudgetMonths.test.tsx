@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/* 예산 달별 보기 (작업정리 13): ◀ 달 ▶ · 지난 달은 보기만 · 다음 달 [전달 복사] / [초기화] · 다음 달만 따로 고치기 */
+/* 예산 달별 보기 (작업정리 13): ◀ 달 ▶ · 지난 달은 보기만(들어오는 돈 줄도 누를 수 없어요) · 다음 달 [전달 복사] / [초기화] · 다음 달만 따로 고치기 */
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { current, renderApp, startDemo, type AppHarness } from '../_components/__tests__/harness';
@@ -12,7 +12,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => nav.router, usePathname: ()
 import { budgetMonthView, formatMan, livingBudgetOf } from '@/domain';
 import type { ReadyLedger } from '../_components/RequireLedger';
 import BudgetPage from './page';
-import { accountCard, openOut } from './budgetTestUtils';
+import { accountCard, openIncoming, openOut, pickOwner } from './budgetTestUtils';
+import { accountMoney } from './flow';
 import { ledgerForMonth, PAST_READ_ONLY } from './monthLedger';
 
 const LIVING = 'demo-acc-living-minji';
@@ -87,14 +88,20 @@ describe('예산 달별 보기 — ◀ 달 ▶ (13)', () => {
     await startDemo(h);
     await withHistory(h);
     prev();
-    // 돈 흐름의 [배분 보기]
-    const btn = screen.getByRole('button', { name: '수입 계획과 매달 배분 배분 보기' });
-    fireEvent.click(btn);
-    const rules = document.getElementById(btn.getAttribute('aria-controls')!)!;
-    const fieldset = within(rules).getByTestId('read-only') as HTMLFieldSetElement;
-    expect(fieldset.tagName).toBe('FIELDSET');
-    expect(fieldset.disabled).toBe(true);
-    for (const b of within(fieldset).queryAllByRole('button')) expect(b.matches(':disabled')).toBe(true);
+    // 들어오는 돈 줄은 보이지만 누를 수 없고, [+ 들어오는 돈] · [배분 보기]도 없어요
+    const minji = accountCard('생활비(민지)');
+    const rows = within(minji).getAllByTestId('incoming-row');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.tagName).toBe('DIV');
+    expect(within(minji).queryByRole('button', { name: /^21일/ })).toBeNull();
+    expect(within(minji).queryByRole('button', { name: /들어오는 돈 추가/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /배분 보기|배분 고치기/ })).toBeNull();
+    // 월급통장 수입 계획 줄도 보기만
+    pickOwner('함께');
+    const salary = accountCard('월급통장');
+    expect(within(salary).getAllByTestId('income-row').every((r) => r.tagName === 'DIV')).toBe(true);
+    expect(within(salary).queryByRole('button', { name: /수입 추가/ })).toBeNull();
+    pickOwner('민지');
     // 통장 카드의 생활비 예산 · 고정비도 보기만
     const living = openOut('생활비(민지)', '생활비 예산');
     expect((within(living).getByTestId('read-only') as HTMLFieldSetElement).disabled).toBe(true);
@@ -131,6 +138,19 @@ describe('예산 달별 보기 — ◀ 달 ▶ (13)', () => {
     });
     expect(livingBudgetOf(ledgerOf(h).data, LIVING, '2026-11')).toBe(thisMonth);
     expect(livingBudgetOf(ledgerOf(h).data, LIVING, '2026-12')).toBe(thisMonth + 50_000);
+
+    // 통장 카드 들어오는 돈 줄도 다음 달만: 민지 생활비 배분 90만 → 95만
+    const editor = openIncoming('생활비(민지)', /^21일 · 월급통장에서/);
+    fireEvent.change(within(editor).getByLabelText('금액'), { target: { value: '950000' } });
+    await act(async () => {
+      fireEvent.click(within(editor).getByRole('button', { name: '저장' }));
+    });
+    await waitFor(() => expect(document.getElementById(editor.id)).toBeNull());
+    const d = ledgerOf(h).data;
+    const into = (month: string) => accountMoney(d, LIVING, month, ledgerOf(h).today).incomingTotal;
+    expect(into('2026-11')).toBe(900_000);
+    expect(into('2026-12')).toBe(950_000);
+    expect(within(accountCard('생활비(민지)')).getByTestId('incoming-summary').textContent).toBe('한 달 95만');
 
     // [초기화] → 그 자리에서 확인 → 다시 이번 달 예산이 이어져요
     fireEvent.click(screen.getByRole('button', { name: '초기화' }));

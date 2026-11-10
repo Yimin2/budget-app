@@ -30,7 +30,7 @@ describe('EventsView — 체험 가계부', () => {
     const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
     expect(card.textContent).toMatch(/평소 매달 .+만원을 쓰는데 적립은 .+이에요. 이대로면 매달 .+씩 줄어요/);
     const chart = screen.getByRole('region', { name: '앞으로 12개월 예상 잔액' });
-    expect(within(chart).getByText(/작년 같은 달 기록, 없으면 최근 12개월 평균이에요/)).toBeTruthy();
+    expect(within(chart).getByText(/작년 같은 달 기록 30%와 최근 12개월 평균 70%를 섞어요 \(작년 기록이 없으면 최근 12개월 평균\)/)).toBeTruthy();
     expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
   });
 

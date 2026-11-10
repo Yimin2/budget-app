@@ -140,7 +140,9 @@ describe('미리 보기 (저장하지 않는 덮어씌우기)', () => {
     const last = after.months.length - 1;
     expect(after.months[last]!.endBalance).toBeGreaterThan(before.months[last]!.endBalance);
     expect(exclusionPreviewMessage(before, after, TODAY)).toMatch(
-      /^평소 쓰는 돈 한 달 평균 24만원 → 14만원 · 2027년 6월 · 2027년 7월 부족이 없어져요 · 2027년 10월 예상 잔액 \+120만원$/,
+      // 최근 평균 24만(미분류 12만 + 경조사 12만) → 결혼식 뺀 뒤 14만. 2027년은 작년 같은 달 30% + 평균 70% 라
+      // 결혼식을 빼면 2027-01 ~ 03 부족이 없어지고, 12개월 동안 평소 쓰는 돈 합이 120만 줄어요
+      /^평소 쓰는 돈 한 달 평균 24만원 → 14만원 · 2027년 1월 등 3개월 부족이 없어져요 · 2027년 10월 예상 잔액 \+120만원$/,
     );
   });
 });

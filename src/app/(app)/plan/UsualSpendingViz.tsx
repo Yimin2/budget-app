@@ -13,15 +13,12 @@ import {
   usualSpenderOptions,
 } from '@/domain';
 import type { DonutSlice, Id, LedgerData, Shortage, UsualBreakdownRow, UsualTrend, Won } from '@/domain';
-import { Icon, SegmentedControl, cx } from '@/ui';
+import { Donut, Icon, SegmentedControl, cx, donutColor } from '@/ui';
 import styles from './usualViz.module.css';
 
-/** 도넛 색: 디자인 토큰의 차트 색 (라이트 · 다크 모두 정해져 있음). '기타'는 회색(--chart-6) */
-const SLICE_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
-const OTHER_COLOR = 'var(--chart-6)';
-
+/** 도넛 색: 공용 Donut 과 같은 차트 토큰 (--chart-1~5, '기타'는 회색 --chart-6) */
 export function sliceColor(s: Pick<DonutSlice, 'colorIndex'>): string {
-  return s.colorIndex === null ? OTHER_COLOR : (SLICE_COLORS[s.colorIndex] ?? OTHER_COLOR);
+  return donutColor(s);
 }
 
 /** '154.5만' (0이면 '0원') */
@@ -36,45 +33,19 @@ function donutLabel(slices: DonutSlice[], total: Won): string {
 /* ───────── 도넛 (인라인 SVG, 라이브러리 없음) ───────── */
 
 export function UsualDonut({ slices, total, size = 'lg' }: { slices: DonutSlice[]; total: Won; size?: 'sm' | 'lg' }) {
-  const r = 40;
-  const gap = slices.length > 1 ? 0.6 : 0; // 조각 사이 틈 (pathLength 100 기준)
-  // 조각마다 시작 위치 (앞 조각 몫의 누적)
-  const starts = slices.map((_, i) => slices.slice(0, i).reduce((t, x) => t + x.share * 100, 0));
   return (
-    <div
-      className={cx(styles.donut, size === 'sm' ? styles.donutSm : styles.donutLg)}
-      role="img"
-      aria-label={donutLabel(slices, total)}
+    <Donut
+      parts={slices}
+      size={size}
+      label={donutLabel(slices, total)}
       data-testid={size === 'sm' ? 'usual-donut-small' : 'usual-donut'}
-    >
-      <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-        <circle cx="50" cy="50" r={r} fill="none" className={styles.donutTrack} strokeWidth={size === 'sm' ? 16 : 12} />
-        {slices.map((s, i) => {
-          const dash = Math.max(0, s.share * 100 - gap);
-          return (
-            <circle
-              key={s.key}
-              cx="50"
-              cy="50"
-              r={r}
-              fill="none"
-              pathLength={100}
-              strokeWidth={size === 'sm' ? 16 : 12}
-              strokeDasharray={`${dash} ${100 - dash}`}
-              strokeDashoffset={-(starts[i] ?? 0)}
-              transform="rotate(-90 50 50)"
-              style={{ stroke: sliceColor(s) }}
-            />
-          );
-        })}
-      </svg>
-      {size === 'lg' ? (
-        <span className={styles.donutCenter} aria-hidden="true">
-          <span className={styles.donutCenterLabel}>월</span>
-          <span className={styles.donutCenterValue}>{man(total)}</span>
-        </span>
-      ) : null}
-    </div>
+      center={
+        <>
+          <span className="donut-center-label">월</span>
+          <span className="donut-center-value">{man(total)}</span>
+        </>
+      }
+    />
   );
 }
 

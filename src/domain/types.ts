@@ -496,7 +496,7 @@ export interface ProjectionMonth {
   planned: Won; // 그달 예정 일정 합 (반복 펼침 포함)
   /** 평소 쓰는 돈: 등록하지 않은 채 늘 나가는 돈 추정 (이벤트통장만, PLAN 4-2). 기록이 없으면 0 */
   usual: Won;
-  /** 평소 쓰는 돈의 근거 (usual > 0 일 때): lastYear = 작년 같은 달 기록, recent = 최근 12개월 평균 */
+  /** 평소 쓰는 돈의 근거 (usual > 0 일 때): lastYear = 작년 같은 달 기록 30% + 최근 12개월 평균 70%, recent = 최근 12개월 평균 */
   usualBasis?: 'lastYear' | 'recent';
   extra: Won; // 가정 지출 (사도 돼? 판단용)
   /** 오늘 뒤 날짜로 이미 기록한 지출 (0 이면 생략) */

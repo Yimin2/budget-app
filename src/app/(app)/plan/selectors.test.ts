@@ -265,9 +265,9 @@ describe('monthDetailRows', () => {
       { label: '예정 일정 0건', amount: 0, sign: '' },
     ]);
   });
-  it('평소 쓰는 돈은 흐린 줄로, 근거(작년 같은 달 · 최근 평균)와 함께 빼요', () => {
+  it('평소 쓰는 돈은 흐린 줄로, 근거(작년 같은 달 + 최근 평균 · 최근 평균)와 함께 빼요', () => {
     const rows = monthDetailRows({ ...month, usual: 120_000, usualBasis: 'lastYear' }, false);
-    expect(rows).toContainEqual({ label: '평소 쓰는 돈 (작년 같은 달)', amount: 120_000, sign: '-', muted: true });
+    expect(rows).toContainEqual({ label: '평소 쓰는 돈 (작년 같은 달 + 최근 평균)', amount: 120_000, sign: '-', muted: true });
     const recent = monthDetailRows({ ...month, usual: 80_000, usualBasis: 'recent' }, false);
     expect(recent).toContainEqual({ label: '평소 쓰는 돈 (최근 평균)', amount: 80_000, sign: '-', muted: true });
     expect(monthDetailRows(month, false).some((r) => r.label.startsWith('평소'))).toBe(false);
