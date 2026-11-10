@@ -4,7 +4,7 @@ import { accountBalance } from './balances';
 import { DEMO_TRIP_ID, createDemoLedger } from './defaults';
 import { projectEventAccount, suggestShortageFixes } from './events';
 import {
-  daysBetween, linkableTrips, spreadTripRemaining, tripBudget, tripItemForCategory, tripItemLines, tripOutflows, tripPeriodText,
+  daysBetween, linkableTrips, tripDailySpending, spreadTripRemaining, tripBudget, tripItemForCategory, tripItemLines, tripOutflows, tripPeriodText,
   tripSpendState, tripStatus, tripStatuses, validateTrip,
 } from './trips';
 import { judgeEvent, judgeInstallment } from './verdict';
@@ -300,4 +300,60 @@ describe('체험 모드 여행', () => {
       expect(projectEventAccount(noClaims, today).shortages).toEqual(projectEventAccount(plain, today).shortages);
     });
   }
+});
+
+describe('여행 날짜별 쓴 돈', () => {
+  const t = trip({ startDate: '2026-12-20', endDate: '2026-12-22' });
+
+  it('여행 전 · 여행 날마다(0원 날 포함) · 여행 뒤로 묶고 평균 · 가장 많이 쓴 날을 센다', () => {
+    const list = [
+      tripExpense({ id: 'f', date: '2026-10-01', amount: 300_000 }),
+      tripExpense({ id: 's', date: '2026-11-15', amount: 150_000 }),
+      tripExpense({ id: 'd1b', date: '2026-12-20', amount: 30_000, createdAt: '2026-12-20T09:00:00Z' }),
+      tripExpense({ id: 'd1a', date: '2026-12-20', amount: 200_000, createdAt: '2026-12-20T01:00:00Z' }),
+      tripExpense({ id: 'd3', date: '2026-12-22', amount: 150_000 }),
+      tripExpense({ id: 'gone', date: '2026-12-21', amount: 999_000, deleted: true }),
+      tripExpense({ id: 'other', date: '2026-12-21', amount: 999_000, tripId: 'other-trip' }),
+    ];
+    const r = tripDailySpending(t, list);
+    expect(r.rows.map((x) => [x.kind, x.date, x.dayIndex, x.total])).toEqual([
+      ['before', null, null, 450_000],
+      ['day', '2026-12-20', 1, 230_000],
+      ['day', '2026-12-21', 2, 0],
+      ['day', '2026-12-22', 3, 150_000],
+    ]);
+    // 같은 날은 기록한 순
+    expect(r.rows[1]!.expenses.map((e) => e.id)).toEqual(['d1a', 'd1b']);
+    expect(r).toMatchObject({ max: 450_000, dayCount: 3, daysTotal: 380_000, average: 126_667, before: 450_000, after: 0 });
+    expect(r.peak?.date).toBe('2026-12-20');
+  });
+
+  it('여행 전에 낸 돈이 없으면 그 줄은 없고, 여행 뒤 지출이 있으면 마지막 줄', () => {
+    const r = tripDailySpending(t, [tripExpense({ date: '2026-12-21', amount: 50_000 }), tripExpense({ date: '2026-12-28', amount: 20_000 })]);
+    expect(r.rows.map((x) => x.kind)).toEqual(['day', 'day', 'day', 'after']);
+    expect(r.rows[3]!.total).toBe(20_000);
+    expect(r.after).toBe(20_000);
+    expect(r.max).toBe(50_000);
+  });
+
+  it('하루 여행 · 지출이 없는 여행 · 같은 금액이면 앞 날이 가장 많이 쓴 날', () => {
+    const one = tripDailySpending(trip({ startDate: '2026-12-20', endDate: '2026-12-20' }), [tripExpense({ date: '2026-12-20', amount: 80_000 })]);
+    expect(one.rows).toHaveLength(1);
+    expect(one).toMatchObject({ dayCount: 1, average: 80_000, daysTotal: 80_000 });
+    // 돌아오는 날이 앞이면 떠나는 날 하루
+    expect(tripDailySpending(trip({ startDate: '2026-12-20', endDate: '2026-12-19' }), []).rows).toHaveLength(1);
+
+    const empty = tripDailySpending(t, []);
+    expect(empty).toMatchObject({ max: 0, daysTotal: 0, average: 0, peak: null });
+    expect(empty.rows.every((x) => x.kind === 'day' && x.total === 0)).toBe(true);
+
+    const tie = tripDailySpending(t, [tripExpense({ date: '2026-12-22', amount: 10_000 }), tripExpense({ date: '2026-12-21', amount: 10_000 })]);
+    expect(tie.peak?.date).toBe('2026-12-21');
+  });
+
+  it('달을 넘는 여행도 날마다 한 줄', () => {
+    const r = tripDailySpending(trip({ startDate: '2026-12-30', endDate: '2027-01-02' }), [tripExpense({ date: '2027-01-01', amount: 5_000 })]);
+    expect(r.rows.map((x) => x.date)).toEqual(['2026-12-30', '2026-12-31', '2027-01-01', '2027-01-02']);
+    expect(r.rows[2]!.total).toBe(5_000);
+  });
 });

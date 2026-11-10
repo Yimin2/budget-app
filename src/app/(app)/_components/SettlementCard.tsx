@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { eventMonthUsage, eventUsageNoteText, formatMan, formatMonthKo, formatShortDate, settlementSummary, shortfallText } from '@/domain';
+import { eventMonthUsage, eventUsageNoteText, formatMan, formatManShort, formatMonthKo, formatShortDate, settlementSummary, shortfallText } from '@/domain';
 import type { EventMonthUsage, Settlement, SettlementSummary } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, Card, cx, useToast } from '@/ui';
@@ -59,7 +59,7 @@ function nextText(sum: SettlementSummary, baseYear: number): string | null {
 /**
  * 이번 달 정산 한 줄 요약 (PLAN 4-9). 이벤트 화면과 홈에 보여요.
  * 머리말은 이번 달 이벤트통장 돈: '이번 달 이벤트통장 쓴 돈 12만 + 예정 38만 · 들어올 돈 50만'
- * (쓴 돈 = 이번 달 오늘까지 이벤트통장 지출 + 돌려준 청구, 예정 = 남은 일정 · 여행 · 할부 + 이벤트통장에서 줄 수 있는 청구 — eventMonthUsage).
+ * (쓴 돈 = 이번 달 오늘까지 쓴 이벤트통장 지출(청구 포함, 쓴 날 기준), 예정 = 남은 일정 · 여행 · 할부 + 미리 기록한 이번 달 지출 — eventMonthUsage).
  * 옆(모바일은 둘째 줄)에 '11/21 정산 15만 · 못 준 돈 55만은 다음 달로 (민구)'. 이벤트통장이 줄 수 있는 돈보다 큰 '줄 돈'은 보이지 않아요.
  * 예정이 0이면 '+ 예정'은 빼요. 줄 돈이 없으면 '… · 이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만'.
  * 이벤트통장이 음수면 '이벤트통장이 ○원 모자라요'를 함께 보여요.
@@ -83,11 +83,11 @@ function HomeEventLine({ usage, className }: { usage: EventMonthUsage; className
   return (
     <Card as="section" aria-label="이번 달 정산" className={cx(styles.lineCard, className)}>
       <p className={styles.oneLine} data-testid="settlement-line">
-        이번 달 이벤트통장 쓴 돈 <strong>{formatMan(total)}</strong>
+        이번 달 이벤트통장 쓴 돈 <strong>{formatManShort(total)}</strong>
         {usage.planned > 0 ? (
           <span className={styles.oneLineSub}>
             {' '}
-            (지금까지 {formatMan(usage.spent)} + 예정 {formatMan(usage.planned)})
+            (지금까지 {formatManShort(usage.spent)} + 예정 {formatManShort(usage.planned)})
           </span>
         ) : null}
       </p>
@@ -107,14 +107,14 @@ function SettlementLine({ s, usage, baseYear, className, id }: { s: Settlement; 
   return (
     <Card as="section" id={id} aria-label="이번 달 정산" className={cx(styles.lineCard, className)}>
       <p className={styles.oneLine} data-testid="settlement-line">
-        이번 달 이벤트통장 쓴 돈 <strong>{formatMan(usage.spent)}</strong>
+        이번 달 이벤트통장 쓴 돈 <strong>{formatManShort(usage.spent)}</strong>
         {usage.planned > 0 ? (
           <>
             {' '}
-            + 예정 <strong>{formatMan(usage.planned)}</strong>
+            + 예정 <strong>{formatManShort(usage.planned)}</strong>
           </>
         ) : null}
-        {usage.incoming > 0 ? <span className={styles.oneLineSub}> · 들어올 돈 {formatMan(usage.incoming)}</span> : null}
+        {usage.incoming > 0 ? <span className={styles.oneLineSub}> · 들어올 돈 {formatManShort(usage.incoming)}</span> : null}
         {note ? (
           <span className={styles.oneLineSplit} data-testid="settlement-split">
             <span className={styles.oneLineSep}> · </span>

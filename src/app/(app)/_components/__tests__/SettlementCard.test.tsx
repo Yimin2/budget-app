@@ -25,7 +25,7 @@ describe('이번 달 정산 한 줄 요약', () => {
     const card = await screen.findByRole('region', { name: '이번 달 정산' });
     expect(card.id).toBe('settlement');
     const date = formatShortDate(L(h).settlement!.date);
-    expect(within(card).getByTestId('settlement-line').textContent).toBe(`이번 달 이벤트통장 쓴 돈 15만 + 예정 30만 · 들어올 돈 30만 · ${date} 정산 30만`);
+    expect(within(card).getByTestId('settlement-line').textContent).toBe(`이번 달 이벤트통장 쓴 돈 45만 · 들어올 돈 30만 · ${date} 정산 30만`);
     expect(within(card).getByTestId('settlement-split').textContent).toBe(` · ${date} 정산 30만`);
     // 예정에 든 청구는 이벤트통장에서 줄 수 있는 돈을 넘지 않아요
     expect(L(h).settlement!.eventPayTotal).toBeLessThanOrEqual(L(h).settlement!.payable);
@@ -37,7 +37,7 @@ describe('이번 달 정산 한 줄 요약', () => {
     });
     await waitFor(() =>
       expect(within(card).getByTestId('settlement-line').textContent).toBe(
-        `이번 달 이벤트통장 쓴 돈 15만 + 예정 30만 · 들어올 돈 30만 · ${date} 정산 30만 · 저수지에서 빌려 2.4만`,
+        `이번 달 이벤트통장 쓴 돈 45만 · 들어올 돈 30만 · ${date} 정산 30만 · 저수지에서 빌려 2.4만`,
       ),
     );
     expect(card.textContent).not.toMatch(/저수지에 (쓸|줄) 돈|저수지에서 돌려받을|빌려 줄 돈/);

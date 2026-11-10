@@ -701,7 +701,7 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     const u = eventMonthUsage(base(), s, TODAY);
     expect(u).toEqual({
       spent: 0,
-      planned: 150_000,
+      planned: 0,
       plannedClaims: 150_000,
       incoming: 500_000,
       unpaid: 550_000,
@@ -736,7 +736,7 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     const u = eventMonthUsage(d, s, TODAY);
     expect(u.spent).toBe(80_000 + 40_000);
     expect(u.plannedClaims).toBe(s.eventPayTotal);
-    expect(u.planned).toBe(100_000 + 30_000 + s.eventPayTotal);
+    expect(u.planned).toBe(100_000 + 30_000);
     expect(u.incoming).toBe(500_000);
   });
 
@@ -748,6 +748,19 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     const none = base({ accounts: [minguAcc, gippeunAcc, reservoirAcc] });
     const u = eventMonthUsage(none, computeSettlement(none, TODAY), TODAY);
     expect([u.spent, u.planned, u.incoming]).toEqual([0, 0, 0]);
+  });
+
+  it('지난달 이전에 쓴 청구를 이번 달에 지급 처리해도 이번 달 쓴 돈 · 예정에 안 들어가요 (쓴 날 기준)', () => {
+    const d = base({
+      expenses: [due('old', '민구', 300_000, '2026-08-14'), due('now', '민구', 50_000, '2026-11-05')],
+      transfers: [
+        transfer({ id: claimLoanTransferId('old'), date: '2026-11-10', amount: 300_000, fromAccountId: 'res', toAccountId: 'event' }),
+        transfer({ id: claimTransferId('old'), date: '2026-11-10', amount: 300_000, fromAccountId: 'event', toAccountId: 'inc-m' }),
+      ],
+    });
+    const u = eventMonthUsage(d, computeSettlement(d, TODAY), TODAY);
+    expect(u.spent).toBe(50_000);
+    expect(u.planned).toBe(0);
   });
 
   it('붙일 말: 두 명이면 사람마다 금액, 다른 통장 몫, 줄 돈이 없으면 그렇게 말해요', () => {

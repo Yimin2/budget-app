@@ -184,7 +184,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
-  .payments {
+  .payments,
+  .wide {
     grid-column: 1 / -1;
   }
 }
@@ -381,6 +382,101 @@
   line-height: 24px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* ───────── 날짜별 ───────── */
+.dailySummary {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.dayList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dayList > li + li {
+  border-top: 1px solid var(--border);
+}
+.dayItem {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* 여행 중 오늘: 옅은 바탕 + '오늘' 배지 (색만으로 알리지 않아요). 바탕 위 보조 글자도 4.5:1 이상 */
+.dayToday {
+  margin: 0 calc(var(--space-3) * -1);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.dayRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--space-3) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.dayRow {
+  cursor: pointer;
+}
+button.dayRow:hover .dayLabel {
+  text-decoration: underline;
+}
+button.dayRow:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.dayTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.dayLabel {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.dayAmount {
+  flex: none;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.dayNone {
+  flex: none;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text-muted);
+}
+.dayBar:global(.bar) {
+  height: 4px;
+}
+.dayPays {
+  padding-bottom: var(--space-2);
+  border-top: 1px dashed var(--border);
 }
 
 /* ───────── 여행 창 ───────── */

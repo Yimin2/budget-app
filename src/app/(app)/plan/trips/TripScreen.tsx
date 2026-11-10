@@ -2,16 +2,15 @@
 
 import { useId, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import {
-  TRIP_ITEM_ICONS, TRIP_ITEM_LABELS, expenseTripItem, formatShortDate, formatWon, isClaimExpense, isClaimSettled, tripItemLines, tripPeriodText,
-  tripSpendState,
-} from '@/domain';
+import { TRIP_ITEM_ICONS, TRIP_ITEM_LABELS, formatWon, tripItemLines, tripPeriodText, tripSpendState } from '@/domain';
 import type { Expense, TripSpendState, TripStatus } from '@/domain';
 import { useLedger } from '@/state';
-import { Badge, Button, Card, EmptyState, Icon, PageHeader, ProgressBar, Skeleton, cx, isIconName } from '@/ui';
+import { Button, Card, EmptyState, Icon, PageHeader, ProgressBar, Skeleton, cx, isIconName } from '@/ui';
 import { RequireLedger, type ReadyLedger } from '../../_components';
 import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
+import { TripDailyCard } from './TripDailyCard';
 import { TripDialog } from './TripDialog';
+import { TripPayRow } from './TripPayRow';
 import { TripRow } from './TripsCard';
 import { itemLineText, newestFirst, projectionNote, remainingText, stateTone, tripPhaseText } from './selectors';
 import styles from './trips.module.css';
@@ -24,7 +23,7 @@ type Overlay =
   | null;
 
 /**
- * '/plan/trips' 여행 (PLAN 4-11). ?id=<여행 id> 면 여행 하나: 예산 · 쓴 돈 · 남은 돈, 항목마다 막대, 낸 돈 목록.
+ * '/plan/trips' 여행 (PLAN 4-11). ?id=<여행 id> 면 여행 하나: 예산 · 쓴 돈 · 남은 돈, 항목마다 막대, 날짜별 쓴 돈, 낸 돈 목록.
  * id 가 없으면 모든 여행 (다가오는 · 여행 중 · 지난 여행)
  */
 export function TripScreen() {
@@ -183,14 +182,11 @@ function TripDetail({
   const summaryId = useId();
   const itemsId = useId();
   const listId = useId();
-  const { data, today } = ledger;
+  const { today } = ledger;
   const totalState = tripSpendState(s.spent, s.budget);
   const { pool, lines } = tripItemLines(s);
   const expenses = newestFirst(s.expenses);
   const note = projectionNote(s, today);
-  const accountName = (id: string) => data.accounts.find((a) => a.id === id)?.name ?? '지운 통장';
-  const categoryName = (id: string | null) => (id ? data.categories.find((c) => c.id === id)?.name : undefined);
-  const eventAccountId = ledger.accountByRole('event')?.id ?? null;
 
   return (
     <div className={styles.detailGrid}>
@@ -298,6 +294,8 @@ function TripDetail({
         )}
       </Card>
 
+      <TripDailyCard ledger={ledger} status={s} onEditExpense={onEditExpense} />
+
       <Card as="section" className={cx(styles.card, styles.payments)} aria-labelledby={listId}>
         <div className={styles.cardHead}>
           <h2 id={listId} className="card-title">
@@ -311,40 +309,11 @@ function TripDetail({
           <p className={styles.muted}>아직 이 여행에 묶은 지출이 없어요. 항공권처럼 미리 낸 돈도 기록할 때 여행을 고르면 여기에 모여요.</p>
         ) : (
           <ul className={styles.payList} aria-label="이 여행에 낸 돈">
-            {expenses.map((e) => {
-              const title = e.memo.trim() || categoryName(e.categoryId) || '지출';
-              const claim = isClaimExpense(e);
-              const settled = claim && isClaimSettled(data, e.id);
-              return (
-                <li key={e.id}>
-                  <button type="button" className={styles.payRow} onClick={() => onEditExpense(e)}>
-                    <span className={styles.payDate}>{formatShortDate(e.date)}</span>
-                    <span className={styles.payMain}>
-                      <span className={styles.payTitle}>{title}</span>
-                      <span className={styles.payMeta}>
-                        {TRIP_ITEM_LABELS[expenseTripItem(e)]} · {accountName(e.accountId)}
-                        {e.date > today ? ' · 미리 기록' : ''}
-                      </span>
-                      {claim || e.accountId !== eventAccountId ? (
-                        <span className={styles.badges}>
-                          {claim ? (
-                            <Badge size="sm" tone={settled ? 'success' : 'warning'}>
-                              {settled ? `${e.paidBy} 돌려받음` : `${e.paidBy} 돌려받기 전`}
-                            </Badge>
-                          ) : null}
-                          {e.accountId !== eventAccountId ? (
-                            <Badge size="sm" tone="neutral" dot={false}>
-                              다른 통장
-                            </Badge>
-                          ) : null}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className={styles.payAmount}>{formatWon(e.amount)}</span>
-                  </button>
-                </li>
-              );
-            })}
+            {expenses.map((e) => (
+              <li key={e.id}>
+                <TripPayRow ledger={ledger} expense={e} onEdit={onEditExpense} />
+              </li>
+            ))}
           </ul>
         )}
       </Card>

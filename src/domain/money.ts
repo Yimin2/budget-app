@@ -32,6 +32,12 @@ export function formatMan(n: Won): string {
   return `${r < 0 ? '-' : ''}${groupDigits(whole)}${frac}만`;
 }
 
+/** 한눈에 읽는 만 단위 (천 원에서 반올림, 소수 한 자리): 3,421,697 → '342.2만'. 정확한 금액이 필요한 곳은 formatMan */
+export function formatManShort(n: Won): string {
+  if (!Number.isFinite(n)) return '0원';
+  return formatMan(Math.round(n / 1000) * 1000);
+}
+
 const UNIT_RE = /^(?:(\d+(?:\.\d+)?)억)?(?:(\d+(?:\.\d+)?)만)?(?:(\d+(?:\.\d+)?)천)?(\d+)?$/;
 
 /** '21,400원' / '21400' / ' 2만 ' 같은 입력에서 정수 원. 해석 불가면 null. '만' 단위 지원 */
