@@ -175,6 +175,37 @@ describe('지출 화면', () => {
     expect(data.expenses.find((e) => e.eventId === 'demo-event-holiday')!.amount).toBe(400_000);
   });
 
+  it('예외 (평소 지출 아님): 이벤트통장 지출에서 켜고 끌 수 있고, 목록에 표시돼요', async () => {
+    const h = await open();
+    fireEvent.click(screen.getAllByRole('button', { name: '지출 추가' })[0]!);
+    let dialog = await screen.findByRole('dialog', { name: '지출 기록' });
+    fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '500000' } });
+    // 생활비 통장 지출에는 보이지 않아요
+    expect(within(dialog).queryByRole('checkbox', { name: /예외 \(평소 지출 아님\)/ })).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText(/^통장/), { target: { value: 'demo-acc-event' } });
+    fireEvent.change(within(dialog).getByLabelText(/내용/), { target: { value: '친구 결혼식' } });
+    const toggle = within(dialog).getByRole('checkbox', { name: /예외 \(평소 지출 아님\)/ }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
+    await screen.findByText('친구 결혼식 500,000원 기록했어요');
+    const added = current(h).ledger.data!.expenses.find((e) => e.memo === '친구 결혼식')!;
+    expect(added).toMatchObject({ accountId: 'demo-acc-event', excluded: true });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(within(list()).getAllByText('예외').length).toBeGreaterThan(0);
+
+    // 고칠 때 끄면 평소 지출로 돌아가요
+    const row = within(list()).getAllByText('친구 결혼식')[0]!.closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button'));
+    dialog = await screen.findByRole('dialog', { name: '지출 고치기' });
+    const again = within(dialog).getByRole('checkbox', { name: /예외 \(평소 지출 아님\)/ }) as HTMLInputElement;
+    expect(again.checked).toBe(true);
+    fireEvent.click(again);
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장하기' }));
+    await screen.findByText('지출을 고쳤어요');
+    expect(current(h).ledger.data!.expenses.find((e) => e.id === added.id)!.excluded).toBeUndefined();
+  });
+
   it('작성자 필터 · 필터 지우기 · 조건에 맞는 지출이 없을 때', async () => {
     const h = await open();
     fireEvent.click(screen.getByRole('button', { name: '필터' }));

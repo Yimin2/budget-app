@@ -196,7 +196,7 @@ describe('SheetsRepository', () => {
     const write = g.calls.find((c) => c.method === 'POST')!;
     expect(decodeURIComponent(write.url.pathname)).toBe('/v4/spreadsheets/sheet-1/values:batchUpdate');
     expect(write.body.valueInputOption).toBe('RAW');
-    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A3:Q3"]);
+    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A3:R3"]);
     expect(g.tabs.get('지출')![2]![2]).toBe(99);
     expect(g.tabs.get('지출')![1]![0]).toBe('y0');
   });
@@ -401,8 +401,8 @@ describe('검증된 결함 회귀', () => {
     const repo = backend.open(ref);
     await repo.upsert('expenses', { ...sampleLedger().expenses[0]!, date: '2026-12-01' });
     const write = g.calls.at(-1)!;
-    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A2:Q2"]);
-    expect(g.tabs.get('지출')![1]![17]).toBe('=LEFT(B2,7)');
+    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A2:R2"]);
+    expect(g.tabs.get('지출')![1]![18]).toBe('=LEFT(B2,7)');
   });
 
   it('불러온 뒤 열 순서가 바뀌어도 insert 는 새 머리글 순서로 쓴다', async () => {

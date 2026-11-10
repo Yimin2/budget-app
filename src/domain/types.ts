@@ -243,6 +243,11 @@ export interface Expense {
   tripId?: Id | null;
   /** 여행 항목 (항공 · 숙박 …). 빈 셀은 null = 기타로 센다 */
   tripItem?: TripItem | null;
+  /**
+   * 예외 (평소 지출 아님, PLAN 4-2): 결혼식 축의금처럼 한 번뿐인 지출. '평소 쓰는 돈' · 예측 범위 · 매년 돌아오는 일 찾기에서 뺀다.
+   * 잔액 · 다른 합계에는 그대로 쓴 돈으로 들어간다. 시트 '예외' 칸이 '예'이면 true, 빈 칸이면 없음(= 평소 지출)
+   */
+  excluded?: boolean;
   author: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

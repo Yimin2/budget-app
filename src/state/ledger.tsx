@@ -799,11 +799,36 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         ...stamp(),
         ...claim,
         ...trip,
+        ...(input.excluded ? { excluded: true } : {}),
       };
       await insertRows('expenses', [row], '지출을 기록하지 못했어요');
       return row;
     },
     [insertRows, stamp, requireData, tripFields],
+  );
+
+  const setExpenseExclusions = useCallback<LedgerApi['setExpenseExclusions']>(
+    async (changes) => {
+      const { data: d } = requireData();
+      const at = nowIso();
+      const rows: Expense[] = [];
+      for (const c of changes) {
+        const prev = d.expenses.find((e) => e.id === c.id && !e.deleted);
+        if (!prev || (prev.excluded === true) === c.excluded) continue;
+        const { excluded: _old, ...rest } = prev;
+        rows.push({ ...rest, ...(c.excluded ? { excluded: true } : {}), updatedAt: at });
+      }
+      if (rows.length === 0) return 0;
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      // 화면에 먼저 반영하고, 바뀐 행만 한 번에 저장해요. 실패하면 되돌려요
+      await mutate(
+        (cur) => ({ ...cur, expenses: cur.expenses.map((e) => byId.get(e.id) ?? e) }),
+        (repo) => repo.upsertMany('expenses', rows),
+        '예외 표시를 저장하지 못했어요',
+      );
+      return rows.length;
+    },
+    [requireData, mutate, nowIso],
   );
 
   /** 지출과 그 지출에 딸린 이체(돌려준 이체 claim:<지출id> · 빌린 이체 loan:…)를 함께 쓴다. 이체 먼저: 끊기면 다시 읽어 맞춘다 */
@@ -2252,6 +2277,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       addExpense,
       updateExpense,
       deleteExpense,
+      setExpenseExclusions,
       addEvent,
       updateEvent,
       completeEvent,
@@ -2297,7 +2323,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       undoRepayLoan, convertToLoan, unconvertLoan, saveSettleDay, saveDaysOff, saveDismissedRecurring, borrowReservoirClaims, convertSettledReservoirClaims, undoReservoirClaims, installments, installmentHint, addInstallment,
       reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,
       restoreTrip, addExpense, updateExpense,
-      deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
+      deleteExpense, setExpenseExclusions, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
       changeRuleAmount, changeFixedAmount, endFixedSeries, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,

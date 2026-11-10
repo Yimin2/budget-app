@@ -2,7 +2,7 @@
  * PLAN 4-3 '매년 돌아오는 일' — 지난 지출에서 해마다 다시 나올 만한 일을 찾아 일정으로 넣자고 제안한다.
  *
  * - 살펴보는 지출: 오늘까지 최근 24개월, 지우지 않은 지출 중 통장이 이벤트통장이거나 카테고리의 기본 통장이 이벤트통장인 것
- *   (파일에서 가져온 지난 기록 포함). 여행에 묶인 지출 · 고정 지출 자동 기록은 뺀다
+ *   (파일에서 가져온 지난 기록 포함). 여행에 묶인 지출 · 고정 지출 자동 기록 · 예외(평소 지출 아님)로 표시한 지출은 뺀다
  * - 이름 = 메모, 없으면 묶인 일정 이름, 없으면 카테고리 이름. 낱말 = 이름을 띄어쓰기로 나눈 두 글자 이상 낱말(과 '설')
  * - 반복: 서로 다른 해의 두 지출이 같은 날짜 ±15일이고, 낱말이 하나라도 같거나 (한쪽이라도 낱말이 없을 때) 카테고리가 같으면
  *   한 묶음. 묶음의 마지막 지출이 기준 (이름 · 금액 · 카테고리 · 날짜)
@@ -126,7 +126,7 @@ export function findRecurringCandidates(data: LedgerData, today: ISODate): Recur
   const items: Item[] = [];
   for (const e of data.expenses) {
     if (e.deleted || !(e.amount > 0) || !e.date || e.date > today || e.date < since) continue;
-    if (e.tripId || e.fixedExpenseId) continue;
+    if (e.tripId || e.fixedExpenseId || e.excluded === true) continue;
     const onEvent = eventAcc !== null && e.accountId === eventAcc.id;
     if (!onEvent && !(e.categoryId !== null && eventCats.has(e.categoryId))) continue;
     const catName = e.categoryId !== null ? (cats.get(e.categoryId)?.name ?? '') : '';

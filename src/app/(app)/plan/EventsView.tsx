@@ -1,8 +1,19 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { formatMonthKo, formatWon, manWon, nextOccurrenceDate, nextOccurrenceId, projectWhatIf, seriesAnchorDay, usualSpendingInsight } from '@/domain';
-import type { Category, EventProjection, Id, PlannedEvent, UsualInsight, WhatIfChange } from '@/domain';
+import {
+  effectiveExclusions,
+  findExceptionCandidates,
+  formatMonthKo,
+  formatWon,
+  manWon,
+  nextOccurrenceDate,
+  nextOccurrenceId,
+  projectWithExclusions,
+  seriesAnchorDay,
+  usualSpendingInsight,
+} from '@/domain';
+import type { Category, EventProjection, ExclusionDraft, Id, PlannedEvent, UsualInsight } from '@/domain';
 import { useLedger } from '@/state';
 import {
   Button,
@@ -23,10 +34,10 @@ import { HashTarget } from '../_components/HashTarget';
 import { CompleteDialog } from './CompleteDialog';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
+import { ExceptionCard } from './ExceptionCard';
 import { LoanCard } from './LoanCard';
 import { ProjectionCard } from './ProjectionCard';
 import { RecurringCard } from './RecurringCard';
-import { WhatIfCard } from './WhatIfCard';
 import {
   errorText,
   eventCategories,
@@ -201,9 +212,13 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
     () => (projection ? usualSpendingInsight(data, today, projection) : null),
     [data, today, projection],
   );
-  // 해 보기: 저장하지 않고 덮어씌운 예측 (null = 해 보기 아님). 화면을 떠나면 사라져요
-  const [whatIf, setWhatIf] = useState<WhatIfChange[] | null>(null);
-  const tried = useMemo(() => (whatIf ? projectWhatIf(data, today, whatIf) : null), [data, today, whatIf]);
+  // 예외 지출 빼기: 체크한 대로 저장하지 않고 덮어씌운 예측 (바꾼 것이 없으면 null). 화면을 떠나면 사라져요
+  const candidates = useMemo(() => findExceptionCandidates(data, today), [data, today]);
+  const [draft, setDraft] = useState<ExclusionDraft>({});
+  const tried = useMemo(
+    () => (effectiveExclusions(data, draft).length > 0 ? projectWithExclusions(data, today, draft) : null),
+    [data, today, draft],
+  );
   const shown = tried ?? projection;
 
   return (
@@ -214,8 +229,16 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
           <SettlementCard />
           <LoanCard />
           <HashTarget />
-          <ProjectionCard projection={shown ?? projection} today={today} badge={tried ? '해 보는 중' : undefined} />
-          <WhatIfCard data={data} today={today} before={projection} after={tried} changes={whatIf} onChange={setWhatIf} />
+          <ProjectionCard projection={shown ?? projection} today={today} badge={tried ? '미리 보는 중' : undefined} />
+          <ExceptionCard
+            data={data}
+            today={today}
+            candidates={candidates}
+            before={projection}
+            after={tried}
+            draft={draft}
+            onChange={setDraft}
+          />
           {insight ? <UsualInsightCard insight={insight} today={today} /> : null}
           {!tried && projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />

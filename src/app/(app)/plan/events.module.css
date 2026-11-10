@@ -1263,7 +1263,7 @@
 
 /* ───────── 매년 돌아오는 일 ───────── */
 .recurring,
-.whatIf {
+.exception {
   gap: var(--space-3);
 }
 .recurringSub {
@@ -1274,7 +1274,7 @@
   overflow-wrap: anywhere;
 }
 .recurringList,
-.whatIfList {
+.exceptionList {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -1333,8 +1333,7 @@
     grid-column: auto;
   }
 }
-.recurringRepeat,
-.whatIfExclude {
+.recurringRepeat {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -1344,62 +1343,72 @@
   cursor: pointer;
 }
 .recurringRepeat input,
-.whatIfExclude input {
+.exceptionRow input {
   width: 20px;
   height: 20px;
   accent-color: var(--primary);
 }
 
-/* ───────── 해 보기 ───────── */
-.whatIfOn {
+/* ───────── 예외 지출 빼기 ───────── */
+.exceptionOn {
   border-color: var(--primary);
   box-shadow: 0 0 0 1px var(--primary);
   transition: box-shadow var(--duration-base) var(--ease-standard);
 }
-.whatIfMsg {
+.exceptionMsg {
   margin: 0;
   font-size: 17px;
   line-height: 26px;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
-.whatIfRow {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
+.exceptionRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: 56px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    opacity var(--duration-fast) var(--ease-standard);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
-.whatIfChanged {
+.exceptionRow input {
+  margin: 0;
+  cursor: pointer;
+}
+.exceptionChecked {
+  background: var(--surface-subtle);
+}
+.exceptionChanged {
   background: var(--primary-subtle);
 }
-.whatIfOut {
-  opacity: 0.7;
-}
-.whatIfOut .whatIfName {
-  text-decoration: line-through;
-}
-.whatIfHead {
+.exceptionText {
+  min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-3);
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
 }
-.whatIfName {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
+.exceptionName {
   font-size: 15px;
   line-height: 22px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.whatIfTag {
+.exceptionChecked .exceptionName {
+  text-decoration: line-through;
+}
+.exceptionMeta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.exceptionTag {
   padding: 0 6px;
   border-radius: var(--radius-full);
   background: var(--surface-subtle);
@@ -1408,21 +1417,25 @@
   font-weight: 500;
   color: var(--text-muted);
 }
-.whatIfWas {
-  font-size: 14px;
+.exceptionAmount {
+  grid-column: 2;
+  font-size: 15px;
   line-height: 22px;
-  color: var(--text-muted);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.whatIfControls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: center;
+.exceptionPreview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 @media (min-width: 640px) {
-  .whatIfControls {
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  .exceptionRow {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .exceptionAmount {
+    grid-column: auto;
+    text-align: right;
   }
 }
 @keyframes rowIn {

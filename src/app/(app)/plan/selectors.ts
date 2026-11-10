@@ -1,8 +1,7 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { addMonths, dateInMonth, formatDateKo, formatMonthKo, formatWon, manWon, monthOf, nextOccurrenceDate, tripBudget, tripEndDate } from '@/domain';
+import { dateInMonth, formatDateKo, formatMonthKo, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
   LedgerData,
-  WhatIfChange,
   Category,
   EventProjection,
   Expense,
@@ -398,41 +397,3 @@ export function yOf(geo: Pick<BarsGeometry, 'posArea' | 'negArea' | 'scale'>, va
   return Math.min(geo.posArea + geo.negArea, Math.max(0, y));
 }
 
-/* ───────── 해 보기 ───────── */
-
-export interface WhatIfTarget {
-  kind: WhatIfChange['kind'];
-  id: Id;
-  name: string;
-  /** 일정 날짜 · 여행 떠나는 날 */
-  date: ISODate;
-  /** 일정 예상 금액 · 여행 총예산 */
-  amount: Won;
-  repeat: Repeat;
-}
-
-/**
- * 해 볼 수 있는 것: 이벤트통장의 예정 일정(날짜가 지난 것 포함) 중 예측 마지막 달까지인 것과, 끝나지 않은 여행. 날짜순
- */
-export function whatIfTargets(data: LedgerData, today: ISODate, eventAccountId: Id | null, horizonMonths = 12): WhatIfTarget[] {
-  if (!eventAccountId) return [];
-  const last = addMonths(monthOf(today), horizonMonths - 1);
-  const out: WhatIfTarget[] = [];
-  for (const e of data.events) {
-    if (e.deleted || e.status !== 'planned' || e.accountId !== eventAccountId) continue;
-    if (monthOf(e.date) > last) continue;
-    out.push({ kind: 'event', id: e.id, name: e.name, date: e.date, amount: e.amount, repeat: e.repeat });
-  }
-  for (const t of data.trips) {
-    if (t.deleted || tripEndDate(t) < today || monthOf(t.startDate) > last) continue;
-    out.push({ kind: 'trip', id: t.id, name: t.name, date: t.startDate, amount: tripBudget(t), repeat: 'none' });
-  }
-  return out.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.name.localeCompare(b.name, 'ko')));
-}
-
-/** 변경 목록에서 한 대상의 변경을 바꿔 끼우기 (빈 변경은 뺀다) */
-export function setWhatIfChange(changes: WhatIfChange[], next: WhatIfChange): WhatIfChange[] {
-  const rest = changes.filter((c) => !(c.kind === next.kind && c.id === next.id));
-  const empty = !next.exclude && next.amount === undefined && next.date === undefined;
-  return empty ? rest : [...rest, next];
-}

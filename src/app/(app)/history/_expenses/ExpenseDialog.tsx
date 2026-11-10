@@ -103,6 +103,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     expense ? (expense.tripItem ?? null) : (initial?.tripItem ?? (initial?.tripId ? tripItemForCategory(categories.find((c) => c.id === startCategory)?.name) : null)),
   );
   const [tripItemTouched, setTripItemTouched] = useState(editing || !!initial?.tripItem);
+  const [excluded, setExcluded] = useState<boolean>(expense?.excluded === true);
   const [paidBy, setPaidBy] = useState<string | null>(expense?.paidBy?.trim() ? expense.paidBy.trim() : null);
   const claimSettled = !!expense && !!data && isClaimSettled(data, expense.id);
   // 이미 돌려준 청구는 그대로. 청구할 수 없는 통장이면 저장하지 않고 통장을 다시 고르게 해요 (조용히 청구를 빼지 않게)
@@ -192,6 +193,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           paidBy: effectivePaidBy,
           tripId: tripId || null,
           tripItem: tripId ? tripItem : null,
+          excluded: excluded ? true : undefined,
         };
         await ledger.updateExpense(next);
         toast.success('지출을 고쳤어요');
@@ -209,6 +211,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
         paidBy: effectivePaidBy,
         tripId: tripId || null,
         tripItem: tripId ? tripItem : null,
+        ...(excluded ? { excluded: true } : {}),
       });
       let completed = false;
       if (eventId && !tripId && markDone) {
@@ -309,6 +312,9 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
   }
 
   const linkedEvent = events.find((e) => e.id === eventId) ?? null;
+  // 예외 표시는 이벤트통장 지출에만 뜻이 있어요 (이미 켜 둔 지출은 어느 통장이든 끌 수 있게 보여 줘요)
+  const eventAccountId = ledger.accountByRole('event')?.id ?? null;
+  const showExcluded = !expense?.fixedExpenseId && ((!!eventAccountId && accountId === eventAccountId) || excluded);
   const showEventField = events.length > 0;
 
   return (
@@ -496,6 +502,18 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
               ))}
             </ChipGroup>
           </fieldset>
+        ) : null}
+
+        {showExcluded ? (
+          <label className={styles.check}>
+            <input type="checkbox" checked={excluded} onChange={(e) => setExcluded(e.target.checked)} disabled={!!saving} />
+            <span>
+              <strong>예외 (평소 지출 아님)</strong>
+              <span className={styles.checkHint}>
+                한 번뿐인 큰 지출이면 켜 주세요. 이벤트 예측의 ‘평소 쓰는 돈’에서 빠지고, 잔액에는 그대로 들어가요
+              </span>
+            </span>
+          </label>
         ) : null}
 
         {!editing && !tripId && linkedEvent && linkedEvent.status === 'planned' ? (

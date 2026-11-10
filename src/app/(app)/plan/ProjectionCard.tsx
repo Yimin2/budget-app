@@ -21,7 +21,7 @@ import styles from './events.module.css';
 export interface ProjectionCardProps {
   projection: EventProjection;
   today: ISODate;
-  /** 해 보기 중이면 제목 옆에 붙일 표시 */
+  /** 미리 보는 중이면(예외 지출 빼기) 제목 옆에 붙일 표시 */
   badge?: string;
 }
 
