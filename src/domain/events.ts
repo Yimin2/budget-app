@@ -1,16 +1,16 @@
 import { accountBalance, expenseBalanceAccountId, isCountedTransfer } from './balances';
 import { pendingClaims } from './claims';
-import { addMonths, compareMonth, dateInMonth, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
+import { addMonths, compareMonth, dateInMonth, formatMonthKo, isMonthActive, isValidMonth, monthOf, monthRange } from './dates';
 import { autoTransferId } from './ids';
 import { projectionMonthOf, unrecordedInstallmentPayments } from './installments';
 import { firstAccountByRole } from './internal';
 import { ceilTo1000 } from './money';
 import { tripOutflows } from './trips';
 import { ruleOccurrenceDate } from './recurring';
-import { usualForMonth, usualHistory } from './usual';
+import { manWon, usualForMonth, usualHistory, usualSpread } from './usual';
 import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isRemainderRule, projectRemainders, ruleAmountFor } from './income';
 import type {
-  EventProjection, Id, ISODate, LedgerData, PlannedEvent, ProjectionMonth, Repeat, ShortageFix, YearMonth, Won,
+  EventProjection, Id, ISODate, LedgerData, PlannedEvent, ProjectionMonth, ProjectionRange, Repeat, Shortage, ShortageFix, YearMonth, Won,
 } from './types';
 
 const DEFAULT_HORIZON = 12;
@@ -272,7 +272,42 @@ export function projectEventAccount(
     monthlyContribution: p.monthlyContribution,
     months: p.months,
     shortages: p.months.filter((m) => m.endBalance < 0).map((m) => ({ month: m.month, amount: -m.endBalance })),
+    range: projectionRange(data, account.id, today, p.months),
   };
+}
+
+/**
+ * PLAN 4-2 범위: 평소 쓰는 돈만 아끼면 / 많이 쓰면으로 바꿔 본 달 말 잔액 (나머지는 보통과 같다).
+ * 그달 아끼면 = max(0, 평소 쓰는 돈 − 아래 폭), 많이 쓰면 = 평소 쓰는 돈 + 위 폭. 차이는 다음 달로 쌓인다.
+ * 기록이 없으면(폭 0) 세 줄이 같다
+ */
+export function projectionRange(data: LedgerData, eventAccountId: Id, today: ISODate, months: ProjectionMonth[]): ProjectionRange {
+  const spread = usualSpread(usualHistory(data, eventAccountId), monthOf(today));
+  let lowGain = 0;
+  let highLoss = 0;
+  const out: ProjectionRange['months'] = months.map((m) => {
+    const usualLow = Math.max(0, m.usual - spread.low);
+    const usualHigh = m.usual + spread.high;
+    lowGain += m.usual - usualLow;
+    highLoss += usualHigh - m.usual;
+    return { month: m.month, usualLow, usualHigh, endLow: m.endBalance + lowGain, endHigh: m.endBalance - highLoss };
+  });
+  const highShortages: Shortage[] = out.filter((m) => m.endHigh < 0).map((m) => ({ month: m.month, amount: -m.endHigh }));
+  return { method: spread.method, points: spread.points, spreadLow: spread.low, spreadHigh: spread.high, months: out, highShortages };
+}
+
+/** 보통이면 모자라지 않는데 많이 쓰면 모자라는 첫 달 (보통에도 부족이 있으면 null) */
+export function highOnlyShortage(projection: EventProjection): Shortage | null {
+  if (projection.shortages.length > 0) return null;
+  return projection.range?.highShortages[0] ?? null;
+}
+
+/** '보통이면 괜찮지만, 많이 쓰면 5월에 23만원 모자라요' (해당 없으면 null) */
+export function highOnlyShortageMessage(projection: EventProjection, today: ISODate): string | null {
+  const s = highOnlyShortage(projection);
+  if (!s) return null;
+  const label = s.month === monthOf(today) ? '이번 달' : formatMonthKo(s.month, Number(today.slice(0, 4)));
+  return `보통이면 괜찮지만, 많이 쓰면 ${label}에 ${manWon(s.amount)} 모자라요`;
 }
 
 /**

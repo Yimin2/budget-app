@@ -165,6 +165,15 @@ export interface LedgerApi {
    * 다시 눌러도 같은 키라 하나씩만 남아요
    */
   borrowAndSettleClaims(expenseIds: Id[]): Promise<void>;
+  /**
+   * 저수지에서 빌려 지급 (저수지통장의 이벤트 청구): 지출을 이벤트통장으로 옮기고 loan:claim:<id>(저수지 → 이벤트통장) ·
+   * claim:<id>(이벤트통장 → 낸 사람)를 남겨요. 다시 눌러도 하나씩
+   */
+  borrowReservoirClaims(expenseIds: Id[]): Promise<void>;
+  /** 저수지에서 이미 돌려준 이벤트 청구를 저수지에 갚을 돈으로 바꾸기 (잔액 그대로) */
+  convertSettledReservoirClaims(expenseIds: Id[]): Promise<void>;
+  /** 위 두 가지 되돌리기 (borrowed = 아직 안 돌려준 청구로, converted = 저수지에서 돌려준 청구로) */
+  undoReservoirClaims(expenseIds: Id[], mode: 'borrowed' | 'converted'): Promise<void>;
   /** 저수지에 갚았어요: 이번 달 이체 loanpay:<월> (이벤트통장 → 저수지) */
   repayLoan(amount: Won): Promise<void>;
   /** 이번 달 갚은 기록 되돌리기 */
@@ -177,6 +186,8 @@ export interface LedgerApi {
   saveSettleDay(day: number | null): Promise<void>;
   /** 쉬는 날 목록 (회사 휴무 등). '공휴일 빼기' 생활비 항목은 이 날도 빼요 (PLAN 4-1) */
   saveDaysOff(days: ISODate[]): Promise<void>;
+  /** '매년 돌아오는 일' 제안 중 숨긴 키 목록 (설정 '숨긴매년제안', 가계부에 저장돼 함께 쓰는 사람도 같아요) */
+  saveDismissedRecurring(keys: string[]): Promise<void>;
 
   // 할부
   /** 할부 상태 (진행 중 먼저) */
@@ -263,6 +274,8 @@ export interface LedgerApi {
    * 못 옮기면(맨 위 · 맨 아래) false. 모든 화면이 이 순서를 따라요
    */
   moveCategory(id: Id, delta: number): Promise<boolean>;
+  /** 끌어 놓기: 순서의 toIndex 번째(0부터)로 옮기고 바뀐 행을 한 번에 저장해요 (먼저 화면에, 실패하면 되돌림). 못 옮기면 false */
+  moveCategoryTo(id: Id, toIndex: number): Promise<boolean>;
   addCategory(input: Omit<Category, 'id' | 'deleted' | 'order'>): Promise<Category>;
   saveFavorite(favorite: Favorite): Promise<void>;
   addFavorite(input: Omit<Favorite, 'id' | 'deleted' | 'order'>): Promise<Favorite>;

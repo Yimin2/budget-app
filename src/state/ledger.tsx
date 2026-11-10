@@ -22,13 +22,15 @@ import {
   claimAccountFor,
   linkAccountsToEmail,
   memberName,
-  moveCategory as moveCategoryDomain,
+  moveCategoryTo as moveCategoryToDomain,
+  orderedCategories,
   mergeMembers,
   type MemberSelf,
   type SharingList,
   claimPayers as claimPayersDomain,
   claimTransferId,
   claimLoanTransferId,
+  isReservoirEventExpense,
   computeSettlement,
   expenseLoanTransferId,
   followLoanTransfers,
@@ -968,6 +970,119 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, nowIso, writeExpensesAndTransfers],
   );
 
+  /**
+   * 저수지에서 빌려 지급 (저수지통장 이벤트 청구): 지출을 이벤트통장으로 옮긴 뒤 빌린 이체 loan:claim:<id>(저수지 → 이벤트통장)와
+   * 돌려준 이체 claim:<id>(이벤트통장 → 낸 사람)를 남겨요. 지출을 먼저 옮겨서, 도중에 끊겨 다시 눌러도 같은 키로 하나씩만 남아요
+   */
+  const borrowReservoirClaims = useCallback<LedgerApi['borrowReservoirClaims']>(
+    async (expenseIds) => {
+      const { data: d } = requireData();
+      const event = d.accounts.find((a) => !a.deleted && a.role === 'event');
+      const reservoir = d.accounts.find((a) => !a.deleted && a.role === 'reservoir');
+      if (!event || !reservoir) throw new Error('이벤트통장과 저수지통장이 있어야 해요');
+      const ids = new Set(expenseIds);
+      const due = pendingClaims(d, todayRef.current).filter(
+        (c) => ids.has(c.expense.id) && (isReservoirEventExpense(d, c.expense) || c.expense.accountId === event.id),
+      );
+      if (due.length === 0) return;
+      const s = stamp();
+      const day = todayRef.current;
+      const base = { date: day, kind: 'transfer' as const, status: 'done' as const, ruleId: null, ...s };
+      const fromOf = (e: Expense) => (e.accountId === event.id ? reservoir.id : e.accountId);
+      const transfers: Transfer[] = [
+        ...due.map((c) => ({
+          ...base,
+          id: claimLoanTransferId(c.expense.id),
+          fromAccountId: fromOf(c.expense),
+          toAccountId: event.id,
+          amount: c.amount,
+          memo: `저수지에서 빌림 · ${c.payer}에게 돌려줌 · ${claimWhat(d, c.expense)}`,
+        })),
+        ...due.map((c) => ({
+          ...base,
+          id: claimTransferId(c.expense.id),
+          fromAccountId: event.id,
+          toAccountId: c.claimAccountId,
+          amount: c.amount,
+          memo: `${c.payer}에게 돌려줌 · ${claimWhat(d, c.expense)}`,
+        })),
+      ];
+      const expenses: Expense[] = due
+        .filter((c) => c.expense.accountId !== event.id)
+        .map((c) => ({ ...c.expense, accountId: event.id, updatedAt: s.updatedAt }));
+      await writeExpensesAndTransfers(expenses, transfers, '저수지에서 빌린 기록을 저장하지 못했어요', true);
+    },
+    [requireData, stamp, writeExpensesAndTransfers],
+  );
+
+  /**
+   * 저수지에서 이미 돌려준 이벤트 청구를 갚을 돈으로 바꾸기: 지출 → 이벤트통장, 돌려준 이체 → 이벤트통장에서 나간 것,
+   * 빌린 이체 loan:claim:<id>(저수지 → 이벤트통장, 돌려준 날) 추가. 잔액은 그대로이고 저수지에 갚을 돈만 늘어요
+   */
+  const convertSettledReservoirClaims = useCallback<LedgerApi['convertSettledReservoirClaims']>(
+    async (expenseIds) => {
+      const { data: d } = requireData();
+      const event = d.accounts.find((a) => !a.deleted && a.role === 'event');
+      if (!event) throw new Error('이벤트통장이 없어요');
+      const live = (id: string) => d.transfers.find((t) => t.id === id && !t.deleted && t.status === 'done');
+      const isReservoir = (id: Id | null) => !!id && d.accounts.some((a) => a.id === id && a.role === 'reservoir');
+      const s = stamp();
+      const expenses: Expense[] = [];
+      const transfers: Transfer[] = [];
+      for (const id of expenseIds) {
+        const e = d.expenses.find((x) => x.id === id && !x.deleted);
+        const settle = live(claimTransferId(id));
+        if (!e || !settle) continue;
+        const loan = live(claimLoanTransferId(id));
+        const reservoirId = loan?.fromAccountId ?? (isReservoir(settle.fromAccountId) ? settle.fromAccountId : isReservoir(e.accountId) ? e.accountId : null);
+        if (!reservoirId) continue;
+        if (!loan) {
+          transfers.push({
+            ...settle,
+            ...s,
+            id: claimLoanTransferId(id),
+            fromAccountId: reservoirId,
+            toAccountId: event.id,
+            memo: `저수지에서 빌림 · ${settle.memo}`,
+          });
+        }
+        if (settle.fromAccountId !== event.id) transfers.push({ ...settle, fromAccountId: event.id, updatedAt: s.updatedAt });
+        if (e.accountId !== event.id) expenses.push({ ...e, accountId: event.id, updatedAt: s.updatedAt });
+      }
+      if (expenses.length === 0 && transfers.length === 0) return;
+      // 빌린 이체 먼저 (끊겨도 이벤트통장이 모자라지 않게), 그다음 돌려준 이체와 지출
+      await writeExpensesAndTransfers(expenses, transfers, '저수지에 갚을 돈으로 바꾸지 못했어요', false);
+    },
+    [requireData, stamp, writeExpensesAndTransfers],
+  );
+
+  /**
+   * 위 두 가지 되돌리기: 빌린 이체를 지우고 지출을 그 저수지통장으로 되돌려요.
+   * mode='borrowed' 는 돌려준 이체도 지우고(아직 안 돌려준 청구로), 'converted' 는 돌려준 이체를 저수지에서 나간 것으로 되돌려요
+   */
+  const undoReservoirClaims = useCallback<LedgerApi['undoReservoirClaims']>(
+    async (expenseIds, mode) => {
+      const { data: d } = requireData();
+      const updatedAt = nowIso();
+      const expenses: Expense[] = [];
+      const transfers: Transfer[] = [];
+      for (const id of expenseIds) {
+        const loan = d.transfers.find((t) => t.id === claimLoanTransferId(id) && !t.deleted);
+        const settle = d.transfers.find((t) => t.id === claimTransferId(id) && !t.deleted);
+        const e = d.expenses.find((x) => x.id === id);
+        if (!loan || !loan.fromAccountId) continue;
+        transfers.push({ ...loan, deleted: true, updatedAt });
+        if (settle) {
+          transfers.push(mode === 'borrowed' ? { ...settle, deleted: true, updatedAt } : { ...settle, fromAccountId: loan.fromAccountId, updatedAt });
+        }
+        if (e && e.accountId !== loan.fromAccountId) expenses.push({ ...e, accountId: loan.fromAccountId, updatedAt });
+      }
+      if (transfers.length === 0) return;
+      await writeExpensesAndTransfers(expenses, transfers, '되돌리지 못했어요', true);
+    },
+    [requireData, nowIso, writeExpensesAndTransfers],
+  );
+
   const saveSettleDay = useCallback<LedgerApi['saveSettleDay']>(
     async (day) => {
       const value = day !== null && Number.isInteger(day) && day >= 1 && day <= 31 ? day : null;
@@ -987,6 +1102,18 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         (d) => ({ ...d, settings: { ...d.settings, daysOff: value } }),
         (r) => r.updateSettings({ daysOff: value }),
         '쉬는 날을 저장하지 못했어요',
+      );
+    },
+    [mutate],
+  );
+
+  const saveDismissedRecurring = useCallback<LedgerApi['saveDismissedRecurring']>(
+    async (keys) => {
+      const value = [...new Set(keys.map((k) => k.trim()).filter((k) => k && !k.includes(',')))].sort();
+      await mutate(
+        (d) => ({ ...d, settings: { ...d.settings, dismissedRecurring: value } }),
+        (r) => r.updateSettings({ dismissedRecurring: value }),
+        '숨긴 제안을 저장하지 못했어요',
       );
     },
     [mutate],
@@ -1650,10 +1777,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [requireData, insertRows],
   );
 
-  const moveCategory = useCallback<LedgerApi['moveCategory']>(
-    async (id, delta) => {
+  const moveCategoryTo = useCallback<LedgerApi['moveCategoryTo']>(
+    async (id, toIndex) => {
       const { data: d } = requireData();
-      const changed = moveCategoryDomain(d.categories, id, delta);
+      const changed = moveCategoryToDomain(d.categories, id, toIndex);
       if (changed.length === 0) return false;
       const byId = new Map(changed.map((c) => [c.id, c]));
       // 화면에 먼저 반영하고, 바뀐 행만 한 번에 저장해요. 실패하면 되돌려요
@@ -1665,6 +1792,17 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       return true;
     },
     [requireData, mutate],
+  );
+
+  /** 한 칸씩 옮기기 (-1 위로 · +1 아래로) = 지금 자리 + delta 로 옮기기 */
+  const moveCategory = useCallback<LedgerApi['moveCategory']>(
+    async (id, delta) => {
+      const { data: d } = requireData();
+      const from = orderedCategories(d.categories).findIndex((c) => c.id === id);
+      if (from < 0) return false;
+      return moveCategoryTo(id, from + Math.trunc(delta));
+    },
+    [requireData, moveCategoryTo],
   );
 
   const saveFavorite = useCallback(
@@ -1894,6 +2032,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       unconvertLoan,
       saveSettleDay,
       saveDaysOff,
+      saveDismissedRecurring,
+      borrowReservoirClaims,
+      convertSettledReservoirClaims,
+      undoReservoirClaims,
       installments,
       installmentHint,
       addInstallment,
@@ -1930,6 +2072,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       addFixed,
       saveCategory,
       moveCategory,
+      moveCategoryTo,
       addCategory,
       saveFavorite,
       addFavorite,
@@ -1948,12 +2091,12 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       mySpender, addIncomePlan, saveIncomePlan, balances, eventProjection, shortageFix,
       pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
       previewClaimDue, settleClaims, unsettleClaims, settlement, loanCandidates, borrowAndSettleClaims, repayLoan,
-      undoRepayLoan, convertToLoan, unconvertLoan, saveSettleDay, saveDaysOff, installments, installmentHint, addInstallment,
+      undoRepayLoan, convertToLoan, unconvertLoan, saveSettleDay, saveDaysOff, saveDismissedRecurring, borrowReservoirClaims, convertSettledReservoirClaims, undoReservoirClaims, installments, installmentHint, addInstallment,
       reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,
       restoreTrip, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, saveFixed, addFixed, saveCategory, moveCategory, addCategory, saveFavorite, addFavorite, recordFavorite,
+      changeRuleAmount, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );

@@ -298,3 +298,143 @@
 .moreBtn {
   flex: none;
 }
+
+/* 정산 항목 목록 (사람마다 펼치기 · 하나씩 고르기) */
+.personBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ofTotal {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.countBtn {
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+.countBtn svg {
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.countOpen svg {
+  transform: rotate(180deg);
+}
+.itemList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--space-2);
+  display: flex;
+  flex-direction: column;
+  animation: moreIn var(--duration-base) var(--ease-out) both;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.item:last-child {
+  border-bottom: 0;
+}
+.itemOn {
+  background: var(--primary-subtle);
+}
+.itemCheck {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 11px 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.itemIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
+.itemMain {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.itemMain:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.itemTitle {
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.itemMeta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.itemAmount {
+  flex: none;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.selectionBar {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.selectionBar p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+.selectionOver {
+  background: var(--warning-subtle);
+  border: 1px solid var(--warning-border);
+}
+.overText {
+  display: block;
+  font-size: 14px;
+  color: var(--warning-text);
+  font-weight: 600;
+}
+.convertBox {
+  border-style: solid;
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+@media (prefers-reduced-motion: reduce) {
+  .itemList {
+    animation: none;
+  }
+  .countBtn svg {
+    transition: none;
+  }
+}

@@ -154,6 +154,17 @@ describe('schema', () => {
     expect(rows.find((r) => r[0] === '쉬는날')?.[1]).toBe('2026-12-24,2026-12-31');
   });
 
+  it('설정 숨긴매년제안: 쉼표로 적은 키, 빈 값은 없음, 쉼표가 든 키는 쓰지 않음', () => {
+    expect(decodeSettings([['숨긴매년제안', '']]).settings.dismissedRecurring).toBeUndefined();
+    expect(decodeSettings([['숨긴매년제안', '10|아빠 생신, 05|어버이날,10|아빠 생신']]).settings.dismissedRecurring).toEqual([
+      '05|어버이날',
+      '10|아빠 생신',
+    ]);
+    const rows = encodeSettings({ ...decodeSettings([]).settings, dismissedRecurring: ['10|아빠 생신', 'a,b', '05|설'] });
+    expect(rows.find((r) => r[0] === '숨긴매년제안')?.[1]).toBe('05|설,10|아빠 생신');
+    expect(encodeSettings(decodeSettings([]).settings).find((r) => r[0] === '숨긴매년제안')?.[1]).toBe('');
+  });
+
   it('할부 열(할부회차 · 할부개월)이 없거나 비면 null 로 읽고, 종류 할부를 읽는다', () => {
     const old = decodeTable('fixedExpenses', [['id', '이름', '종류'], ['a', '월세', '일반']]);
     expect(old[0]).toMatchObject({ kind: 'bill', installmentNo: null, installmentCount: null });

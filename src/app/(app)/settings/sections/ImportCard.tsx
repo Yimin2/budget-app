@@ -199,10 +199,23 @@ export function ImportPreview({ plan }: { plan: ImportPlan }) {
                 {plan.claims.nextDue ? ` · 정산일 ${formatDateKo(plan.claims.nextDue, false)}` : ''}
               </li>
             ) : null}
+            {plan.claims.reservoirLoanPending.length > 0 ? (
+              <li>
+                그중 저수지에서 빌려 줄 돈 (이벤트 지출){' '}
+                {plan.claims.reservoirLoanPending.map((p) => `${p.payer} ${p.count}건 ${formatWon(p.amount)}`).join(' · ')}
+                {' '}· 지급하면 저수지에 갚을 돈이 돼요
+              </li>
+            ) : null}
             {plan.claims.reservoirPending.length > 0 ? (
               <li>
-                그중 저수지에서 돌려받을 돈{' '}
+                그중 저수지에 쓸 돈{' '}
                 {plan.claims.reservoirPending.map((p) => `${p.payer} ${p.count}건 ${formatWon(p.amount)}`).join(' · ')}
+              </li>
+            ) : null}
+            {plan.claims.reservoirLoanSettled.count > 0 ? (
+              <li>
+                저수지에서 돌려준 이벤트 지출 {plan.claims.reservoirLoanSettled.count}건 ·{' '}
+                {formatWon(plan.claims.reservoirLoanSettled.amount)} · 가져온 뒤 정산 카드에서 저수지에 갚을 돈으로 바꿀 수 있어요
               </li>
             ) : null}
             {plan.claims.settledCount > 0 ? (

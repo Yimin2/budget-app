@@ -326,6 +326,11 @@ export interface LedgerSettings {
   settleDay?: number | null;
   /** 쉬는 날 (회사 휴무 등, 'YYYY-MM-DD'). '공휴일 빼기' 항목은 이 날도 빼요. 설정 키 '쉬는날', 빈 값 = 없음 */
   daysOff?: ISODate[];
+  /**
+   * '매년 돌아오는 일' 제안 중 [괜찮아요]로 숨긴 것의 키 (yearly.ts 의 recurringKey). 설정 키 '숨긴매년제안', 빈 값 = 없음.
+   * 가계부에 저장돼 함께 쓰는 사람에게도 다시 보이지 않아요
+   */
+  dismissedRecurring?: string[];
 }
 
 export interface LedgerData {
@@ -461,12 +466,43 @@ export interface Shortage {
   amount: Won; // 모자라는 금액 (양수)
 }
 
+/** 예측 한 달의 범위 (평소 쓰는 돈이 적을 때 · 많을 때) */
+export interface ProjectionRangeMonth {
+  month: YearMonth;
+  /** 아끼면: 평소 쓰는 돈 − 아래 폭 (0 아래로는 안 내려감) */
+  usualLow: Won;
+  /** 많이 쓰면: 평소 쓰는 돈 + 위 폭 */
+  usualHigh: Won;
+  /** 아끼면 달 말 예상 잔액 (가장 좋은 경우) */
+  endLow: Won;
+  /** 많이 쓰면 달 말 예상 잔액 (가장 나쁜 경우) */
+  endHigh: Won;
+}
+
+/**
+ * 예측 범위 (PLAN 4-2). 다 지난 기록 달(최근 24개월)의 달별 평소 지출 합으로 폭을 정한다.
+ * percentile = 6개월 이상: 아래 폭 = 중앙값 − P25, 위 폭 = P75 − 중앙값. stddev = 2~5개월: 폭 = 표준편차(모집단, k=1).
+ * none = 1개월 이하: 폭 0 (범위가 보통 선과 같다)
+ */
+export interface ProjectionRange {
+  method: 'percentile' | 'stddev' | 'none';
+  /** 폭을 정하는 데 쓴 달 수 */
+  points: number;
+  spreadLow: Won;
+  spreadHigh: Won;
+  months: ProjectionRangeMonth[];
+  /** 많이 쓰면 모자라는 달 (endHigh < 0) */
+  highShortages: Shortage[];
+}
+
 export interface EventProjection {
   accountId: Id | null;
   currentBalance: Won;
   monthlyContribution: Won;
   months: ProjectionMonth[];
   shortages: Shortage[];
+  /** 아끼면 · 많이 쓰면 범위 (이벤트통장이 있을 때) */
+  range?: ProjectionRange;
 }
 
 export interface ShortageFix {

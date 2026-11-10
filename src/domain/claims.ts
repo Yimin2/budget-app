@@ -27,6 +27,18 @@ export function claimLoanTransferId(expenseId: Id): string {
   return `loan:claim:${expenseId}`;
 }
 
+/**
+ * 저수지통장에서 나간 이벤트 지출인지: 통장이 저수지이고, 일정 · 여행에 묶였거나 카테고리의 기본 통장이 이벤트통장인 것.
+ * 이벤트통장에 돈이 없어 저수지 돈으로 낸 것이라, 이벤트통장이 저수지에서 빌린 돈으로 본다 (PLAN 4-9)
+ */
+export function isReservoirEventExpense(data: LedgerData, e: Pick<Expense, 'accountId' | 'eventId' | 'tripId' | 'categoryId'>): boolean {
+  const acc = data.accounts.find((a) => a.id === e.accountId);
+  if (!acc || acc.role !== 'reservoir') return false;
+  if (e.eventId || e.tripId) return true;
+  if (e.categoryId === null) return false;
+  return data.categories.some((c) => c.id === e.categoryId && c.defaultAccountRole === 'event');
+}
+
 /** 이 청구를 저수지 돈으로 돌려줬는지: 저수지에서 빌려 지급했거나, 돌려준 이체가 저수지에서 나갔으면 */
 export function isClaimPaidFromReservoir(data: LedgerData, expenseId: Id): boolean {
   const reservoirIds = new Set(data.accounts.filter((a) => a.role === 'reservoir').map((a) => a.id));

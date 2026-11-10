@@ -106,7 +106,7 @@ describe('설정 화면', () => {
     expect(within(card('고정 지출')).getByText('이번 달까지')).toBeTruthy();
 
     const cats = card('카테고리');
-    fireEvent.click(within(cats).getByRole('button', { name: /^카페(?! (위로|아래로))/ }));
+    fireEvent.click(within(cats).getByRole('button', { name: /^카페(?! 순서 바꾸기)/ }));
     const dialog = screen.getByRole('dialog', { name: '카테고리 고치기' });
     const icons = within(dialog).getByRole('radiogroup', { name: '아이콘' });
     expect(within(icons).getByRole('radio', { name: '커피' }).getAttribute('aria-checked')).toBe('true');

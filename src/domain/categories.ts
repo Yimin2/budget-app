@@ -18,10 +18,20 @@ export function orderedCategories(categories: Category[]): Category[] {
  * order 가 바뀐 행만 돌려준다 (못 옮기면 빈 배열). 같은 결과를 다시 적용해도 바뀌는 행이 없다
  */
 export function moveCategory(categories: Category[], id: Id, delta: number): Category[] {
+  const from = orderedCategories(categories).findIndex((c) => c.id === id);
+  if (from < 0) return [];
+  return moveCategoryTo(categories, id, from + Math.trunc(delta));
+}
+
+/**
+ * id 카테고리를 순서의 to 번째(0부터, 범위 밖이면 끝으로)로 옮긴 뒤 order 를 0..n-1 로 다시 매긴다 (끌어 놓기).
+ * order 가 바뀐 행만 돌려준다
+ */
+export function moveCategoryTo(categories: Category[], id: Id, toIndex: number): Category[] {
   const list = orderedCategories(categories);
   const from = list.findIndex((c) => c.id === id);
-  if (from < 0) return [];
-  const to = Math.max(0, Math.min(list.length - 1, from + Math.trunc(delta)));
+  if (from < 0 || !Number.isFinite(toIndex)) return [];
+  const to = Math.max(0, Math.min(list.length - 1, Math.trunc(toIndex)));
   const next = [...list];
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved!);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveCategory, orderedCategories, reorderCategories } from './categories';
+import { moveCategory, moveCategoryTo, orderedCategories, reorderCategories } from './categories';
 import { computeLiving } from './living';
 import { account, emptyLedger, expense, fixed } from './_fixtures';
 import type { Category } from './types';
@@ -42,5 +42,19 @@ describe('카테고리 순서', () => {
     const changed = moveCategory(base.categories, 'bus', -2);
     const moved = { ...base, categories: base.categories.map((c) => changed.find((x) => x.id === c.id) ?? c) };
     expect(computeLiving(moved, '2026-11-20').items.map((i) => i.categoryId)).toEqual(['bus', 'food', 'cafe', null]);
+  });
+});
+
+describe('moveCategoryTo (끌어 놓기)', () => {
+  const mk = (id: string, order: number) => ({ id, name: id, icon: 'tag', defaultAccountRole: 'fixed' as const, order, deleted: false });
+  const cats = [mk('a', 0), mk('b', 1), mk('c', 2), mk('d', 3)];
+  it('한 번에 여러 칸 옮기고 바뀐 행만 돌려줘요', () => {
+    expect(moveCategoryTo(cats, 'a', 2).map((c) => [c.id, c.order])).toEqual([['b', 0], ['c', 1], ['a', 2]]);
+    expect(moveCategoryTo(cats, 'd', 0).map((c) => [c.id, c.order])).toEqual([['d', 0], ['a', 1], ['b', 2], ['c', 3]]);
+  });
+  it('제자리 · 없는 id 는 빈 배열, 범위 밖은 끝으로', () => {
+    expect(moveCategoryTo(cats, 'b', 1)).toEqual([]);
+    expect(moveCategoryTo(cats, 'x', 0)).toEqual([]);
+    expect(moveCategoryTo(cats, 'a', 99).map((c) => c.id)).toEqual(['b', 'c', 'd', 'a']);
   });
 });

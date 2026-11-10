@@ -8,7 +8,11 @@
  * - 이벤트통장 청구는 지출 날짜가 오래된 것부터 지급할 수 있는 돈 안에서 나눈다. 청구는 쪼개지 않는다:
  *   다음 청구가 안 들어가면 건너뛰고 그 뒤의 더 작은 청구를 넣어 본다 (first-fit). 안 들어간 청구는 '다음 달로 넘어가요'
  * - 고정지출통장(생활비) 청구는 그 통장에서 돌려주므로 금액 한도 없이 이번 달 지급에 들어간다
- * - 저수지통장 청구(저수지에 쓸 돈을 개인 돈으로 낸 것)는 '저수지에서 돌려받을 돈'으로 따로 묶는다. 저수지에서 돌려주고 빌린 돈이 아니다
+ * - 저수지통장 청구 중 이벤트 지출(이벤트 카테고리 · 일정 · 여행)은 이벤트통장에 돈이 없어 저수지 돈으로 낸 것이라
+ *   '저수지에서 빌려 줄 돈'으로 묶는다. 지급하면 지출을 이벤트통장으로 옮기고 빌린 이체 loan:claim:<지출id>(저수지 → 이벤트통장)와
+ *   돌려준 이체 claim:<지출id>(이벤트통장 → 낸 사람)를 남긴다 → 저수지에 갚을 돈이 늘어난다
+ * - 저수지에서 이미 돌려준 이벤트 청구(가져온 기록)도 한 번에 갚을 돈으로 바꿀 수 있다 (settledReservoirEventClaims)
+ * - 그 밖의 저수지통장 청구(저수지에 쓸 돈을 개인 돈으로 낸 것)는 '저수지에 쓸 돈'으로 따로 묶는다. 저수지에서 돌려주고 빌린 돈이 아니다
  * - 넘어가는 청구의 지급 예상 달 = 그 청구들을 뺀 예측(평소 쓰는 돈 포함)에서, 오래된 순 누적 금액을 그달부터 12개월 끝까지
  *   예상 잔액이 감당하는 첫 달
  *
@@ -23,7 +27,8 @@
  *   천 원 단위 내림 (갚을 돈보다 크면 갚을 돈 전부)
  */
 import { accountBalance, isCountedTransfer } from './balances';
-import { claimLoanTransferId, pendingClaims, settleDayOf } from './claims';
+import { isClaimExpense } from './balances';
+import { claimLoanTransferId, claimTransferId, isReservoirEventExpense, pendingClaims, settleDayOf } from './claims';
 import { dateInMonth, monthOf } from './dates';
 import { projectEventAccount } from './events';
 import { autoTransferId } from './ids';
@@ -244,9 +249,12 @@ export interface Settlement {
   /** 다음 달로 넘어가요 (이벤트통장 몫 중 안 들어간 것) */
   carry: CarryPerson[];
   carryTotal: Won;
-  /** 저수지에서 돌려받을 돈 (저수지통장 청구, 돌려줄 날 상관없이 모두) */
+  /** 저수지에 쓸 돈 (저수지통장의 이벤트 아닌 청구, 돌려줄 날 상관없이 모두). 저수지에서 돌려주고 빌린 돈이 아니다 */
   reservoir: PersonClaims[];
   reservoirTotal: Won;
+  /** 저수지에서 빌려 줄 돈 (저수지통장의 이벤트 청구, 돌려줄 날 상관없이 모두). 지급하면 저수지에 갚을 돈이 된다 */
+  reservoirLoan: PersonClaims[];
+  reservoirLoanTotal: Won;
   /** 아직 돌려줄 날이 안 된 이벤트 · 고정지출통장 청구 */
   upcoming: UpcomingPerson[];
   /** 지급하고 남는 돈 = payable − eventPayTotal */
@@ -304,12 +312,13 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
 
   const pending = pendingClaims(data, today);
   const reservoirClaims: PendingClaim[] = [];
+  const reservoirLoanClaims: PendingClaim[] = [];
   const eventDue: PendingClaim[] = [];
   const otherDue: PendingClaim[] = [];
   const later: PendingClaim[] = [];
   for (const c of pending) {
     const src = claimSource(data, c.accountId);
-    if (src === 'reservoir') reservoirClaims.push(c);
+    if (src === 'reservoir') (isReservoirEventExpense(data, c.expense) ? reservoirLoanClaims : reservoirClaims).push(c);
     else if (c.due > asOf) later.push(c);
     else if (src === 'event') eventDue.push(c);
     else otherDue.push(c);
@@ -348,7 +357,8 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
   const roundClaims = [...eventDue, ...otherDue];
   const dueNow =
     (roundClaims.length > 0 && (today >= date || roundClaims.some((c) => c.due <= today))) ||
-    reservoirClaims.some((c) => c.due <= today);
+    reservoirClaims.some((c) => c.due <= today) ||
+    reservoirLoanClaims.some((c) => c.due <= today);
 
   return {
     date,
@@ -365,6 +375,8 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
     carryTotal: sumOf(carry),
     reservoir: groupByPerson([...reservoirClaims].sort(oldestFirst)),
     reservoirTotal: sumOf(reservoirClaims),
+    reservoirLoan: groupByPerson([...reservoirLoanClaims].sort(oldestFirst)),
+    reservoirLoanTotal: sumOf(reservoirLoanClaims),
     upcoming,
     spare,
     loan,
@@ -374,11 +386,16 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
 }
 
 /** 돌려받을 돈 요약을 함께 쓰는 통장 몫과 저수지 몫으로 나눠 사람별로 (많은 순) */
-export function claimsBySource(data: LedgerData, pending: PendingClaim[]): { shared: PersonClaims[]; reservoir: PersonClaims[] } {
+export function claimsBySource(
+  data: LedgerData,
+  pending: PendingClaim[],
+): { shared: PersonClaims[]; reservoir: PersonClaims[]; reservoirLoan: PersonClaims[] } {
   const byAmount = (a: PersonClaims, b: PersonClaims) => b.amount - a.amount || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-  const shared = groupByPerson(pending.filter((c) => claimSource(data, c.accountId) !== 'reservoir')).sort(byAmount);
-  const reservoir = groupByPerson(pending.filter((c) => claimSource(data, c.accountId) === 'reservoir')).sort(byAmount);
-  return { shared, reservoir };
+  const isRes = (c: PendingClaim) => claimSource(data, c.accountId) === 'reservoir';
+  const shared = groupByPerson(pending.filter((c) => !isRes(c))).sort(byAmount);
+  const reservoir = groupByPerson(pending.filter((c) => isRes(c) && !isReservoirEventExpense(data, c.expense))).sort(byAmount);
+  const reservoirLoan = groupByPerson(pending.filter((c) => isRes(c) && isReservoirEventExpense(data, c.expense))).sort(byAmount);
+  return { shared, reservoir, reservoirLoan };
 }
 
 /**
@@ -402,4 +419,73 @@ export function followLoanTransfers(data: LedgerData, next: Expense): Transfer[]
     else if (viaClaim.amount !== next.amount) out.push({ ...viaClaim, amount: next.amount, updatedAt: next.updatedAt });
   }
   return out;
+}
+
+/** 정산 카드에서 고를 수 있는 청구 묶음 */
+export type SettlementGroup = 'pay' | 'carry' | 'reservoir' | 'reservoirLoan' | 'upcoming';
+
+/**
+ * 처음 골라 둘 청구: 이번 달 지급(나눠 둔 것)과 돌려줄 날이 된 저수지 청구. 넘어가는 청구 · 아직 날이 안 된 청구는 고르지 않는다
+ */
+export function defaultSettlementSelection(s: Settlement): Set<Id> {
+  const out = new Set<Id>();
+  for (const g of s.pay) for (const c of g.claims) out.add(c.expense.id);
+  for (const g of [...s.reservoir, ...s.reservoirLoan]) for (const c of g.claims) if (c.due <= s.asOf) out.add(c.expense.id);
+  return out;
+}
+
+export interface SelectionCheck {
+  /** 고른 청구 (오래된 순) */
+  claims: PendingClaim[];
+  total: Won;
+  /** 이벤트통장에서 돌려줄 몫 (지급할 수 있는 돈과 견준다) */
+  eventTotal: Won;
+  /** 지급할 수 있는 돈보다 많은 금액 (0 이면 맞음) */
+  excess: Won;
+  fits: boolean;
+  /** 지급할 수 있는 돈 안에 드는 청구 (이벤트통장 몫은 오래된 순 first-fit, 다른 통장 몫은 모두) */
+  within: Id[];
+  /** 안 드는 이벤트통장 청구 — [저수지에서 빌려 지급] 대상 */
+  over: Id[];
+}
+
+/**
+ * 고른 청구가 지급할 수 있는 돈 안에 드는지 다시 본다. 이벤트통장 청구만 한도와 견주고(고정지출 · 저수지 청구는 한도 없음),
+ * 넘으면 오래된 순 first-fit 으로 안에 드는 것과 넘는 것을 나눈다
+ */
+export function checkSettlementSelection(data: LedgerData, s: Settlement, selected: Iterable<Id>): SelectionCheck {
+  const ids = new Set(selected);
+  const all = [...s.pay, ...s.carry, ...s.reservoir, ...s.reservoirLoan, ...s.upcoming].flatMap((g) => g.claims);
+  const seen = new Set<Id>();
+  const claims = all.filter((c) => ids.has(c.expense.id) && !seen.has(c.expense.id) && seen.add(c.expense.id)).sort(oldestFirst);
+  const event = claims.filter((c) => claimSource(data, c.accountId) === 'event');
+  const eventTotal = sumOf(event);
+  const alloc = allocateClaims(event, s.payable);
+  const overSet = new Set(alloc.carried.map((c) => c.expense.id));
+  const excess = Math.max(0, eventTotal - s.payable);
+  return {
+    claims,
+    total: sumOf(claims),
+    eventTotal,
+    excess,
+    fits: excess === 0,
+    within: claims.filter((c) => !overSet.has(c.expense.id)).map((c) => c.expense.id),
+    over: alloc.carried.map((c) => c.expense.id),
+  };
+}
+
+/**
+ * 저수지에서 이미 돌려준 이벤트 청구 (가져온 기록 등): 저수지통장 이벤트 지출이고, 돌려준 이체 claim:<지출id> 가 저수지에서 나갔고,
+ * 아직 빌린 이체 loan:claim:<지출id> 가 없는 것. 오래된 순.
+ * 갚을 돈으로 바꾸면 지출을 이벤트통장으로, 돌려준 이체를 이벤트통장에서 나간 것으로 고치고 빌린 이체를 남긴다 (잔액은 그대로)
+ */
+export function settledReservoirEventClaims(data: LedgerData): Expense[] {
+  const live = new Map(data.transfers.filter((t) => !t.deleted && t.status === 'done').map((t) => [t.id, t]));
+  return data.expenses
+    .filter((e) => {
+      if (e.deleted || !isClaimExpense(e) || !isReservoirEventExpense(data, e)) return false;
+      const settle = live.get(claimTransferId(e.id));
+      return Boolean(settle && settle.fromAccountId === e.accountId && !live.has(claimLoanTransferId(e.id)));
+    })
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1));
 }

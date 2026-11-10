@@ -660,6 +660,18 @@ export const SETTINGS_DEFS: SettingDef[] = [
       },
     },
   },
+  // '매년 돌아오는 일' 제안 중 숨긴 것의 키. 쉼표로. 빈 값 = 없음
+  {
+    field: 'dismissedRecurring',
+    key: '숨긴매년제안',
+    codec: {
+      enc: (v) => (Array.isArray(v) ? [...new Set(v.filter((k) => typeof k === 'string' && k.trim() && !k.includes(',')).map((k) => k.trim()))].sort().join(',') : ''),
+      dec: (c) => {
+        if (isBlank(c)) return undefined;
+        return [...new Set(String(c).split(',').map((x) => x.trim()).filter(Boolean))].sort();
+      },
+    },
+  },
 ];
 
 export const DEFAULT_SETTINGS: LedgerSettings = {
