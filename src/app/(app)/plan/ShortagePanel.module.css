@@ -2,8 +2,13 @@
 
 /* ───────── 부족 알림 + 두 가지 방법 ───────── */
 .panel {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  border-color: var(--warning-border);
+  padding: var(--space-4);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 .panelIcon {
   flex: none;
@@ -18,8 +23,8 @@
 }
 .panelTitle {
   margin: 0;
-  font-size: 18px;
-  line-height: 26px;
+  font-size: 16px;
+  line-height: 24px;
   font-weight: 700;
 }
 .panelDesc {

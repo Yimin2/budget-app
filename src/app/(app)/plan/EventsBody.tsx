@@ -8,7 +8,7 @@ import {
   recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { ExclusionDraft, Expense, Id, PlannedEvent, RepayMonths } from '@/domain';
+import type { ExclusionDraft, Id, PlannedEvent, RepayMonths } from '@/domain';
 import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
 import { AnnualCard } from './AnnualCard';
@@ -17,12 +17,10 @@ import type { EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
 import { EmptyEvents } from './EmptyEvents';
 import { ExceptionCard } from './ExceptionCard';
-import { MonthlyCostCard } from './MonthlyCostCard';
 import { NoEventAccount } from './NoEventAccount';
-import { ProjectionCard } from './ProjectionCard';
+import { AheadCard } from './AheadCard';
 import { RecurringCard } from './RecurringCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
-import { ShortagePanel } from './ShortagePanel';
 import { ThisMonthCard } from './ThisMonthCard';
 import { TripsCard } from './trips/TripsCard';
 import { UsualInsightCard } from './UsualInsightCard';
@@ -36,10 +34,9 @@ export interface EventsBodyProps {
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
   onAddTrip: () => void;
-  onEditExpense: (expense: Expense) => void;
 }
 
-export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip, onEditExpense }: EventsBodyProps) {
+export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip }: EventsBodyProps) {
   const { data, today } = ledger;
   const projection = ledger.eventProjection;
   const sections = useMemo(() => sectionEvents(data.events, today), [data.events, today]);
@@ -88,8 +85,14 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
             </div>
           ) : null}
           <HashTarget />
-          <ProjectionCard projection={shown ?? projection} today={today} badge={tried ? '미리 보는 중' : undefined} />
-          <MonthlyCostCard data={data} today={today} onEditExpense={onEditExpense} />
+          <AheadCard
+            projection={shown ?? projection}
+            data={data}
+            today={today}
+            badge={tried ? '미리 보는 중' : undefined}
+            fix={ledger.shortageFix}
+            showShortage={!tried}
+          />
           <ExceptionCard
             data={data}
             today={today}
@@ -99,9 +102,6 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
             draft={draft}
             onChange={setDraft}
           />
-          {!tried && projection.shortages.length > 0 ? (
-            <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
-          ) : null}
           <AnnualCard data={data} today={today} onEdit={onEdit} />
           <RecurringCard data={data} today={today} categories={data.categories} />
         </>

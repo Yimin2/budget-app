@@ -10,11 +10,13 @@ import {
   eventCategories,
   increaseChoiceText,
   initialMonth,
-  monthDetailRows,
+  aheadInflowText,
+  aheadMonthItems,
+  aheadMonthLine,
+  aheadOutflow,
   monthLabel,
   nextContribution,
   nextOccurrence,
-  projectionTotals,
   reservoirChoiceText,
   sectionEvents,
   shortageSummary,
@@ -181,11 +183,8 @@ describe('체험 가계부 부족 알림 문구', () => {
     expect(poor.note).toBeNull();
   });
 
-  it('처음 고르는 달은 첫 부족 달 · 12개월 일정 합 · 다음 달 적립 변화 없음', () => {
+  it('처음 고르는 달은 첫 부족 달 · 다음 달 적립 변화 없음', () => {
     expect(initialMonth(projection, TODAY)).toBe('2027-04');
-    const totals = projectionTotals(projection);
-    expect(totals.count).toBe(8);
-    expect(totals.amount).toBe(400_000 + 900_000 + 1_400_000 + 100_000);
     expect(nextContribution(projection)).toBeNull();
   });
 
@@ -237,7 +236,7 @@ describe('barsGeometry', () => {
   });
 });
 
-describe('monthDetailRows', () => {
+describe('앞으로 12개월: 고른 달 항목', () => {
   const month: ProjectionMonth = {
     month: '2027-04',
     startBalance: 1_100_000,
@@ -248,29 +247,64 @@ describe('monthDetailRows', () => {
     usual: 0,
     extra: 0,
     endBalance: 300_000,
-    events: [{ id: 'a', name: 'A', date: '2027-04-02', amount: 1_400_000 }],
+    events: [
+      { id: 'a', name: '지수 결혼식', date: '2027-04-02', amount: 900_000 },
+      { id: 'b', name: '어버이날', date: '2027-04-08', amount: 500_000 },
+    ],
   };
-  it('다음 달부터는 시작 잔액 · 적립 · 옮겨 올 돈 · 예정 일정', () => {
-    expect(monthDetailRows(month, false)).toEqual([
-      { label: '달 시작 잔액', amount: 1_100_000, sign: '' },
-      { label: '적립', amount: 300_000, sign: '+' },
-      { label: '옮겨 올 돈', amount: 300_000, sign: '+' },
-      { label: '예정 일정 1건', amount: 1_400_000, sign: '-' },
+  it('일정 → 여행 남은 예산 → 할부 → 미리 기록 · 돌려줄 돈 → 평소 쓰는 돈(근거)을 늘 마지막에', () => {
+    const items = aheadMonthItems(
+      {
+        ...month,
+        tripList: [{ id: 't1', name: '제주 여행', amount: 450_000 }],
+        trips: 450_000,
+        installments: 100_000,
+        scheduledSpending: 20_000,
+        claims: 30_000,
+        usual: 120_000,
+        usualBasis: 'lastYear',
+      },
+      [{ key: 'fixed:tv', label: 'TV 할부', amount: 100_000 }],
+    );
+    expect(items.map((i) => [i.kind, i.label, i.amount, i.note])).toEqual([
+      ['event', '지수 결혼식', 900_000, undefined],
+      ['event', '어버이날', 500_000, undefined],
+      ['trip', '제주 여행', 450_000, '여행 남은 예산'],
+      ['installment', 'TV 할부', 100_000, '할부'],
+      ['scheduled', '미리 기록한 지출', 20_000, undefined],
+      ['claims', '돌려줄 돈 (개인 돈으로 낸 것)', 30_000, undefined],
+      ['usual', '평소 쓰는 돈', 120_000, '작년 30% + 평균 70%, 일정 뺀 뒤'],
     ]);
+    expect(items[2]!.tripId).toBe('t1');
+    expect(items[0]!.date).toBe('2027-04-02');
   });
-  it('이번 달은 지금 잔액 · 아직 안 들어온 적립', () => {
-    const rows = monthDetailRows({ ...month, transfersIn: 0, contributions: 0, planned: 0, events: [] }, true);
-    expect(rows).toEqual([
-      { label: '지금 잔액', amount: 1_100_000, sign: '' },
-      { label: '예정 일정 0건', amount: 0, sign: '' },
+  it('할부 이름 합이 예측과 다르면 할부 한 줄, 평소 쓰는 돈 근거는 최근 평균', () => {
+    const items = aheadMonthItems({ ...month, events: [], installments: 100_000, usual: 80_000, usualBasis: 'recent' }, [
+      { key: 'x', label: 'TV 할부', amount: 50_000 },
     ]);
+    expect(items).toEqual([
+      { key: 'inst', kind: 'installment', label: '할부', amount: 100_000 },
+      { key: 'usual', kind: 'usual', label: '평소 쓰는 돈', amount: 80_000, note: '최근 평균, 일정 뺀 뒤' },
+    ]);
+    expect(aheadOutflow({ ...month, events: [], installments: 100_000, usual: 80_000 })).toBe(180_000);
   });
-  it('평소 쓰는 돈은 흐린 줄로, 근거(작년 같은 달 + 최근 평균 · 최근 평균)와 함께 빼요', () => {
-    const rows = monthDetailRows({ ...month, usual: 120_000, usualBasis: 'lastYear' }, false);
-    expect(rows).toContainEqual({ label: '평소 쓰는 돈 (작년 같은 달 + 최근 평균)', amount: 120_000, sign: '-', muted: true });
-    const recent = monthDetailRows({ ...month, usual: 80_000, usualBasis: 'recent' }, false);
-    expect(recent).toContainEqual({ label: '평소 쓰는 돈 (최근 평균)', amount: 80_000, sign: '-', muted: true });
-    expect(monthDetailRows(month, false).some((r) => r.label.startsWith('평소'))).toBe(false);
+  it('들어오는 쪽 한 줄 (이번 달은 지금 잔액 · 아직 안 들어온 적립)', () => {
+    expect(aheadInflowText(month, false)).toBe('달 시작 잔액 110만 · 적립 +30만 · 옮겨 올 돈 +30만');
+    expect(aheadInflowText({ ...month, transfersIn: 0 }, true)).toBe('지금 잔액 110만 · 아직 안 들어온 적립 +30만');
+    expect(aheadInflowText({ ...month, transfersIn: 0, contributions: 0 }, true)).toBe('지금 잔액 110만');
+  });
+  it("다가오는 달 한 줄: '12월 · 예정 30만 · 결혼식 2건'", () => {
+    expect(aheadMonthLine({ ...month, month: '2026-12' }, TODAY)).toBe('12월 · 예정 140만 · 지수 결혼식 · 어버이날');
+    const weddings = {
+      ...month,
+      events: [
+        { id: 'a', name: '지수 결혼식', date: '2027-04-02', amount: 100_000 },
+        { id: 'b', name: '민호 결혼식', date: '2027-04-09', amount: 200_000 },
+      ],
+    };
+    expect(aheadMonthLine(weddings, TODAY)).toBe('2027년 4월 · 예정 30만 · 결혼식 2건');
+    expect(aheadMonthLine({ ...month, events: [], usual: 52_400 }, TODAY)).toBe('2027년 4월 · 예정 5.2만');
+    expect(aheadMonthLine({ ...month, events: [], installments: 50_000 }, TODAY)).toBe('2027년 4월 · 예정 5만 · 할부');
   });
   it('평소 쓰는 돈 카테고리 줄', () => {
     expect(
@@ -280,9 +314,5 @@ describe('monthDetailRows', () => {
         { name: '여행', amount: 124_400 },
       ]),
     ).toBe('경조사 35만 · 선물 15만 · 여행 12.4만');
-  });
-  it('이벤트통장 할부는 할부 줄로 빼요', () => {
-    const rows = monthDetailRows({ ...month, installments: 100_000, endBalance: 200_000 }, false);
-    expect(rows[rows.length - 1]).toEqual({ label: '할부', amount: 100_000, sign: '-' });
   });
 });

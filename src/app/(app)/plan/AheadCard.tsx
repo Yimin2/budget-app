@@ -1,41 +1,78 @@
 'use client';
 
 import {
-  useCallback,
   useId,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type CSSProperties,
   type KeyboardEvent,
 } from 'react';
 import Link from 'next/link';
-import { formatShortDate, formatWon, highOnlyShortageMessage, monthOf } from '@/domain';
-import type { EventProjection, ISODate, ProjectionMonth, ProjectionRangeMonth, YearMonth } from '@/domain';
+import { eventMonthlyCosts, formatMan, formatShortDate, formatWon, highOnlyShortageMessage, monthOf } from '@/domain';
+import type { EventProjection, ISODate, LedgerData, ProjectionMonth, ProjectionRangeMonth, ShortageFix, YearMonth } from '@/domain';
 import { Badge, Button, Card, Icon, cx, useMediaQuery } from '@/ui';
-import { barsGeometry, compactWon, hasRange, hasUsual, initialMonth, monthDetailRows, monthLabel, rangeNote, yOf } from './selectors';
+import { FoldHead, useMobileFold, foldStyles } from './FoldCard';
+import {
+  aheadInflowText,
+  aheadMonthItems,
+  aheadMonthLine,
+  barsGeometry,
+  compactWon,
+  hasRange,
+  hasUsual,
+  initialMonth,
+  monthLabel,
+  rangeNote,
+  yOf,
+  type AheadItem,
+} from './selectors';
+import { ShortagePanel } from './ShortagePanel';
 import { tripHref } from './trips/selectors';
 import shared from './events.module.css';
-import styles from './ProjectionCard.module.css';
+import styles from './AheadCard.module.css';
 
-export interface ProjectionCardProps {
+/** 고른 달 옆 '다가오는 달' 목록에 보일 달 수 */
+export const AHEAD_UPCOMING = 4;
+
+/** 정산 화면 전체 기록 (지난 달 쓴 돈) */
+export const PAST_RECORDS_HREF = '/plan/settle#paid';
+
+export interface AheadCardProps {
+  /** 그리는 예측 (예외 지출 빼기를 미리 보는 중이면 덮어씌운 예측) */
   projection: EventProjection;
+  data: LedgerData;
   today: ISODate;
   /** 미리 보는 중이면(예외 지출 빼기) 제목 옆에 붙일 표시 */
   badge?: string;
+  /** 부족 알림의 두 가지 방법 (미리 보는 중이 아니고 모자라는 달이 있을 때만 알림을 보여요) */
+  fix?: ShortageFix | null;
+  showShortage?: boolean;
+  className?: string;
 }
 
 /**
- * 이벤트통장 12개월 예상 잔액 막대 + 고른 달 자세히.
+ * 이벤트 화면 카드 2 '앞으로 12개월' (PLAN 4-2): 달 말 예상 잔액 막대(범위 띠 · 미리 보는 중 표시) → 고른 달 항목
+ * (일정 · 여행 남은 예산 · 할부 · 평소 쓰는 돈(근거) · 그달 끝 예상 잔액) + 옆에 다가오는 달 한 줄씩 → 모자라는 달이 있으면 부족 알림(두 가지 방법).
  * 0 이상은 기준선 위(파랑), 0 아래는 기준선 아래(빨강) + 모자라는 금액. 이번 달은 달 숫자에 파란 동그라미.
- * 막대를 누르면(마우스는 올리기만 해도) 그달 계산과 일정이 보여요. 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
+ * 막대를 누르면(마우스는 올리기만 해도) 그달 항목이 보여요. 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
+ * 지난 달 쓴 돈은 정산 화면(#paid 전체 기록)에 있어요. 폰에서는 상태 한 줄만 보이고 [펼치기]로 나머지
  */
-export function ProjectionCard({ projection, today, badge }: ProjectionCardProps) {
+export function AheadCard({ projection, data, today, badge, fix = null, showShortage = false, className }: AheadCardProps) {
   const ids = useId().replace(/:/g, '');
   const titleId = `${ids}-title`;
   const months = projection.months;
   const thisMonth = monthOf(today);
+  const fold = useMobileFold('앞으로 12개월');
+  // 할부 이름: 월별 이벤트 비용(eventMonthlyCosts)의 앞으로 달 할부 줄
+  const installmentsByMonth = useMemo(() => {
+    const map = new Map<YearMonth, { key: string; label: string; amount: number }[]>();
+    for (const c of eventMonthlyCosts(data, today, { pastMonths: 0, futureMonths: Math.max(0, months.length - 1) })) {
+      const list = c.items.filter((i) => i.kind === 'installment' && i.planned > 0).map((i) => ({ key: i.key, label: i.label, amount: i.planned }));
+      if (list.length > 0) map.set(c.month, list);
+    }
+    return map;
+  }, [data, today, months.length]);
 
   const [picked, setPicked] = useState<YearMonth | null>(null);
   const [hover, setHover] = useState<YearMonth | null>(null);
@@ -55,7 +92,7 @@ export function ProjectionCard({ projection, today, badge }: ProjectionCardProps
   const geo = useMemo(
     () =>
       barsGeometry(months, {
-        height: wide ? 232 : 152,
+        height: wide ? 200 : 152,
         labelRoom: 22,
         extent: range ? range.flatMap((r) => [r.endLow, r.endHigh]) : undefined,
       }),
@@ -120,21 +157,28 @@ export function ProjectionCard({ projection, today, badge }: ProjectionCardProps
       : `${months.length}개월 동안 모자라는 달이 없어요 · 가장 적은 달 ${label(lowest.month)} ${formatWon(lowest.endBalance)}`;
   const selIndex = months.findIndex((m) => m.month === selected);
 
-  return (
-    <Card as="section" className={styles.chartCard} aria-labelledby={titleId}>
-      <div className={styles.chartTitleRow}>
-        <h2 id={titleId} className={styles.chartTitle}>
-          앞으로 {months.length}개월 예상 잔액
-        </h2>
-        {badge ? (
-          <Badge tone="info" size="sm">
-            {badge}
-          </Badge>
-        ) : null}
-        <span className={styles.chartHint}>막대를 누르면 그달 일정이 보여요</span>
-      </div>
+  const upcoming = months.slice(0, AHEAD_UPCOMING);
 
-      <div className={styles.chartBody}>
+  return (
+    <Card as="section" className={cx(foldStyles.card, className)} aria-labelledby={titleId}>
+      <FoldHead
+        titleId={titleId}
+        title={`앞으로 ${months.length}개월`}
+        badge={
+          badge ? (
+            <Badge tone="info" size="sm">
+              {badge}
+            </Badge>
+          ) : undefined
+        }
+        actions={<span className={styles.chartHint}>막대를 누르면 그달 항목이 보여요</span>}
+      />
+      <p className={cx(styles.caption, shortages.length > 0 ? shared.bad : shared.ok)} data-testid="ahead-status">
+        <Icon name={shortages.length > 0 ? 'alert-triangle' : 'check-circle'} size={16} />
+        <span>{caption}</span>
+      </p>
+      {fold.toggle}
+      <div id={fold.bodyId} className={cx(foldStyles.body, fold.bodyClass)}>
         <figure className={cx(styles.figure, canDropUnit && styles.canDropUnit)}>
           <ul className={styles.legend} aria-hidden>
             <li>
@@ -229,10 +273,7 @@ export function ProjectionCard({ projection, today, badge }: ProjectionCardProps
             })}
           </div>
 
-          <figcaption className={cx(styles.caption, shortages.length > 0 ? shared.bad : shared.ok)}>
-            <Icon name={shortages.length > 0 ? 'alert-triangle' : 'check-circle'} size={16} />
-            <span>{caption}</span>
-          </figcaption>
+          <figcaption className="sr-only">이벤트통장 달 말 예상 잔액 막대 (아래 표에 모든 달)</figcaption>
           {highOnly ? (
             <p className={cx(styles.caption, shared.warn)} role="note">
               <Icon name="alert-circle" size={16} />
@@ -290,16 +331,53 @@ export function ProjectionCard({ projection, today, badge }: ProjectionCardProps
           </div>
         </figure>
 
-        {shown ? (
-          <MonthDetail
-            month={shown}
-            range={range?.find((r) => r.month === shown.month) ?? null}
-            highCount={highCount}
-            today={today}
-            onPrev={selIndex > 0 && !hover ? () => step(-1) : undefined}
-            onNext={selIndex < months.length - 1 && !hover ? () => step(1) : undefined}
-          />
-        ) : null}
+        <div className={styles.monthsRow}>
+          {shown ? (
+            <MonthDetail
+              month={shown}
+              items={aheadMonthItems(shown, installmentsByMonth.get(shown.month))}
+              range={range?.find((r) => r.month === shown.month) ?? null}
+              highCount={highCount}
+              today={today}
+              onPrev={selIndex > 0 && !hover ? () => step(-1) : undefined}
+              onNext={selIndex < months.length - 1 && !hover ? () => step(1) : undefined}
+            />
+          ) : null}
+          <div className={styles.upcoming}>
+            <h3 id={`${ids}-up`} className={styles.upTitle}>
+              다가오는 달
+            </h3>
+            <ul className={styles.upList} aria-labelledby={`${ids}-up`}>
+              {upcoming.map((m) => (
+                <li key={m.month}>
+                  <button
+                    type="button"
+                    className={cx(styles.upRow, m.month === selected && styles.upOn, m.endBalance < 0 && styles.upShort)}
+                    aria-pressed={m.month === selected}
+                    onClick={() => pick(m.month)}
+                  >
+                    <span className={styles.upText}>
+                      {aheadMonthLine(m, today)}
+                      {m.month === thisMonth ? <span className="sr-only"> (이번 달)</span> : null}
+                    </span>
+                    {m.endBalance < 0 ? (
+                      <span className={cx(styles.upBadge, shared.bad)}>
+                        <Icon name="alert-triangle" size={16} />
+                        {formatMan(-m.endBalance)} 모자라요
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <Link href={PAST_RECORDS_HREF} className={styles.pastLink}>
+              지난 달 쓴 돈은 정산 화면에서
+              <Icon name="chevron-right" size={16} />
+            </Link>
+          </div>
+        </div>
+
+        {showShortage && projection.shortages.length > 0 ? <ShortagePanel projection={projection} fix={fix} today={today} /> : null}
       </div>
       <p className="sr-only" aria-live="polite">
         {announce}
@@ -308,8 +386,23 @@ export function ProjectionCard({ projection, today, badge }: ProjectionCardProps
   );
 }
 
+function ItemRow({ item, today }: { item: AheadItem; today: ISODate }) {
+  return (
+    <li className={cx(item.kind === 'usual' && styles.itemMuted)}>
+      <span className={styles.d}>{item.date ? formatShortDate(item.date) : item.kind === 'trip' ? '여행' : ''}</span>
+      <span className={styles.n}>
+        {item.tripId ? <Link href={tripHref(item.tripId)}>{item.label}</Link> : item.label}
+        {item.date && item.date < today ? <span className="sr-only"> (날짜 지남)</span> : null}
+        {item.note ? <span className={styles.note}>{item.kind === 'usual' ? ` (${item.note})` : ` · ${item.note}`}</span> : null}
+      </span>
+      <span className={styles.a}>{formatWon(item.amount)}</span>
+    </li>
+  );
+}
+
 function MonthDetail({
   month,
+  items,
   range,
   highCount,
   today,
@@ -317,6 +410,7 @@ function MonthDetail({
   onNext,
 }: {
   month: ProjectionMonth;
+  items: AheadItem[];
   range: ProjectionRangeMonth | null;
   highCount: number;
   today: ISODate;
@@ -324,54 +418,46 @@ function MonthDetail({
   onNext?: () => void;
 }) {
   const isThis = month.month === monthOf(today);
-  const rows = monthDetailRows(month, isThis);
   const short = month.endBalance < 0;
+  const label = monthLabel(month.month, today);
+  const total = items.reduce((s, i) => s + i.amount, 0);
   return (
-    <div className={styles.detail}>
+    <div className={styles.detail} data-testid="ahead-month">
       <div className={shared.detailHead}>
         <div className={shared.txt}>
           <h3 className={styles.detailTitle}>
-            {monthLabel(month.month, today)}
+            {label}
             {isThis ? ' · 이번 달' : ''}
           </h3>
-          <span className={cx(shared.statusLine, styles.detailStatus, short ? shared.bad : shared.ok)}>
-            <Icon name={short ? 'alert-triangle' : 'check-circle'} size={16} />
-            {short ? `${formatWon(-month.endBalance)} 모자라요` : '모자라지 않아요'}
+          <span className={styles.detailSub}>
+            예정 {formatWon(total)} ·{' '}
+            <span className={cx(shared.statusLine, short ? shared.bad : shared.ok)}>
+              <Icon name={short ? 'alert-triangle' : 'check-circle'} size={16} />
+              {short ? `${formatWon(-month.endBalance)} 모자라요` : '모자라지 않아요'}
+            </span>
           </span>
         </div>
         <div className={shared.nav}>
-          <Button
-            variant="ghost"
-            plain
-            iconOnly
-            icon="chevron-left"
-            aria-label="이전 달"
-            onClick={onPrev}
-            disabled={!onPrev}
-          />
-          <Button
-            variant="ghost"
-            plain
-            iconOnly
-            icon="chevron-right"
-            aria-label="다음 달"
-            onClick={onNext}
-            disabled={!onNext}
-          />
+          <Button variant="ghost" plain iconOnly icon="chevron-left" aria-label="이전 달" onClick={onPrev} disabled={!onPrev} />
+          <Button variant="ghost" plain iconOnly icon="chevron-right" aria-label="다음 달" onClick={onNext} disabled={!onNext} />
         </div>
       </div>
+      {items.length > 0 ? (
+        <ul className={styles.items} aria-label={`${label} 나갈 돈`}>
+          {items.map((i) => (
+            <ItemRow key={i.key} item={i} today={today} />
+          ))}
+        </ul>
+      ) : (
+        <p className={styles.detailEmpty}>이 달에는 나갈 돈이 없어요</p>
+      )}
       <dl className={styles.calc}>
-        {rows.map((r) => (
-          <div key={r.label} className={cx(styles.calcRow, r.muted && styles.calcMuted)}>
-            <dt>{r.label}</dt>
-            <dd>
-              {r.sign}
-              {formatWon(r.amount)}
-            </dd>
-          </div>
-        ))}
+        <div className={cx(styles.calcRow, styles.calcMuted)}>
+          <dt>들어오는 돈</dt>
+          <dd data-testid="ahead-inflow">{aheadInflowText(month, isThis)}</dd>
+        </div>
         <div className={cx(styles.calcRow, styles.calcTotal)}>
-          <dt>달 말 예상 잔액</dt>
+          <dt>그 달 끝 예상 잔액</dt>
           <dd className={short ? shared.bad : undefined}>{formatWon(month.endBalance)}</dd>
         </div>
         {range ? (
@@ -386,32 +472,6 @@ function MonthDetail({
       {range && range.endHigh < 0 && !short && highCount > 0 ? (
         <p className={styles.detailWarn}>많이 쓰면 이 달에 {formatWon(-range.endHigh)} 모자라요</p>
       ) : null}
-      {month.events.length > 0 || (month.tripList?.length ?? 0) > 0 ? (
-        <ul className={styles.detailEvents} aria-label={`${monthLabel(month.month, today)} 예정 일정`}>
-          {month.events.map((e, i) => (
-            <li key={`${e.id}@${e.date}@${i}`}>
-              <span className={styles.d}>{formatShortDate(e.date)}</span>
-              <span className={styles.n}>
-                {e.name}
-                {e.date < today ? <span className="sr-only"> (날짜 지남)</span> : null}
-              </span>
-              <span className={styles.a}>{formatWon(e.amount)}</span>
-            </li>
-          ))}
-          {(month.tripList ?? []).map((t) => (
-            <li key={`trip:${t.id}`}>
-              <span className={styles.d}>여행</span>
-              <span className={styles.n}>
-                <Link href={tripHref(t.id)}>{t.name}</Link>
-                <span className="sr-only"> 남은 예산</span>
-              </span>
-              <span className={styles.a}>{formatWon(t.amount)}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className={styles.detailEmpty}>이 달에는 예정된 일정이 없어요</p>
-      )}
     </div>
   );
 }

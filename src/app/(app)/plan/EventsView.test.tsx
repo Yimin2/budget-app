@@ -28,7 +28,7 @@ describe('EventsView — 체험 가계부', () => {
     });
     const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
     expect(card.textContent).toMatch(/평소 매달 .+만원을 쓰는데 적립은 .+이에요. 이대로면 매달 .+씩 줄어요/);
-    const chart = screen.getByRole('region', { name: '앞으로 12개월 예상 잔액' });
+    const chart = screen.getByRole('region', { name: '앞으로 12개월' });
     expect(within(chart).getByText(/작년 같은 달 기록 30%와 최근 12개월 평균 70%를 섞어요 \(작년 기록이 없으면 최근 12개월 평균\)/)).toBeTruthy();
     expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
   });
@@ -66,7 +66,7 @@ describe('EventsView — 체험 가계부', () => {
     const summary = await screen.findByRole('region', { name: '이번 달 · 11월' });
     // 시작 600,000 + 적립 300,000 − 제주 여행 숙소 예약금 150,000
     expect(within(summary).getByTestId('kpi-balance').textContent).toBe('이벤트통장 잔액75만매달 30만 적립');
-    expect(screen.getByText(/12개월 중 1개월이 모자라요/)).toBeTruthy();
+    expect(screen.getByTestId('ahead-status').textContent).toMatch(/^12개월 중 1개월이 모자라요/);
 
     const months = screen.getByRole('group', { name: '달 고르기' });
     expect(within(months).getAllByRole('button')).toHaveLength(12);
@@ -75,9 +75,9 @@ describe('EventsView — 체험 가계부', () => {
     // 처음엔 첫 부족 달을 보여 줘요
     const april = within(months).getByRole('button', { name: '2027년 4월 자세히 보기' });
     expect(april.getAttribute('aria-pressed')).toBe('true');
-    const chart = screen.getByRole('region', { name: '앞으로 12개월 예상 잔액' });
+    const chart = screen.getByRole('region', { name: '앞으로 12개월' });
     expect(within(chart).getByRole('heading', { level: 3, name: '2027년 4월' })).toBeTruthy();
-    expect(within(chart).getByRole('list', { name: '2027년 4월 예정 일정' }).querySelectorAll('li')).toHaveLength(5);
+    expect(within(chart).getByRole('list', { name: '2027년 4월 나갈 돈' }).querySelectorAll('li')).toHaveLength(5);
 
     // 화면 읽기용 표
     const table = screen.getByRole('table');
@@ -94,18 +94,18 @@ describe('EventsView — 체험 가계부', () => {
 
   it('막대를 누르면 그달 계산과 일정이 보여요 · 이전/다음 달 버튼', async () => {
     await renderEvents();
-    const chart = screen.getByRole('region', { name: '앞으로 12개월 예상 잔액' });
+    const chart = screen.getByRole('region', { name: '앞으로 12개월' });
     const months = within(chart).getByRole('group', { name: '달 고르기' });
     fireEvent.click(within(months).getByRole('button', { name: '2027년 2월 자세히 보기' }));
     expect(within(chart).getByRole('heading', { level: 3, name: '2027년 2월' })).toBeTruthy();
-    const list = within(chart).getByRole('list', { name: '2027년 2월 예정 일정' });
-    expect(within(list).getByText('제주 여행')).toBeTruthy();
-    expect(within(chart).getByText('달 시작 잔액')).toBeTruthy();
+    const list = within(chart).getByRole('list', { name: '2027년 2월 나갈 돈' });
+    expect(within(list).getByRole('link', { name: '제주 여행' }).getAttribute('href')).toBe('/plan/trips?id=demo-trip-jeju');
+    expect(within(chart).getByTestId('ahead-inflow').textContent).toMatch(/^달 시작 잔액 .+ · 적립 \+30만$/);
     expect(within(chart).getAllByText('달 말 예상 잔액').length).toBeGreaterThan(0);
 
     fireEvent.click(within(chart).getByRole('button', { name: '다음 달' }));
     expect(within(chart).getByRole('heading', { level: 3, name: '2027년 3월' })).toBeTruthy();
-    expect(within(chart).getByText('이 달에는 예정된 일정이 없어요')).toBeTruthy();
+    expect(within(chart).getByText('이 달에는 나갈 돈이 없어요')).toBeTruthy();
 
     // 키보드: 왼쪽 화살표로 앞 달
     const march = within(months).getByRole('button', { name: '2027년 3월 자세히 보기' });
@@ -125,7 +125,7 @@ describe('EventsView — 체험 가계부', () => {
     expect(planned).toHaveLength(1);
     expect(planned[0]!.amount).toBe(300_000);
     expect(screen.getByText(/옮겨 올 예정인 300,000원을 넣어서 계산했어요/)).toBeTruthy();
-    expect(screen.getByText(/12개월 동안 모자라는 달이 없어요/)).toBeTruthy();
+    expect(screen.getByTestId('ahead-status').textContent).toMatch(/^12개월 동안 모자라는 달이 없어요/);
   });
 
   it('① 매달 적립액 늘리기를 반영하면 늘어난 적립이 보이고 부족이 사라져요', async () => {

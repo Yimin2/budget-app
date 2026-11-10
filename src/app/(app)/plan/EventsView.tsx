@@ -2,11 +2,10 @@
 
 import { useState } from 'react';
 import { nextEventDate, nextOccurrenceId } from '@/domain';
-import type { Expense, Id, PlannedEvent } from '@/domain';
+import type { Id, PlannedEvent } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, ConfirmDialog, PageHeader, useToast } from '@/ui';
 import { RequireLedger } from '../_components';
-import { ExpenseDialog } from '../history/_expenses/ExpenseDialog';
 import { CompleteDialog } from './CompleteDialog';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventsBody } from './EventsBody';
@@ -22,7 +21,6 @@ type Overlay =
   | { kind: 'complete'; event: PlannedEvent }
   | { kind: 'delete'; event: PlannedEvent }
   | { kind: 'addTrip' }
-  | { kind: 'editExpense'; expense: Expense }
   | null;
 
 /**
@@ -119,13 +117,11 @@ export function EventsView() {
             onComplete={(event) => setOverlay({ kind: 'complete', event })}
             onCancel={cancelEvent}
             onAddTrip={() => setOverlay({ kind: 'addTrip' })}
-            onEditExpense={(expense) => setOverlay({ kind: 'editExpense', expense })}
           />
         )}
       </RequireLedger>
 
       {ready && overlay?.kind === 'addTrip' ? <TripDialog onClose={close} /> : null}
-      {ready && overlay?.kind === 'editExpense' ? <ExpenseDialog expense={overlay.expense} onClose={close} /> : null}
 
       {ready && overlay?.kind === 'add' ? <EventDialog preset={overlay.preset} onClose={close} /> : null}
       {ready && overlay?.kind === 'edit' ? (
