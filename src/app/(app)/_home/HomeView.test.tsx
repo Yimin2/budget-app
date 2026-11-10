@@ -204,7 +204,7 @@ describe('HomeView — 새 가계부', () => {
   it('이번 달 정산: 돌려줄 날이 된 청구가 있으면 홈에 홈 한 줄은 이번 달 이벤트통장 쓴 돈(지금까지 + 예정)만 → /plan/settle', async () => {
     const h = await renderHome();
     const card = await screen.findByRole('region', { name: '이번 달 정산' });
-    expect(within(card).getByTestId('settlement-line').textContent).toBe('이번 달 이벤트통장 쓴 돈 45만');
+    expect(within(card).getByTestId('settlement-line').textContent).toBe('이번 달 이벤트 쓴 돈 0원 · 여행 45만');
     expect(screen.queryByRole('region', { name: '사람별 돌려받을 돈' })).toBeNull();
     expect(within(card).getByRole('link', { name: '정산하기' }).getAttribute('href')).toBe('/plan/settle');
 
@@ -216,7 +216,7 @@ describe('HomeView — 새 가계부', () => {
     // 남은 청구는 아직 정산일 전 → 사람별 목록 카드 대신 같은 한 줄 카드
     await waitFor(() =>
       expect(within(screen.getByRole('region', { name: '이번 달 정산' })).getByTestId('settlement-line').textContent).toBe(
-        '이번 달 이벤트통장 쓴 돈 45만',
+        '이번 달 이벤트 쓴 돈 0원 · 여행 45만',
       ),
     );
     const line = screen.getByRole('region', { name: '이번 달 정산' });
