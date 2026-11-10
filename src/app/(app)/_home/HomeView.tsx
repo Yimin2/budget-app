@@ -12,7 +12,7 @@ import {
   AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
   SegmentedControl, useToast, cx, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
 } from '@/ui';
-import { ClaimsCard, LedgerSwitcher } from '../_components';
+import { ClaimsCard, LedgerSwitcher, SettlementCard } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
 import { ProjectionChart } from './ProjectionChart';
 import { errorMessage, expenseTitle, recentExpenses, shortageBannerText, upcomingEvents } from './selectors';
@@ -100,7 +100,11 @@ function HomeBody() {
             {banner.description}
           </Banner>
         ) : null}
-        <ClaimsCard className={styles.oClaims} />
+        {ledger.settlement?.dueNow ? (
+          <SettlementCard compact className={styles.oClaims} />
+        ) : (
+          <ClaimsCard className={styles.oClaims} />
+        )}
         <EventAccountCard />
         {wide ? null : <RecentExpenses />}
       </div>

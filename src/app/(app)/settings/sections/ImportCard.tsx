@@ -199,6 +199,12 @@ export function ImportPreview({ plan }: { plan: ImportPlan }) {
                 {plan.claims.nextDue ? ` · 정산일 ${formatDateKo(plan.claims.nextDue, false)}` : ''}
               </li>
             ) : null}
+            {plan.claims.reservoirPending.length > 0 ? (
+              <li>
+                그중 저수지에서 돌려받을 돈{' '}
+                {plan.claims.reservoirPending.map((p) => `${p.payer} ${p.count}건 ${formatWon(p.amount)}`).join(' · ')}
+              </li>
+            ) : null}
             {plan.claims.settledCount > 0 ? (
               <li>
                 돌려준 청구 {plan.claims.settledCount}건 · {formatWon(plan.claims.settledAmount)}

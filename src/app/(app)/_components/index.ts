@@ -6,6 +6,7 @@ export { MonthEndDialog } from './MonthEndDialog';
 export { RequireLedger, LedgerLoadError, isLedgerReady, type ReadyLedger, type RequireLedgerProps } from './RequireLedger';
 export { PageSkeleton, SwitcherSkeleton, type PageSkeletonProps } from './PageSkeleton';
 export { ClaimsCard } from './ClaimsCard';
+export { SettlementCard } from './SettlementCard';
 export { ClaimFields, claimToastSuffix, type ClaimFieldsProps } from './ClaimFields';
 export { SpenderField, type SpenderFieldProps } from './SpenderField';
 export { PersonPicker, peopleOptions, personOptionLabel, type PersonPickerProps, type PersonChoice, type PersonOption } from './PersonPicker';
