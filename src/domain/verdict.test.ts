@@ -105,6 +105,14 @@ describe('judgeLiving per item', () => {
   };
   const status = withItems([food, shopping]);
 
+  it('예산이 없는 카테고리는 생활비 전체(하루 몫 합 · 남은 돈 합)로 봐요', () => {
+    const ok = judgeLiving(status, 'gift', 10_000);
+    expect(ok.signal).toBe('ok');
+    expect(ok.message.startsWith('예산이 없는 항목이라 생활비 전체로 봤어요.')).toBe(true);
+    expect(judgeLiving(status, 'gift', 200_000).signal).toBe('warn');
+    expect(judgeLiving(status, 'gift', 300_000).signal).toBe('bad');
+  });
+
   it('daily item uses its own numbers', () => {
     expect(judgeLiving(status, 'food', 10_000).signal).toBe('ok');
     const warn = judgeLiving(status, 'food', 50_000);
@@ -146,8 +154,9 @@ describe('judgeLiving per item', () => {
     expect(judgeLiving(last, 'shop', 80_000).signal).toBe('ok');
   });
 
-  it('a category with no budget and no null bucket → bad, asks to set a budget', () => {
-    const v = judgeLiving(status, 'gift', 1_000);
+  it('생활비 예산이 하나도 없으면 예산 없는 카테고리는 비추천 + 예산 정하기 안내', () => {
+    const empty = withItems([]);
+    const v = judgeLiving(empty, 'gift', 1_000);
     expect(v.signal).toBe('bad');
     expect(v.message).toBe('이 항목은 이번 달 예산이 없어요');
     expect(v.when).toContain('생활비 항목을 정하면');
