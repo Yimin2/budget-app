@@ -93,8 +93,8 @@ export function TripRow({ status: s }: { status: TripStatus }) {
           <span>
             {formatWon(s.spent)} / {formatWon(s.budget)}
           </span>
-          <span className={cx(s.remaining < 0 && styles.over)}>
-            {s.remaining < 0 ? <Icon name="alert-triangle" size={16} /> : null}
+          <span className={cx(tone === 'danger' && styles.toneDanger, tone === 'warning' && styles.toneWarning)}>
+            {tone === 'danger' ? <Icon name="alert-triangle" size={16} /> : tone === 'warning' ? <Icon name="alert-circle" size={16} /> : null}
             {remainingText(s.remaining)}
           </span>
         </span>

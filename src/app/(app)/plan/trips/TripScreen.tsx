@@ -3,16 +3,17 @@
 import { useId, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
-  TRIP_ITEM_ICONS, TRIP_ITEM_LABELS, expenseTripItem, formatShortDate, formatWon, isClaimExpense, isClaimSettled, tripPeriodText,
+  TRIP_ITEM_ICONS, TRIP_ITEM_LABELS, expenseTripItem, formatShortDate, formatWon, isClaimExpense, isClaimSettled, tripItemLines, tripPeriodText,
+  tripSpendState,
 } from '@/domain';
-import type { Expense, TripStatus } from '@/domain';
+import type { Expense, TripSpendState, TripStatus } from '@/domain';
 import { useLedger } from '@/state';
 import { Badge, Button, Card, EmptyState, Icon, PageHeader, ProgressBar, Skeleton, cx, isIconName } from '@/ui';
 import { RequireLedger, type ReadyLedger } from '../../_components';
 import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
 import { TripDialog } from './TripDialog';
 import { TripRow } from './TripsCard';
-import { projectionNote, remainingText, spendTone, tripPhaseText } from './selectors';
+import { itemLineText, newestFirst, projectionNote, remainingText, stateTone, tripPhaseText } from './selectors';
 import styles from './trips.module.css';
 
 type Overlay =
@@ -183,7 +184,9 @@ function TripDetail({
   const itemsId = useId();
   const listId = useId();
   const { data, today } = ledger;
-  const tone = spendTone(s.spent, s.budget);
+  const totalState = tripSpendState(s.spent, s.budget);
+  const { pool, lines } = tripItemLines(s);
+  const expenses = newestFirst(s.expenses);
   const note = projectionNote(s, today);
   const accountName = (id: string) => data.accounts.find((a) => a.id === id)?.name ?? '지운 통장';
   const categoryName = (id: string | null) => (id ? data.categories.find((c) => c.id === id)?.name : undefined);
@@ -204,7 +207,7 @@ function TripDetail({
             <dt>쓴 돈</dt>
             <dd>{formatWon(s.spent)}</dd>
           </div>
-          <div className={cx(styles.stat, s.remaining < 0 && styles.overStat)}>
+          <div className={cx(styles.stat, stateClass(totalState))}>
             <dt>{s.remaining < 0 ? '넘은 돈' : '남은 돈'}</dt>
             <dd>{formatWon(Math.abs(s.remaining))}</dd>
           </div>
@@ -212,14 +215,15 @@ function TripDetail({
         <ProgressBar
           value={s.spent}
           max={s.budget}
-          tone={tone}
+          tone={stateTone(totalState)}
           track="brand"
           label="여행 예산 사용"
           valueText={`${formatWon(s.budget)} 중 ${formatWon(s.spent)}`}
         />
-        <p className={cx(styles.statusLine, s.remaining < 0 ? styles.over : styles.ok)}>
-          <Icon name={s.remaining < 0 ? 'alert-triangle' : 'check-circle'} size={16} />
+        <p className={cx(styles.statusLine, stateClass(totalState) ?? styles.onTrack)}>
+          <Icon name={stateIcon(totalState)} size={16} />
           {remainingText(s.remaining)}
+          {totalState === 'near' ? ' · 거의 다 썼어요' : ''}
         </p>
         {note ? (
           <p className={styles.note}>
@@ -245,41 +249,47 @@ function TripDetail({
         <h2 id={itemsId} className="card-title">
           항목별
         </h2>
-        {s.items.length === 0 ? (
+        {lines.length === 0 ? (
           <p className={styles.muted}>항목 예산이 없어요. 고치기에서 항공 · 숙박처럼 나눠 잡을 수 있어요.</p>
         ) : (
           <ul className={styles.items}>
-            {s.items.map((it) => {
+            {lines.map((it) => {
               const label = TRIP_ITEM_LABELS[it.item];
               const icon = TRIP_ITEM_ICONS[it.item];
+              const text = itemLineText(it, pool);
+              const tone = stateClass(it.state);
+              const barMax = it.basis === 'own' ? it.budget! : it.basis === 'pool' && pool ? pool.budget : Math.max(it.spent, 1);
+              const barValue = it.basis === 'pool' && pool ? pool.spent : it.spent;
               return (
-                <li key={it.item} className={styles.item}>
+                <li key={it.item} className={cx(styles.item, tone)}>
                   <span className={styles.itemIcon} aria-hidden>
                     <Icon name={isIconName(icon) ? icon : 'dots'} size={20} />
                   </span>
                   <span className={styles.itemMain}>
                     <span className={styles.itemTop}>
                       <span className={styles.itemName}>{label}</span>
-                      <span className={cx(styles.itemLeft, it.remaining !== null && it.remaining < 0 && styles.over)}>
-                        {it.remaining === null
-                          ? '예산 없음'
-                          : it.remaining < 0
-                            ? `${formatWon(-it.remaining)} 넘었어요`
-                            : `${formatWon(it.remaining)} 남음`}
-                      </span>
+                      {text.status ? (
+                        <span className={styles.itemLeft}>
+                          {it.state !== 'ok' ? <Icon name={stateIcon(it.state)} size={16} /> : null}
+                          {text.status}
+                        </span>
+                      ) : null}
                     </span>
                     <ProgressBar
-                      value={it.spent}
-                      max={it.budget ?? Math.max(it.spent, 1)}
-                      tone={spendTone(it.spent, it.budget)}
+                      value={barValue}
+                      max={barMax}
+                      tone={stateTone(it.state)}
                       track="subtle"
                       label={`${label} 예산 사용`}
-                      valueText={it.budget === null ? `${formatWon(it.spent)} 씀` : `${formatWon(it.budget)} 중 ${formatWon(it.spent)}`}
+                      valueText={
+                        it.basis === 'own'
+                          ? `${formatWon(it.budget!)} 중 ${formatWon(it.spent)}`
+                          : it.basis === 'pool' && pool
+                            ? `나머지 예산 ${formatWon(pool.budget)} 중 ${formatWon(pool.spent)}`
+                            : `예산 밖 ${formatWon(it.spent)} 씀`
+                      }
                     />
-                    <span className={styles.itemNums}>
-                      {formatWon(it.spent)}
-                      {it.budget !== null ? ` / ${formatWon(it.budget)}` : ''}
-                    </span>
+                    {text.detail ? <span className={styles.itemNums}>{text.detail}</span> : null}
                   </span>
                 </li>
               );
@@ -291,17 +301,17 @@ function TripDetail({
       <Card as="section" className={cx(styles.card, styles.payments)} aria-labelledby={listId}>
         <div className={styles.cardHead}>
           <h2 id={listId} className="card-title">
-            낸 돈 {s.expenses.length > 0 ? `${s.expenses.length}건` : ''}
+            낸 돈 {expenses.length > 0 ? `${expenses.length}건` : ''}
           </h2>
           <Button variant="ghost" icon="plus" onClick={onAddExpense}>
             지출 기록
           </Button>
         </div>
-        {s.expenses.length === 0 ? (
+        {expenses.length === 0 ? (
           <p className={styles.muted}>아직 이 여행에 묶은 지출이 없어요. 항공권처럼 미리 낸 돈도 기록할 때 여행을 고르면 여기에 모여요.</p>
         ) : (
           <ul className={styles.payList} aria-label="이 여행에 낸 돈">
-            {s.expenses.map((e) => {
+            {expenses.map((e) => {
               const title = e.memo.trim() || categoryName(e.categoryId) || '지출';
               const claim = isClaimExpense(e);
               const settled = claim && isClaimSettled(data, e.id);
@@ -340,6 +350,15 @@ function TripDetail({
       </Card>
     </div>
   );
+}
+
+/** 쓴 정도 → 글자 색 class (보통이면 없음) */
+function stateClass(state: TripSpendState): string | undefined {
+  return state === 'over' ? styles.toneDanger : state === 'near' ? styles.toneWarning : undefined;
+}
+
+function stateIcon(state: TripSpendState): 'alert-triangle' | 'alert-circle' | 'check-circle' {
+  return state === 'over' ? 'alert-triangle' : state === 'near' ? 'alert-circle' : 'check-circle';
 }
 
 function TripSkeleton() {
