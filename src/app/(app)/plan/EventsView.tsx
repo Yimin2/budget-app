@@ -121,7 +121,7 @@ export function EventsView() {
   return (
     <div className={styles.page}>
       <PageHeader
-        title="계획"
+        title="이벤트"
         subtitle="이벤트통장 일정 · 12개월 예측 · 여행이에요"
         actions={
           <Button icon="plus" onClick={() => openAdd()} disabled={!ready} className={styles.headerAdd}>
