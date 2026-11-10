@@ -308,6 +308,8 @@ describe('정산 화면 — 오래된 것 먼저 · 여행 배지 · 좁은 막�
     await act(async () => {
       await L(h).addExpense({ date: '2026-10-02', amount: 70_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '지난 돌잔치', paidBy: '민지' });
       await L(h).addExpense({ date: '2026-11-03', amount: 10_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '먼저 넣은 선물', paidBy: '민지' });
+      // 기록한 시각(createdAt)이 같은 밀리초가 되지 않게 조금 기다려요
+      await new Promise((r) => setTimeout(r, 5));
       await L(h).addExpense({ date: '2026-11-03', amount: 20_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '나중 넣은 선물', paidBy: '준호' });
     });
     await waitFor(() => box(list, '지난 돌잔치 70,000원 고르기'));

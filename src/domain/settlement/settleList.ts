@@ -40,7 +40,7 @@ export interface SettleMonth {
   rows: SettleRow[];
 }
 
-/** 오래된 것 먼저: 날짜 → 기록한 순서(createdAt) → id */
+/** 오래된 것 먼저: 날짜 → 기록한 순서(createdAt) → 기록 목록 순서 */
 const oldest = (a: SettleRow, b: SettleRow) =>
   a.expense.date !== b.expense.date
     ? a.expense.date < b.expense.date
@@ -50,11 +50,7 @@ const oldest = (a: SettleRow, b: SettleRow) =>
       ? a.expense.createdAt < b.expense.createdAt
         ? -1
         : 1
-      : a.expense.id < b.expense.id
-        ? -1
-        : a.expense.id > b.expense.id
-          ? 1
-          : 0;
+      : 0; // 같으면 기록 목록 순서 그대로 (안정 정렬, id 는 무작위라 쓰지 않아요)
 
 function toMonths(rows: SettleRow[]): SettleMonth[] {
   const byMonth = new Map<YearMonth, SettleRow[]>();
