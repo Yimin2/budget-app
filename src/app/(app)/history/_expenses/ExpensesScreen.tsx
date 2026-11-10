@@ -436,6 +436,11 @@ function ExpenseRow({ expense, category, account, authorName, authorAlt, claim, 
           일정
         </Badge>
       ) : null}
+      {expense.excluded ? (
+        <Badge size="sm" dot={false}>
+          예외
+        </Badge>
+      ) : null}
       {claim ? (
         <Badge size="sm" tone={claim === 'pending' ? 'warning' : undefined} dot={false} className={claimChanged ? 'mo-settle' : undefined} key={claim}>
           {claim === 'pending' ? `${expense.paidBy?.trim() ?? ''} 돌려받기 전` : `${expense.paidBy?.trim() ?? ''} 돌려받음`}

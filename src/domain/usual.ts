@@ -3,7 +3,8 @@
  *
  * - 기록: 지우지 않은 지출 중 통장이 이벤트통장인 것 (저수지에서 빌려 낼 이벤트 청구 포함). 일정(eventId) · 여행(tripId)에 묶인 지출과
  *   고정 지출 자동 기록(할부 회차 등, fixedExpenseId)은 계획된 돈이라 뺀다. 청구 지출은 지출 금액 그대로 한 번만 센다.
- *   통장 시작일 전 날짜로 가져온 지출도 기록으로 센다 (잔액에는 들어가지 않는다)
+ *   통장 시작일 전 날짜로 가져온 지출도 기록으로 센다 (잔액에는 들어가지 않는다).
+ *   '예외'(평소 지출 아님, excluded)로 표시한 지출도 뺀다 — 잔액에는 그대로 들어가고, 기록 시작 달을 정할 때는 센다
  * - 기록 시작 달 = 통장 시작일의 달과 가장 이른 이벤트통장 지출의 달 중 이른 쪽. 그 달부터 지난달까지가 '다 지난 기록 달'
  * - 앞으로의 달 M: 작년 같은 달(M − 12)이 다 지난 기록 달이면 그 달 기록 그대로, 아니면 최근 6개월(기록이 있는 다 지난 달,
  *   6개월이 안 되면 있는 만큼) 평균. 다 지난 기록 달이 하나도 없으면 0 (평소 쓰는 돈 줄을 보이지 않는다)
@@ -34,9 +35,24 @@ export interface UsualEstimate {
   total: Won;
 }
 
-/** 이벤트통장의 평소 지출(일정 · 여행 · 고정 지출 자동 기록이 아닌 지출)인지 */
-export function isUsualEventExpense(e: Expense, eventAccountId: Id): boolean {
+/** 이벤트통장의 계획하지 않은 지출(일정 · 여행 · 고정 지출 자동 기록이 아닌 지출)인지. 예외 표시는 보지 않는다 */
+export function isUnplannedEventExpense(e: Expense, eventAccountId: Id): boolean {
   return !e.deleted && e.accountId === eventAccountId && !e.eventId && !e.tripId && !e.fixedExpenseId && e.amount > 0;
+}
+
+/** 이벤트통장의 평소 지출(계획하지 않았고 예외로 표시하지 않은 지출)인지 */
+export function isUsualEventExpense(e: Expense, eventAccountId: Id): boolean {
+  return isUnplannedEventExpense(e, eventAccountId) && e.excluded !== true;
+}
+
+/**
+ * 이벤트통장 기록으로 세는 지출을 이벤트통장 지출로 본 모양 (저수지에서 빌려 낸 이벤트 청구 포함). 아니면 null
+ */
+export function asEventRecord(data: LedgerData, e: Expense, eventAccountId: Id): Expense | null {
+  if (e.deleted || !e.date) return null;
+  if (e.accountId === eventAccountId) return e;
+  // 저수지에서 빌려 낸(낼) 이벤트 청구도 이벤트통장 기록으로 센다 (PLAN 4-9)
+  return isClaimExpense(e) && isReservoirEventExpense(data, e) ? { ...e, accountId: eventAccountId } : null;
 }
 
 /** 이벤트통장 평소 지출 기록 (달별 · 카테고리별) */
@@ -44,14 +60,12 @@ export function usualHistory(data: LedgerData, eventAccountId: Id): UsualHistory
   const account = data.accounts.find((a) => a.id === eventAccountId);
   let start: YearMonth | null = account?.openingDate ? monthOf(account.openingDate) : null;
   const byMonth = new Map<YearMonth, Map<CategoryKey, Won>>();
-  for (const e of data.expenses) {
-    if (e.deleted || !e.date) continue;
-    // 저수지에서 빌려 낸(낼) 이벤트 청구도 이벤트통장 기록으로 센다 (PLAN 4-9)
-    const borrowed = isClaimExpense(e) && isReservoirEventExpense(data, e);
-    if (e.accountId !== eventAccountId && !borrowed) continue;
+  for (const raw of data.expenses) {
+    const e = asEventRecord(data, raw, eventAccountId);
+    if (!e) continue;
     const m = monthOf(e.date);
     if (start === null || compareMonth(m, start) < 0) start = m;
-    if (!isUsualEventExpense({ ...e, accountId: eventAccountId }, eventAccountId)) continue;
+    if (!isUsualEventExpense(e, eventAccountId)) continue;
     const cats = byMonth.get(m) ?? new Map<CategoryKey, Won>();
     cats.set(e.categoryId ?? null, (cats.get(e.categoryId ?? null) ?? 0) + e.amount);
     byMonth.set(m, cats);

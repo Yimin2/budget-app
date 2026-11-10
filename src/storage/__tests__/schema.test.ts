@@ -243,6 +243,26 @@ describe('schema', () => {
     expect(decodeSettings(encodeSettings(d.settings)).settings).toEqual(d.settings);
   });
 
+  it('예외 열: 없거나 비면 평소 지출, 예 · TRUE · 예외면 예외, 쓸 때는 예 또는 빈 칸', () => {
+    const old = decodeTable('expenses', [['id', '날짜', '금액', '통장'], ['x', '2026-11-01', 1000, 'a']]);
+    expect(old[0]!.excluded).toBeUndefined();
+    const rows = decodeTable('expenses', [
+      ['id', '날짜', '금액', '통장', '예외'],
+      ['a', '2026-11-01', 1000, 'acc', '예'],
+      ['b', '2026-11-01', 1000, 'acc', ''],
+      ['c', '2026-11-01', 1000, 'acc', true],
+      ['d', '2026-11-01', 1000, 'acc', '예외'],
+      ['e', '2026-11-01', 1000, 'acc', '아니오'],
+    ]);
+    expect(rows.map((r) => r.excluded)).toEqual([true, undefined, true, true, undefined]);
+    const headers = canonicalHeaders('expenses');
+    expect(headers[headers.length - 1]).toBe('예외');
+    const ex = sampleLedger().expenses[0]!;
+    expect(encodeRow('expenses', { ...ex, excluded: true })[headers.indexOf('예외')]).toBe('예');
+    expect(encodeRow('expenses', ex)[headers.indexOf('예외')]).toBe('');
+    expect(decodeTable('expenses', encodeTable('expenses', [{ ...ex, excluded: true }]))[0]!.excluded).toBe(true);
+  });
+
   it('여행 열(여행id · 여행항목)이 없거나 비면 여행 아님으로 읽고, 여행 탭 항목예산은 한글 JSON', () => {
     const old = decodeTable('expenses', [['id', '날짜', '금액', '통장'], ['x', '2026-11-01', 1000, 'a']]);
     expect(old[0]!.tripId).toBeNull();

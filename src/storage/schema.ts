@@ -136,6 +136,11 @@ const optInt: Codec = {
   dec: (c) => toNumber(c),
 };
 const bool: Codec = { enc: (v) => v === true, dec: toBool };
+/** '예' 또는 빈 칸인 표시 칸 (나중에 더한 열). 빈 칸 · 모르는 값은 없음(undefined), 쓸 때는 true 만 '예' */
+const yesFlag: Codec = {
+  enc: (v) => (v === true ? '예' : ''),
+  dec: (c) => (toBool(c) || (typeof c === 'string' && c.trim() === '예외') ? true : undefined),
+};
 const date: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toISODate(c) ?? '' };
 /** 빈 셀 · 날짜가 아닌 값은 null */
 const optDate: Codec = {
@@ -501,6 +506,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('claimDue', '정산일', optDate, ['돌려줄날']),
       // 여행(PLAN 4-11). 나중에 더한 열이라 빈 칸 = 여행 아님 · 항목은 기타
       c('tripId', '여행id', optStr), c('tripItem', '여행항목', tripItem),
+      // 예외(평소 지출 아님, PLAN 4-2). 나중에 더한 열이라 빈 칸 = 평소 지출
+      c('excluded', '예외', yesFlag),
     ],
   },
   monthEnds: {

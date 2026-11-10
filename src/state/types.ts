@@ -70,6 +70,8 @@ export interface NewExpense {
   tripId?: Id | null;
   /** 여행 항목 (항공 · 숙박 …). 비우면 기타 */
   tripItem?: TripItem | null;
+  /** 예외 (평소 지출 아님, PLAN 4-2): '평소 쓰는 돈' 계산에서 빼요. 잔액에는 그대로 들어가요 */
+  excluded?: boolean;
 }
 /** 새 여행 · 여행 고치기 (PLAN 4-11): 이름 · 떠나는 날 · 돌아오는 날 · 총예산 · 항목 예산(선택) */
 export type NewTrip = TripInput;
@@ -247,6 +249,11 @@ export interface LedgerApi {
   addExpense(input: NewExpense): Promise<Expense>;
   updateExpense(expense: Expense): Promise<void>;
   deleteExpense(id: Id): Promise<void>;
+  /**
+   * 지출 여러 건의 예외(평소 지출 아님) 표시를 한 번에 저장 (PLAN 4-2 '예외 지출 빼기'). 지금과 같은 것 · 없는 지출은 건너뛰고,
+   * 실제로 바꾼 건수를 돌려줘요
+   */
+  setExpenseExclusions(changes: { id: Id; excluded: boolean }[]): Promise<number>;
   // 일정
   addEvent(input: NewEvent): Promise<PlannedEvent>;
   updateEvent(event: PlannedEvent): Promise<void>;
