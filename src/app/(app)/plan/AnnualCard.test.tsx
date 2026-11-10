@@ -13,31 +13,34 @@ vi.mock('next/navigation', () => ({
 
 afterEach(cleanup);
 
+/** '일정' 카드의 [매년 일정 한 번에 등록]을 눌러 같은 자리에서 펼쳐요 */
 async function renderCard() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
-  const card = await screen.findByRole('region', { name: '매년 일정 한 번에 등록' });
-  fireEvent.click(within(card).getByRole('button', { name: '매년 일정 한 번에 등록 펼치기' }));
+  const schedule = await screen.findByRole('region', { name: /^일정/ });
+  fireEvent.click(within(schedule).getByRole('button', { name: '매년 일정 한 번에 등록' }));
+  const card = screen.getByRole('region', { name: '매년 일정 한 번에 등록' });
   return { h, card };
 }
 
 describe('매년 일정 한 번에 등록', () => {
-  it('처음에는 접힌 요약 한 줄만, [펼치기]로 같은 자리에서 체크 목록을 펼치고 [접기]로 접어요', async () => {
+  it("'일정' 카드의 [매년 일정 한 번에 등록]으로 같은 자리에서 체크 목록을 펼치고, 다시 누르면 접어요 (창 없음)", async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
-    const card = await screen.findByRole('region', { name: '매년 일정 한 번에 등록' });
-    // 체험 가계부의 결혼기념일(매년)은 이미 등록됨
-    expect(within(card).getByTestId('annual-summary').textContent).toBe('등록됨 1개');
-    expect(within(card).queryByRole('checkbox', { name: /설날/ })).toBeNull();
-    expect(within(card).queryByRole('button', { name: '등록하기' })).toBeNull();
-    const toggle = within(card).getByRole('button', { name: '매년 일정 한 번에 등록 펼치기' });
+    const schedule = await screen.findByRole('region', { name: /^일정/ });
+    expect(screen.queryByRole('region', { name: '매년 일정 한 번에 등록' })).toBeNull();
+    const toggle = within(schedule).getByRole('button', { name: '매년 일정 한 번에 등록' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const card = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+    expect(card).toBe(within(schedule).getByRole('region', { name: '매년 일정 한 번에 등록' }));
+    // 체험 가계부의 결혼기념일(매년)은 이미 등록됨
+    expect(within(card).getByTestId('annual-summary').textContent).toBe('등록됨 1개');
     expect(within(card).getByRole('checkbox', { name: /설날/ })).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { name: '매년 일정 한 번에 등록 접기' }));
-    expect(within(card).queryByRole('checkbox', { name: /설날/ })).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.queryByRole('region', { name: '매년 일정 한 번에 등록' })).toBeNull();
   });
 
   it('체크하고 금액을 넣어 등록하면 매년 반복 예정 일정이 되고, 그 줄은 등록됨 + 고치기로 바뀌어요', async () => {
@@ -153,7 +156,7 @@ describe('매년 일정 한 번에 등록', () => {
   it('일정 창에서 음력 일정의 음력 월 · 일을 고치면 음력 값과 다음 회차 양력 날짜가 바뀌어요', async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
-    await screen.findByRole('region', { name: '매년 일정 한 번에 등록' });
+    await screen.findByRole('region', { name: /^일정 · / });
     await act(async () => {
       await h.probe.ledger!.addEvent({ date: '2026-12-23', name: '외할머니 생신', amount: 100_000, repeat: 'yearly', lunar: '11-15' });
     });

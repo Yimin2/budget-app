@@ -8,25 +8,20 @@ import {
   recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { ExclusionDraft, Expense, Id, PlannedEvent, RepayMonths } from '@/domain';
-import { SettlementCard, type ReadyLedger } from '../_components';
+import type { ExclusionDraft, Id, PlannedEvent, RepayMonths, TripStatus } from '@/domain';
+import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
-import { AnnualCard } from './AnnualCard';
 import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import type { EventPreset } from './EventDialog';
-import { EventLists } from './EventLists';
-import { EmptyEvents } from './EmptyEvents';
-import { ExceptionCard } from './ExceptionCard';
-import { LoanCard } from './LoanCard';
-import { MonthlyCostCard } from './MonthlyCostCard';
 import { NoEventAccount } from './NoEventAccount';
-import { ProjectionCard } from './ProjectionCard';
-import { RecurringCard } from './RecurringCard';
+import { AheadCard } from './AheadCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
-import { ShortagePanel } from './ShortagePanel';
-import { SummaryCard } from './SummaryCard';
-import { TripsCard } from './trips/TripsCard';
-import { UsualInsightCard } from './UsualInsightCard';
+import { ScheduleCard } from './ScheduleCard';
+import { ThisMonthCard } from './ThisMonthCard';
+import { UsualCard } from './UsualCard';
+import styles from './EventsBody.module.css';
+
+const NO_TRIPS: TripStatus[] = [];
 
 export interface EventsBodyProps {
   ledger: ReadyLedger;
@@ -36,10 +31,9 @@ export interface EventsBodyProps {
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
   onAddTrip: () => void;
-  onEditExpense: (expense: Expense) => void;
 }
 
-export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip, onEditExpense }: EventsBodyProps) {
+export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip }: EventsBodyProps) {
   const { data, today } = ledger;
   const projection = ledger.eventProjection;
   const sections = useMemo(() => sectionEvents(data.events, today), [data.events, today]);
@@ -70,61 +64,54 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
   const shown = tried ?? projection;
 
   return (
-    <>
+    <div className={styles.grid}>
       {projection && hasEventAccount ? (
         <>
-          <SummaryCard projection={projection} />
-          <SettlementCard />
-          <LoanCard />
+          <ThisMonthCard projection={projection} repayMonths={repayMonths} className={styles.half} />
+          <UsualCard
+            data={data}
+            projection={projection}
+            insight={insight}
+            today={today}
+            compromise={compromise}
+            repayMonths={repayMonths}
+            onRepayMonths={chooseMonths}
+            candidates={candidates}
+            tried={tried}
+            draft={draft}
+            onDraft={setDraft}
+            className={styles.half}
+          />
           <HashTarget />
-          <ProjectionCard projection={shown ?? projection} today={today} badge={tried ? '미리 보는 중' : undefined} />
-          <MonthlyCostCard data={data} today={today} onEditExpense={onEditExpense} />
-          <ExceptionCard
+          <AheadCard
+            projection={shown ?? projection}
             data={data}
             today={today}
-            candidates={candidates}
-            before={projection}
-            after={tried}
-            draft={draft}
-            onChange={setDraft}
+            badge={tried ? '미리 보는 중' : undefined}
+            fix={ledger.shortageFix}
+            showShortage={!tried}
           />
-          {insight ? (
-            <UsualInsightCard
-              data={data}
-              projection={projection}
-              insight={insight}
-              today={today}
-              compromise={compromise}
-              repayMonths={repayMonths}
-              onRepayMonths={chooseMonths}
-            />
-          ) : null}
-          {!tried && projection.shortages.length > 0 ? (
-            <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
-          ) : null}
-          <AnnualCard data={data} today={today} onEdit={onEdit} />
-          <RecurringCard data={data} today={today} categories={data.categories} />
         </>
       ) : (
         <NoEventAccount ledger={ledger} />
       )}
-      {hasEventAccount ? <TripsCard trips={ledger.trips} onAdd={onAddTrip} /> : null}
-      {sections.total === 0 ? (
-        <EmptyEvents categories={eventCategories(ledger.activeCategories)} onAdd={onAdd} />
-      ) : (
-        <EventLists
-          sections={sections}
-          today={today}
-          categories={data.categories}
-          spent={spent}
-          displayName={ledger.displayName}
-          busyId={busyId}
-          onAdd={() => onAdd()}
-          onEdit={onEdit}
-          onComplete={onComplete}
-          onCancel={onCancel}
-        />
-      )}
-    </>
+      <ScheduleCard
+        sections={sections}
+        today={today}
+        categories={data.categories}
+        spent={spent}
+        displayName={ledger.displayName}
+        busyId={busyId}
+        trips={hasEventAccount ? ledger.trips : NO_TRIPS}
+        planning={Boolean(projection && hasEventAccount)}
+        data={data}
+        emptyCategories={eventCategories(ledger.activeCategories)}
+        onAdd={onAdd}
+        onAddTrip={onAddTrip}
+        onEdit={onEdit}
+        onComplete={onComplete}
+        onCancel={onCancel}
+      />
+    </div>
   );
 }

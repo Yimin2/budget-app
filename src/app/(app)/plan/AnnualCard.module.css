@@ -2,7 +2,18 @@
 
 /* ───────── 매년 일정 한 번에 등록 ───────── */
 .annual {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.panelTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
 }
 .annualBody {
   display: flex;

@@ -485,9 +485,12 @@
 }
 
 /* 저수지에 갚을 돈: 펼치기 없이 한 카드에 줄 몇 개 */
-:global(.card).loanCard {
+.loanLine {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
 }
 .lineRow {
   display: flex;

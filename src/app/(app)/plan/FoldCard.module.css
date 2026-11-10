@@ -1,0 +1,53 @@
+/* FoldCard — 이벤트 화면 네 카드의 틀. 폰(1024px 아래)은 본문을 접고, 넓은 화면은 늘 펼쳐요 */
+:global(.card).card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.toggle {
+  display: flex;
+  justify-content: center;
+  margin: calc(var(--space-2) * -1) 0;
+}
+@media (max-width: 1023.98px) {
+  .folded {
+    display: none !important;
+  }
+}
+@media (min-width: 1024px) {
+  .toggle {
+    display: none !important;
+  }
+}

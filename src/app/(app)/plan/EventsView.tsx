@@ -2,11 +2,10 @@
 
 import { useState } from 'react';
 import { nextEventDate, nextOccurrenceId } from '@/domain';
-import type { Expense, Id, PlannedEvent } from '@/domain';
+import type { Id, PlannedEvent } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, ConfirmDialog, PageHeader, useToast } from '@/ui';
 import { RequireLedger } from '../_components';
-import { ExpenseDialog } from '../history/_expenses/ExpenseDialog';
 import { CompleteDialog } from './CompleteDialog';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventsBody } from './EventsBody';
@@ -22,11 +21,10 @@ type Overlay =
   | { kind: 'complete'; event: PlannedEvent }
   | { kind: 'delete'; event: PlannedEvent }
   | { kind: 'addTrip' }
-  | { kind: 'editExpense'; expense: Expense }
   | null;
 
 /**
- * '/plan' 이벤트통장 — 잔액 · 매달 적립 → 12개월 예상 잔액 막대 → 월별 이벤트 비용 → 부족 알림(두 가지 방법) → 일정 목록.
+ * '/plan' 이벤트통장 — 카드 넷 (이번 달 · 평소 쓰는 돈 · 앞으로 12개월 · 일정, 배치는 EventsBody).
  * 일정 추가 · 고치기 · 썼어요(실제 금액) · 취소됐어요 · 지우기를 여기서 해요.
  */
 export function EventsView() {
@@ -119,13 +117,11 @@ export function EventsView() {
             onComplete={(event) => setOverlay({ kind: 'complete', event })}
             onCancel={cancelEvent}
             onAddTrip={() => setOverlay({ kind: 'addTrip' })}
-            onEditExpense={(expense) => setOverlay({ kind: 'editExpense', expense })}
           />
         )}
       </RequireLedger>
 
       {ready && overlay?.kind === 'addTrip' ? <TripDialog onClose={close} /> : null}
-      {ready && overlay?.kind === 'editExpense' ? <ExpenseDialog expense={overlay.expense} onClose={close} /> : null}
 
       {ready && overlay?.kind === 'add' ? <EventDialog preset={overlay.preset} onClose={close} /> : null}
       {ready && overlay?.kind === 'edit' ? (

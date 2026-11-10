@@ -1,58 +1,36 @@
-/* EventLists — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+/* ScheduleCard — 이벤트 화면 카드 4 '일정'. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
 
-/* ───────── 일정 목록 ───────── */
-.lists {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    'overdue'
-    'upcoming'
-    'past';
-  gap: var(--space-4);
-  align-items: start;
-}
-.areaOverdue {
-  grid-area: overdue;
-}
-.areaUpcoming {
-  grid-area: upcoming;
-}
-.areaPast {
-  grid-area: past;
-}
-@media (min-width: 768px) {
-.lists {
-    gap: var(--space-6);
-  }
-}
-@media (min-width: 1280px) {
-.lists {
-    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    grid-template-rows: auto 1fr;
-    grid-template-areas:
-      'upcoming overdue'
-      'upcoming past';
-  }
-
-.lists.noOverdue {
-    grid-template-rows: auto;
-    grid-template-areas: 'upcoming past';
-  }
-
-/* 옆에 둘 것(날짜 지난 일정 · 지난 일정)이 없으면 다가오는 일정이 넓게 차지해요 */
-
-.lists.solo {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
-    grid-template-areas: 'upcoming';
-  }
-}
-/* 다가오는 일정 카드가 넓으면 달 묶음을 두 칸으로 흘려요 (위에서 아래로 읽는 순서 그대로) */
-.areaUpcoming {
+.card {
   container-type: inline-size;
 }
+.btnCount {
+  margin-left: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--primary-subtle);
+  color: var(--primary-subtle-text);
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 700;
+}
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.listArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.upcoming {
+  min-width: 0;
+}
+/* 넓은 카드는 달 묶음을 두 칸으로 흘려요 (위에서 아래로 읽는 순서 그대로) */
 @container (min-width: 720px) {
-.groupsFlow {
+  .groupsFlow {
     columns: 2;
     column-gap: var(--space-8);
   }
@@ -60,11 +38,39 @@
 .groupsFlow .group {
   break-inside: avoid;
 }
-.listCard {
+/* 날짜가 지난 일정 */
+.attention {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
 }
-.listCard.attention {
-  border-color: var(--warning-border);
+.pastSec {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.moreLink {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--primary-text);
+}
+.moreLink:hover {
+  text-decoration: underline;
+}
+/* 폰에서 접혀 있으면 첫 달만 */
+@media (max-width: 1023.98px) {
+  .foldedList .group:nth-child(n + 2),
+  .foldedList .pastSec,
+  .foldedList .moreLink {
+    display: none;
+  }
 }
 .cardTitle {
   margin: 0;
@@ -124,6 +130,7 @@
   margin-top: 0;
 }
 .rowMain {
+  text-decoration: none;
   display: flex;
   align-items: center;
   gap: var(--space-3);

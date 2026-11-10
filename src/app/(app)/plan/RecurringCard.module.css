@@ -63,3 +63,18 @@
     animation: none;
   }
 }
+/* '일정' 카드 안에서 펼친 칸 */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.panelTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}

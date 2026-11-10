@@ -1,0 +1,26 @@
+/* EventsBody — 이벤트 화면 카드 배치. 폰: 한 줄로 쌓아요 · 1024px 이상: 위에 '이번 달' · '평소 쓰는 돈' 나란히, 아래 '앞으로 12개월' · '일정'은 한 줄 가득 */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .grid {
+    gap: var(--space-6);
+  }
+}
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* 한 줄 가득이 기본, 위의 두 카드만 반씩 */
+  .grid > * {
+    grid-column: 1 / -1;
+  }
+  .grid > .half {
+    grid-column: auto;
+    align-self: stretch;
+  }
+}

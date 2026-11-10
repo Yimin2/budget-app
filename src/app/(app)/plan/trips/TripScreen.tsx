@@ -11,7 +11,7 @@ import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
 import { TripDailyCard } from './TripDailyCard';
 import { TripDialog } from './TripDialog';
 import { TripPayRow } from './TripPayRow';
-import { TripRow } from './TripsCard';
+import { TripRow } from './TripRow';
 import { itemLineText, newestFirst, projectionNote, remainingText, stateTone, tripPhaseText } from './selectors';
 import styles from './trips.module.css';
 

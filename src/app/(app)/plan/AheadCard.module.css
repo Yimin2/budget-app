@@ -1,40 +1,11 @@
-/* ProjectionCard — 이 컴포넌트만 쓰는 이벤트 화면 규칙. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
+/* AheadCard — 이벤트 화면 카드 2 '앞으로 12개월'. 여러 컴포넌트가 함께 쓰는 클래스는 events.module.css */
 
-/* ───────── 12개월 막대 + 고른 달 ───────── */
-.chartCard {
-  gap: var(--space-4);
-}
-.chartTitleRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  column-gap: var(--space-3);
-  row-gap: var(--space-1);
-}
-.chartTitle {
-  margin: 0;
-  font-size: 16px;
-  line-height: 26px;
-  font-weight: 700;
-}
+/* ───────── 12개월 막대 ───────── */
 .chartHint {
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
   color: var(--text-muted);
-}
-.chartBody {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-4);
-}
-@media (min-width: 1024px) {
-.chartBody {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-    gap: var(--space-6);
-    align-items: start;
-  }
 }
 .figure {
   margin: 0;
@@ -281,14 +252,14 @@
 .calcTotal dd {
   font-weight: 800;
 }
-.detailEvents {
+.items {
   display: flex;
   flex-direction: column;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.detailEvents li {
+.items li {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
@@ -297,7 +268,7 @@
   font-size: 15px;
   line-height: 22px;
 }
-.detailEvents .d {
+.items .d {
   flex: none;
   width: 44px;
   font-size: 14px;
@@ -305,18 +276,32 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
-.detailEvents .n {
+.items .n {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.detailEvents .n a {
+.items .n a {
   color: var(--primary-text);
   font-weight: 500;
 }
-.detailEvents .a {
+.items .a {
   flex: none;
   font-variant-numeric: tabular-nums;
+}
+.note {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.itemMuted .n,
+.itemMuted .a {
+  color: var(--text-muted);
+}
+.detailSub {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 .detailEmpty {
   margin: 0;
@@ -413,4 +398,95 @@
   line-height: 22px;
   font-weight: 500;
   color: var(--warning-text);
+}
+
+/* ───────── 고른 달 + 다가오는 달 ───────── */
+.monthsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .monthsRow {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+}
+.upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.upTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.upList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.upRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
+}
+.upRow:hover {
+  border-color: var(--border-strong);
+}
+.upRow:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.upOn {
+  border-color: var(--primary);
+  background: var(--primary-subtle);
+}
+.upText {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.upBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 14px;
+  font-weight: 500;
+}
+.pastLink {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--primary-text);
+}
+.pastLink:hover {
+  text-decoration: underline;
+}
+.upShort:not(.upOn) {
+  border-color: var(--danger-border);
 }

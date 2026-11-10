@@ -205,8 +205,8 @@ export function UsualTable({ rows, months, showSpender }: { rows: UsualBreakdown
 const ALL = '_all';
 
 /**
- * 평소 쓰는 돈과 적립 카드의 그림: 접힌 상태에서는 작은 도넛만(UsualDonut sm, 부모가 놓음),
- * 펼치면 막대 · [전체 · 사람] · 도넛 + 표 (넓은 화면에서는 나란히)
+ * '평소 쓰는 돈' 카드의 그림: 요약에는 작은 도넛 + 범례 · 적립 대비 막대(부모가 놓음),
+ * ① 항목별 평균 표 단계는 [전체 · 사람] · 도넛 + 표 (넓은 화면에서는 나란히)
  */
 export function useUsualBreakdown(data: LedgerData, accountId: Id, today: string, spenderKey: string | null) {
   return useMemo(() => {
@@ -223,6 +223,7 @@ export function UsualDetails({
   usual,
   planned,
   shortages,
+  bar = true,
 }: {
   data: LedgerData;
   accountId: Id;
@@ -231,6 +232,8 @@ export function UsualDetails({
   usual: Won;
   planned: Won;
   shortages: Shortage[];
+  /** 적립 대비 막대도 그릴지 (카드 요약에 이미 있으면 false) */
+  bar?: boolean;
 }) {
   const options = useMemo(() => usualSpenderOptions(data, ledgerPeople(data)), [data]);
   const [who, setWho] = useState<string>(ALL);
@@ -239,7 +242,7 @@ export function UsualDetails({
   const year = Number(today.slice(0, 4));
   return (
     <div className={styles.details}>
-      <SavingsBarView contribution={contribution} usual={usual} planned={planned} shortages={shortages} year={year} />
+      {bar ? <SavingsBarView contribution={contribution} usual={usual} planned={planned} shortages={shortages} year={year} /> : null}
       {options.length >= 2 ? (
         <SegmentedControl
           ariaLabel="누가 쓴 돈을 볼까요"

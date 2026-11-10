@@ -13,3 +13,6 @@
   font-weight: 500;
   color: var(--text-muted);
 }
+.embedded {
+  min-width: 0;
+}

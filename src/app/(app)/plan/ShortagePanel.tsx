@@ -4,7 +4,7 @@ import { useId, useState } from 'react';
 import { formatWon } from '@/domain';
 import type { EventProjection, ISODate, ShortageFix } from '@/domain';
 import { useLedger } from '@/state';
-import { Button, Card, Icon, cx, useToast } from '@/ui';
+import { Button, Icon, cx, useToast } from '@/ui';
 import {
   errorText,
   increaseChoiceText,
@@ -26,7 +26,7 @@ export interface ShortagePanelProps {
 }
 
 /**
- * 부족 알림: "4월에 300,000원 모자라요 (결혼식 4건 · 어버이날)" + 두 가지 방법 중 하나를 골라 반영해요.
+ * '앞으로 12개월' 카드 안의 부족 알림: "4월에 300,000원 모자라요 (결혼식 4건 · 어버이날)" + 두 가지 방법 중 하나를 골라 반영해요.
  * ① 지금부터 매달 적립액 늘리기 ② 그달에 저수지에서 옮기기. 반영하면 예측이 바로 다시 계산돼요.
  */
 export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
@@ -88,17 +88,17 @@ export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
   }
 
   return (
-    <Card as="section" className={styles.panel} aria-labelledby={titleId}>
+    <div role="group" className={styles.panel} aria-labelledby={titleId} data-testid="shortage-panel">
       <div className={shared.panelHead}>
         <span className={styles.panelIcon} aria-hidden>
           <Icon name="alert-triangle" size={20} />
         </span>
         <div className={shared.txt}>
-          <h2 id={titleId} className={styles.panelTitle}>
+          <h3 id={titleId} className={styles.panelTitle}>
             <span className="sr-only">이벤트통장 부족 알림: </span>
             {summary.title}
             {summary.names ? ` (${summary.names})` : ''}
-          </h2>
+          </h3>
           {desc ? <p className={styles.panelDesc}>{desc}</p> : null}
         </div>
       </div>
@@ -182,6 +182,6 @@ export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
           </p>
         </div>
       )}
-    </Card>
+    </div>
   );
 }

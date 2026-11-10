@@ -1,0 +1,128 @@
+/* UsualCard — 이벤트 화면 카드 3 '평소 쓰는 돈'. 도넛 · 막대 · 표는 usualViz.module.css */
+.donutWrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.legend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 22px;
+}
+.legend > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.legendName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.legendAmt {
+  margin-left: auto;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+/* 단계 칩 셋 */
+.steps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 560px) {
+  .steps {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
+}
+.step:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+.step:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.step:disabled {
+  cursor: not-allowed;
+  color: var(--disabled-text);
+}
+.stepOn {
+  border-style: solid;
+  border-color: var(--primary);
+  background: var(--primary-subtle);
+}
+.stepTitle {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.stepSub {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.panel[hidden] {
+  display: none;
+}
+.panelOn {
+  padding: var(--space-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.panelTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}

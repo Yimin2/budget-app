@@ -1,7 +1,9 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { dateInMonth, formatDateKo, formatMonthKo, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
+import { dateInMonth, formatDateKo, formatMan, formatManShort, formatMonthKo, formatShortDate, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
+  EventMonthUsage,
   LedgerData,
+  SettlementSummary,
   Category,
   EventProjection,
   Expense,
@@ -56,6 +58,127 @@ export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
   { value: 'monthly', label: '매월' },
   { value: 'yearly', label: '매년' },
 ];
+
+/* ───────── 이번 달 카드 ───────── */
+
+/**
+ * '이번 달' 카드의 정산 한 줄 (PLAN 4-9): '11/21 정산 30만 · 저수지에서 빌려 2.4만' /
+ * '이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만'. 이벤트통장에서 줄 수 있는 돈에 안 들어 넘어가는 청구는 따로
+ * carry: '못 준 돈 55만 → 다음 달 (민구)' (사람이 하나면 이름, 둘이면 이름과 금액)
+ */
+export function settleLineText(u: EventMonthUsage, sum: SettlementSummary): { text: string; carry: string | null } {
+  const parts: string[] = [];
+  if (sum.total <= 0) parts.push('이번 달 정산할 돈은 없어요');
+  if (u.plannedClaims > 0) parts.push(`${formatShortDate(sum.date)} 정산 ${formatMan(u.plannedClaims)}`);
+  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatMan(sum.fromFixed)}`);
+  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatMan(sum.fromReservoir)}`);
+  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatMan(sum.borrow)}`);
+  if (sum.total <= 0 && sum.next) parts.push(`다음 정산 ${formatShortDate(sum.next.date)} ${formatMan(sum.next.amount)}`);
+  let carry: string | null = null;
+  if (u.unpaid > 0) {
+    const who =
+      u.unpaidPeople.length === 1
+        ? ` (${u.unpaidPeople[0]!.name})`
+        : u.unpaidPeople.length === 2
+          ? ` (${u.unpaidPeople.map((p) => `${p.name} ${formatMan(p.amount)}`).join(' · ')})`
+          : '';
+    carry = `못 준 돈 ${formatMan(u.unpaid)} → 다음 달${who}`;
+  }
+  return { text: parts.join(' · '), carry };
+}
+
+/* ───────── 평소 쓰는 돈 카드 ───────── */
+
+/**
+ * ② 추천 타협안 칩의 짧은 머리말: '적립 70만 + 선물 −5만' (줄일 카테고리가 여럿이면 가장 큰 것 + '외 2개'),
+ * 줄일 것이 없으면 '적립 70만'
+ */
+export function compromiseHeadline(plan: { recommended: Won; cut: { cuts: { name: string; amount: Won }[] } }): string {
+  const head = `적립 ${formatMan(plan.recommended)}`;
+  const cuts = plan.cut.cuts.filter((c) => c.amount > 0);
+  if (cuts.length === 0) return head;
+  const top = cuts.reduce((a, b) => (b.amount > a.amount ? b : a), cuts[0]!);
+  return `${head} + ${top.name} −${formatMan(top.amount)}${cuts.length > 1 ? ` 외 ${cuts.length - 1}개` : ''}`;
+}
+
+/* ───────── 앞으로 12개월 카드: 고른 달 항목 ───────── */
+
+/** 평소 쓰는 돈 근거 (예측 usualBasis) */
+export const USUAL_BASIS_NOTE: Record<'lastYear' | 'recent', string> = {
+  lastYear: '작년 30% + 평균 70%, 일정 뺀 뒤',
+  recent: '최근 평균, 일정 뺀 뒤',
+};
+
+export type AheadItemKind = 'event' | 'trip' | 'installment' | 'scheduled' | 'claims' | 'extra' | 'transferOut' | 'usual';
+
+export interface AheadItem {
+  key: string;
+  kind: AheadItemKind;
+  label: string;
+  amount: Won;
+  /** 일정 날짜 */
+  date?: ISODate;
+  /** 여행 id (여행 화면 링크) */
+  tripId?: Id;
+  /** 평소 쓰는 돈 근거 같은 작은 설명 */
+  note?: string;
+}
+
+/**
+ * 예측 한 달에서 나갈 돈 항목 (PLAN 4-2): 일정(날짜순) → 여행 남은 예산 → 할부(이름별, 없으면 한 줄) → 미리 기록한 지출 →
+ * 돌려줄 돈 → 살까 하는 지출 → 옮겨 갈 돈 → 평소 쓰는 돈(늘 마지막, 근거 설명). 금액이 0 인 줄은 빼요.
+ * installments 는 eventMonthlyCosts 의 그달 할부 줄 (합이 예측과 다르면 '할부' 한 줄로)
+ */
+export function aheadMonthItems(m: ProjectionMonth, installments: { key: string; label: string; amount: Won }[] = []): AheadItem[] {
+  const items: AheadItem[] = m.events.map((e, i) => ({ key: `ev:${e.id}@${e.date}@${i}`, kind: 'event', label: e.name, amount: e.amount, date: e.date }));
+  for (const t of m.tripList ?? []) items.push({ key: `trip:${t.id}`, kind: 'trip', label: t.name, amount: t.amount, tripId: t.id, note: '여행 남은 예산' });
+  const inst = m.installments ?? 0;
+  if (inst > 0) {
+    const sum = installments.reduce((s, x) => s + x.amount, 0);
+    if (installments.length > 0 && sum === inst) {
+      for (const x of installments) items.push({ key: `inst:${x.key}`, kind: 'installment', label: x.label, amount: x.amount, note: '할부' });
+    } else items.push({ key: 'inst', kind: 'installment', label: '할부', amount: inst });
+  }
+  if ((m.scheduledSpending ?? 0) > 0) items.push({ key: 'scheduled', kind: 'scheduled', label: '미리 기록한 지출', amount: m.scheduledSpending! });
+  if ((m.claims ?? 0) > 0) items.push({ key: 'claims', kind: 'claims', label: '돌려줄 돈 (개인 돈으로 낸 것)', amount: m.claims! });
+  if (m.extra > 0) items.push({ key: 'extra', kind: 'extra', label: '살까 하는 지출', amount: m.extra });
+  if (m.transfersOut > 0) items.push({ key: 'out', kind: 'transferOut', label: '옮겨 갈 돈', amount: m.transfersOut });
+  if (m.usual > 0) {
+    items.push({ key: 'usual', kind: 'usual', label: '평소 쓰는 돈', amount: m.usual, note: USUAL_BASIS_NOTE[m.usualBasis ?? 'recent'] });
+  }
+  return items;
+}
+
+/** 그달 나갈 돈 합 (aheadMonthItems 합) */
+export function aheadOutflow(m: ProjectionMonth): Won {
+  return aheadMonthItems(m).reduce((s, i) => s + i.amount, 0);
+}
+
+/** 그달 들어오는 쪽 한 줄: '달 시작 잔액 50만 · 적립 +30만 · 옮겨 올 돈 +30만' (이번 달은 '지금 잔액' · '아직 안 들어온 적립') */
+export function aheadInflowText(m: ProjectionMonth, isThisMonth: boolean): string {
+  const parts = [`${isThisMonth ? '지금 잔액' : '달 시작 잔액'} ${formatManShort(m.startBalance)}`];
+  if (m.contributions !== 0) {
+    parts.push(`${isThisMonth ? '아직 안 들어온 적립' : '적립'} ${m.contributions > 0 ? '+' : '−'}${formatManShort(Math.abs(m.contributions))}`);
+  }
+  if (m.transfersIn > 0) parts.push(`옮겨 올 돈 +${formatManShort(m.transfersIn)}`);
+  return parts.join(' · ');
+}
+
+/** 다가오는 달 한 줄: '12월 · 예정 30만 · 결혼식 2건 · 어버이날' (일정이 없으면 큰 항목 이름) */
+export function aheadMonthLine(m: ProjectionMonth, today: ISODate): string {
+  const items = aheadMonthItems(m);
+  const total = items.reduce((s, i) => s + i.amount, 0);
+  const head = `${monthLabel(m.month, today)} · 예정 ${formatMan(Math.round(total / 1000) * 1000)}`;
+  const names =
+    m.events.length > 0
+      ? summarizeEventNames(m.events.map((e) => e.name))
+      : items
+          .filter((i) => i.kind !== 'usual')
+          .slice(0, 2)
+          .map((i) => i.label)
+          .join(' · ');
+  return names ? `${head} · ${names}` : head;
+}
 
 /* ───────── 일정 목록 ───────── */
 
@@ -310,49 +433,6 @@ export function initialMonth(projection: EventProjection, today: ISODate): YearM
   if (first) return first;
   const now = monthOf(today);
   return projection.months.find((m) => m.month === now)?.month ?? projection.months[0]!.month;
-}
-
-export interface DetailRow {
-  label: string;
-  amount: Won;
-  /** 더하기(+) · 빼기(-) · 그대로 */
-  sign: '+' | '-' | '';
-  /** 흐리게 보여 줄 줄 (추정치인 평소 쓰는 돈) */
-  muted?: boolean;
-}
-
-/** 그달 계산 줄: 시작 잔액 + 적립 + 옮겨 올 돈 − 옮겨 갈 돈 − 예정 일정 − 평소 쓰는 돈 − 가정 지출 = 달 말 */
-export function monthDetailRows(m: ProjectionMonth, isThisMonth: boolean): DetailRow[] {
-  const rows: DetailRow[] = [{ label: isThisMonth ? '지금 잔액' : '달 시작 잔액', amount: m.startBalance, sign: '' }];
-  if (m.contributions !== 0) {
-    rows.push({
-      label: isThisMonth ? '아직 안 들어온 적립' : '적립',
-      amount: Math.abs(m.contributions),
-      sign: m.contributions > 0 ? '+' : '-',
-    });
-  }
-  if (m.transfersIn > 0) rows.push({ label: '옮겨 올 돈', amount: m.transfersIn, sign: '+' });
-  if (m.transfersOut > 0) rows.push({ label: '옮겨 갈 돈', amount: m.transfersOut, sign: '-' });
-  rows.push({ label: `예정 일정 ${m.events.length}건`, amount: m.planned, sign: m.planned > 0 ? '-' : '' });
-  if (m.usual > 0) {
-    rows.push({ label: m.usualBasis === 'lastYear' ? '평소 쓰는 돈 (작년 같은 달 + 최근 평균)' : '평소 쓰는 돈 (최근 평균)', amount: m.usual, sign: '-', muted: true });
-  }
-  if (m.scheduledSpending && m.scheduledSpending > 0) {
-    rows.push({ label: '미리 기록한 지출', amount: m.scheduledSpending, sign: '-' });
-  }
-  if (m.claims && m.claims > 0) rows.push({ label: '돌려줄 돈 (개인 돈으로 낸 것)', amount: m.claims, sign: '-' });
-  if (m.installments && m.installments > 0) rows.push({ label: '할부', amount: m.installments, sign: '-' });
-  if (m.trips && m.trips > 0) rows.push({ label: '여행 남은 예산', amount: m.trips, sign: '-' });
-  if (m.extra > 0) rows.push({ label: '살까 하는 지출', amount: m.extra, sign: '-' });
-  return rows;
-}
-
-/** 12개월 동안 펼친 예정 일정 수와 합 */
-export function projectionTotals(projection: EventProjection): { count: number; amount: Won } {
-  return projection.months.reduce((s, m) => ({ count: s.count + m.events.length, amount: s.amount + m.planned }), {
-    count: 0,
-    amount: 0,
-  });
 }
 
 /** 다음 달 적립이 이번 달과 다르면 그 금액 (적립액을 바꾼 직후 안내용). 같으면 null */
