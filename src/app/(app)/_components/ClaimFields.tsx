@@ -26,7 +26,7 @@ export interface ClaimFieldsProps {
 
 /**
  * '개인 돈으로 냈어요' 선택 + 낸 사람 + 언제 돌려주는지 미리보기 (PLAN 4-9).
- * 이벤트통장 · 고정지출통장에 기록할 때만 보여요. 이미 낸 사람이 있는 지출은 다른 통장이어도 보여서 끌 수 있어요
+ * 이벤트통장 · 고정지출통장 · 저수지통장에 기록할 때만 보여요. 이미 낸 사람이 있는 지출은 다른 통장이어도 보여서 끌 수 있어요
  */
 export function ClaimFields({ accountId, amount, paidBy, onChange, expense, settled, disabled, error }: ClaimFieldsProps) {
   const ledger = useLedger();
@@ -92,7 +92,7 @@ export function ClaimFields({ accountId, amount, paidBy, onChange, expense, sett
           {due === null ? (
             <p className={styles.notice}>
               <Icon name="info" size={20} />
-              <span>개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 골라 주세요.</span>
+              <span>개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요.</span>
             </p>
           ) : null}
         </>

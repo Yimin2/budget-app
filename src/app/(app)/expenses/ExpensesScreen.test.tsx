@@ -117,7 +117,7 @@ describe('지출 화면', () => {
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
     fireEvent.change(within(dialog).getByLabelText(/^통장/), { target: { value: 'demo-acc-savings' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
-    expect(await within(dialog).findByText('개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 골라 주세요')).toBeTruthy();
+    expect(await within(dialog).findByText('개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요')).toBeTruthy();
     expect(current(h).ledger.data!.expenses).toHaveLength(before);
     // 체크를 끄면 보통 지출로 기록할 수 있어요
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));

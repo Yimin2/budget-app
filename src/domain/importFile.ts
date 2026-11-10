@@ -775,7 +775,7 @@ export function planImport(
     if (e.claim) {
       const payer = e.claim.payer;
       if (!canClaimOnAccount(work, acc)) {
-        errors.push(`지출 '${e.memo || e.key}' 는 청구인데 이벤트통장 · 고정지출통장이 아니에요`);
+        errors.push(`지출 '${e.memo || e.key}' 는 청구인데 이벤트통장 · 고정지출통장 · 저수지통장이 아니에요`);
         continue;
       }
       const claimAccountId = claimAccountFor(work, payer);

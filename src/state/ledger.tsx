@@ -536,7 +536,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       if (payer) {
         const { data: d } = requireData();
         if (!canClaimOnAccount(d, input.accountId)) {
-          throw new Error('개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 기록해 주세요');
+          throw new Error('개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중 하나에 기록해 주세요');
         }
         claim = {
           paidBy: payer,
@@ -609,7 +609,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         // 이미 돌려준 청구의 금액 · 통장을 바꾸면 돌려준 이체도 같이 고친다 (낸 사람 통장 · 함께 쓰는 통장 잔액이 어긋나지 않게)
         if (settle && (next.amount !== settle.amount || next.accountId !== settle.fromAccountId || next.deleted)) {
           if (!next.deleted && !canClaimOnAccount(d, next.accountId)) {
-            throw new Error('돌려준 청구는 이벤트통장이나 고정지출통장으로만 옮길 수 있어요');
+            throw new Error('돌려준 청구는 이벤트통장 · 고정지출통장 · 저수지통장으로만 옮길 수 있어요');
           }
           const fixed: Transfer = next.deleted
             ? { ...settle, deleted: true, updatedAt: next.updatedAt }
@@ -623,7 +623,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
           !prev || !isClaimExpense(prev) || prev.paidBy?.trim() !== payer || prev.accountId !== next.accountId || prev.amount !== next.amount;
         if (changed) {
           if (!canClaimOnAccount(d, next.accountId)) {
-            throw new Error('개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 기록해 주세요');
+            throw new Error('개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중 하나에 기록해 주세요');
           }
           next = {
             ...next,

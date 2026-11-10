@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { account, emptyLedger, event, expense, rule, transfer } from './_fixtures';
 import { accountBalance } from './balances';
 import {
-  DEFAULT_SETTLE_DAY, claimAccountFor, claimMessage, claimMessageFor, claimPayers, claimTransferId, computeClaimDue,
+  DEFAULT_SETTLE_DAY, canClaimOnAccount, claimAccountFor, claimMessage, claimMessageFor, claimPayers, claimTransferId, computeClaimDue,
   isClaimSettled, nextSettleDate, pendingClaims, settleDayOf, summarizeClaims, withSubject,
 } from './claims';
 import { projectEventAccount } from './events';
@@ -58,6 +58,15 @@ describe('정산일 (다음 월급날)', () => {
 });
 
 describe('새 청구의 정산일', () => {
+  it('저수지통장도 이벤트통장처럼: 잔액이 감당하면 오늘, 아니면 다음 월급날', () => {
+    const reservoir = account('reservoir', { id: 'res', openingBalance: 100_000, order: 9 });
+    const d = ledger({});
+    const withRes = { ...d, accounts: [...d.accounts, reservoir] };
+    expect(canClaimOnAccount(withRes, 'res')).toBe(true);
+    expect(computeClaimDue(withRes, { accountId: 'res', amount: 100_000 }, TODAY)).toBe(TODAY);
+    expect(computeClaimDue(withRes, { accountId: 'res', amount: 100_001 }, TODAY)).toBe('2026-11-21');
+  });
+
   it('이벤트통장 잔액 − 다른 청구가 감당하면 오늘', () => {
     const d = ledger({ expenses: [claim({ id: 'c1', amount: 40_000, accountId: 'event' })] });
     expect(computeClaimDue(d, { accountId: 'event', amount: 60_000 }, TODAY)).toBe(TODAY);

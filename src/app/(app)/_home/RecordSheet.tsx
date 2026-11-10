@@ -65,7 +65,7 @@ export function RecordSheet({ amount, source, categoryId, tripId = null, onClose
     const payer = paidBy !== null ? paidBy.trim() : null;
     const wrongAccount = payer !== null && !!accountId && !!ledger.data && !canClaimOnAccount(ledger.data, accountId);
     setAccountError(
-      !accountId ? '기록할 통장을 골라 주세요' : wrongAccount ? '개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 골라 주세요' : null,
+      !accountId ? '기록할 통장을 골라 주세요' : wrongAccount ? '개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요' : null,
     );
     setPayerError(payer === '' ? '누가 냈는지 골라 주세요' : undefined);
     if (badDate || !accountId || wrongAccount || payer === '') {

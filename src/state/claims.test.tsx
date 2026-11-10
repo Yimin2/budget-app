@@ -105,7 +105,7 @@ describe('청구 — 기록 · 돌려주기', () => {
     // 청구할 수 없는 통장은 거절
     await expect(
       L().addExpense({ date: '2026-11-20', amount: 1_000, accountId: 'demo-acc-savings', categoryId: null, paidBy: '민지' }),
-    ).rejects.toThrow('이벤트통장이나 고정지출통장');
+    ).rejects.toThrow('이벤트통장 · 고정지출통장 · 저수지통장');
 
     // 돌려주기: 처음 저장이 실패해도 다시 누르면 이체가 하나만
     r.local.failOnce = 'upsert:transfers';

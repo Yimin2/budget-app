@@ -136,7 +136,7 @@ export function pendingClaimsTotal(data: LedgerData, accountId: Id, today: ISODa
 
 /**
  * 새 청구의 정산일 (PLAN 4-9).
- * - 이벤트통장 지출: 이벤트통장 잔액 − 다른 청구가 금액을 감당하면 오늘, 아니면 다음 월급날(오늘 뒤)
+ * - 이벤트통장 · 저수지통장 지출: 그 통장 잔액 − 다른 청구가 금액을 감당하면 오늘, 아니면 다음 월급날(오늘 뒤)
  *   (expenseId 를 주면 그 지출은 잔액 · 다른 청구 어느 쪽에도 세지 않는다 — 보통 지출을 청구로 바꿀 때도 맞게)
  * - 그 밖의 통장(고정지출 · 생활비): 늘 다음 월급날(오늘 포함)
  */
@@ -146,7 +146,7 @@ export function computeClaimDue(
   today: ISODate,
 ): ISODate {
   const account = data.accounts.find((a) => a.id === input.accountId);
-  if (account?.role === 'event') {
+  if (account?.role === 'event' || account?.role === 'reservoir') {
     // 고치는 지출은 없는 것으로 보고 센다: 보통 지출을 청구로 바꾸면 그 지출은 더 이상 이 통장 잔액에서 빠지지 않는다
     const base = input.expenseId ? { ...data, expenses: data.expenses.filter((e) => e.id !== input.expenseId) } : data;
     const free = accountBalance(base, account.id, today) - pendingClaimsTotal(base, account.id, today);
@@ -181,10 +181,10 @@ export function claimPayers(data: LedgerData): string[] {
   return out;
 }
 
-/** 청구할 수 있는 통장인지: 이벤트통장 · 고정지출통장(생활비 포함) */
+/** 청구할 수 있는 통장인지: 이벤트통장 · 고정지출통장 · 저수지통장(생활비 포함) · 저수지통장 */
 export function canClaimOnAccount(data: LedgerData, accountId: Id): boolean {
   const role = data.accounts.find((a) => a.id === accountId)?.role;
-  return role === 'event' || role === 'fixed';
+  return role === 'event' || role === 'fixed' || role === 'reservoir';
 }
 
 export { withSubject } from './korean';

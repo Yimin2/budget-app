@@ -140,7 +140,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     if (amount === null || amount <= 0) next.amount = '금액을 입력해 주세요';
     if (!isISODate(date)) next.date = '날짜를 골라 주세요';
     if (!accountId) next.account = '어느 통장에서 나갔는지 골라 주세요';
-    else if (claimOnWrongAccount) next.account = '개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 골라 주세요';
+    else if (claimOnWrongAccount) next.account = '개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요';
     if (effectivePaidBy !== null && !effectivePaidBy) next.payer = '누가 냈는지 골라 주세요';
     setErrors(next);
     if (Object.keys(next).length > 0) focusFirstInvalid();
