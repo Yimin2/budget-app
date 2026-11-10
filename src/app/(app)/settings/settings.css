@@ -433,21 +433,79 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 카테고리 목록: 순서가 보이도록 한 줄에 하나, 오른쪽에 위로 · 아래로 (44px) */
+/* 카테고리 목록: 순서가 보이도록 한 줄에 하나, 왼쪽에 끌어 옮기는 손잡이 (44px) */
+.st-cat-hint {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
 .st-cat-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  transition:
+    transform var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 .st-cat-row > .lrow {
   flex: 1 1 auto;
   min-width: 0;
 }
-.st-cat-move {
-  display: flex;
-  flex: 0 0 auto;
-  gap: var(--space-1);
+.st-cats.is-dragging {
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* 집은 줄은 손가락을 바로 따라와요 (끄는 동안 transition 없음), 그림자로 떠 보이고 제자리는 비어 보여요 */
+.st-cat-row.is-lifted {
+  z-index: 2;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.18));
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.st-cat-row.is-pointer {
+  transition: box-shadow var(--duration-fast) var(--ease-standard);
+}
+.st-cat-handle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.st-cat-handle:hover {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.st-cat-handle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.st-cat-handle[aria-pressed='true'],
+.st-cats.is-dragging .st-cat-handle {
+  cursor: grabbing;
+  color: var(--primary);
+}
+.st-cat-handle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-cat-row {
+    transition: none;
+  }
 }
 
 /* 생활비 쓰는 날 */

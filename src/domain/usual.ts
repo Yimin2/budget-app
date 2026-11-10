@@ -1,7 +1,7 @@
 /**
  * PLAN 4-2 '평소 쓰는 돈' — 등록하지 않은 채 이벤트통장에서 늘 나가는 돈 (선물 · 갑작스런 경조사 …).
  *
- * - 기록: 지우지 않은 지출 중 통장이 이벤트통장인 것. 일정(eventId) · 여행(tripId)에 묶인 지출과
+ * - 기록: 지우지 않은 지출 중 통장이 이벤트통장인 것 (저수지에서 빌려 낼 이벤트 청구 포함). 일정(eventId) · 여행(tripId)에 묶인 지출과
  *   고정 지출 자동 기록(할부 회차 등, fixedExpenseId)은 계획된 돈이라 뺀다. 청구 지출은 지출 금액 그대로 한 번만 센다.
  *   통장 시작일 전 날짜로 가져온 지출도 기록으로 센다 (잔액에는 들어가지 않는다)
  * - 기록 시작 달 = 통장 시작일의 달과 가장 이른 이벤트통장 지출의 달 중 이른 쪽. 그 달부터 지난달까지가 '다 지난 기록 달'
@@ -10,6 +10,8 @@
  * - 카테고리별로 따로 셈하고, 그달 등록한 일정 · 그달 이미 기록한(미리 기록한 포함) 평소 지출을 같은 카테고리에서 먼저 뺀다
  *   (예: 작년 5월 경조사 30만, 올해 5월 결혼식 일정 20만 등록 → 경조사 평소 쓰는 돈 10만). 0 아래로는 내려가지 않는다
  */
+import { isClaimExpense } from './balances';
+import { isReservoirEventExpense } from './claims';
 import { addMonths, compareMonth, monthOf, monthRange } from './dates';
 import type { Expense, Id, LedgerData, ProjectionMonth, Won, YearMonth } from './types';
 
@@ -43,10 +45,13 @@ export function usualHistory(data: LedgerData, eventAccountId: Id): UsualHistory
   let start: YearMonth | null = account?.openingDate ? monthOf(account.openingDate) : null;
   const byMonth = new Map<YearMonth, Map<CategoryKey, Won>>();
   for (const e of data.expenses) {
-    if (e.deleted || e.accountId !== eventAccountId || !e.date) continue;
+    if (e.deleted || !e.date) continue;
+    // 저수지에서 빌려 낸(낼) 이벤트 청구도 이벤트통장 기록으로 센다 (PLAN 4-9)
+    const borrowed = isClaimExpense(e) && isReservoirEventExpense(data, e);
+    if (e.accountId !== eventAccountId && !borrowed) continue;
     const m = monthOf(e.date);
     if (start === null || compareMonth(m, start) < 0) start = m;
-    if (!isUsualEventExpense(e, eventAccountId)) continue;
+    if (!isUsualEventExpense({ ...e, accountId: eventAccountId }, eventAccountId)) continue;
     const cats = byMonth.get(m) ?? new Map<CategoryKey, Won>();
     cats.set(e.categoryId ?? null, (cats.get(e.categoryId ?? null) ?? 0) + e.amount);
     byMonth.set(m, cats);
@@ -117,6 +122,54 @@ export function usualForMonth(
   let usual = 0;
   for (const [c, v] of est.byCategory) usual += Math.max(0, v - (used.get(c) ?? 0));
   return { usual, basis: est.basis };
+}
+
+/** 범위(아끼면 · 많이 쓰면)에 쓰는 기록 달 수 (최근 24개월) */
+export const USUAL_RANGE_MONTHS = 24;
+/** 백분위로 폭을 정하는 최소 달 수. 이보다 적으면 표준편차 */
+export const USUAL_PERCENTILE_MIN = 6;
+
+/** 정렬된 값의 p 백분위 (선형 보간, 0 ≤ p ≤ 1) */
+export function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const pos = (sorted.length - 1) * Math.min(1, Math.max(0, p));
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo);
+}
+
+export interface UsualSpread {
+  method: 'percentile' | 'stddev' | 'none';
+  points: number;
+  /** 보통에서 뺄 폭 (아끼면) */
+  low: Won;
+  /** 보통에 더할 폭 (많이 쓰면) */
+  high: Won;
+}
+
+/**
+ * 평소 쓰는 돈이 달마다 얼마나 흔들리는지 (PLAN 4-2 범위).
+ * 다 지난 기록 달 중 최근 24개월의 달별 합(기록이 없는 달은 0)을 본다.
+ * 6개월 이상이면 백분위: 아래 = 중앙값 − P25, 위 = P75 − 중앙값. 2~5개월이면 표준편차(모집단) 하나를 위아래로.
+ * 1개월 이하면 폭 0. 원 단위 반올림
+ */
+export function usualSpread(history: UsualHistory, thisMonth: YearMonth, values?: number[]): UsualSpread {
+  const pts = values ?? recentHistoryMonths(history, thisMonth, USUAL_RANGE_MONTHS).map((m) => total(history.byMonth.get(m) ?? new Map()));
+  const n = pts.length;
+  if (n < 2) return { method: 'none', points: n, low: 0, high: 0 };
+  if (n >= USUAL_PERCENTILE_MIN) {
+    const sorted = [...pts].sort((a, b) => a - b);
+    const med = percentile(sorted, 0.5);
+    return {
+      method: 'percentile',
+      points: n,
+      low: Math.max(0, Math.round(med - percentile(sorted, 0.25))),
+      high: Math.max(0, Math.round(percentile(sorted, 0.75) - med)),
+    };
+  }
+  const mean = pts.reduce((s, v) => s + v, 0) / n;
+  const sd = Math.round(Math.sqrt(pts.reduce((s, v) => s + (v - mean) ** 2, 0) / n));
+  return { method: 'stddev', points: n, low: sd, high: sd };
 }
 
 export interface UsualInsight {

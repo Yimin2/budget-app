@@ -5,9 +5,10 @@ import { claimLoanTransferId, claimMessageFor, claimTransferId, isClaimPaidFromR
 import { autoTransferId } from './ids';
 import { projectEventAccount } from './events';
 import {
-  allocateClaims, balanceWithScheduled, claimsBySource, computeSettlement, expenseLoanTransferId, followLoanTransfers,
-  loanCandidates, loanRepayId, loanStatus,
+  allocateClaims, balanceWithScheduled, checkSettlementSelection, claimsBySource, computeSettlement, defaultSettlementSelection, expenseLoanTransferId, followLoanTransfers,
+  loanCandidates, loanRepayId, loanStatus, settledReservoirEventClaims,
 } from './settlement';
+import { usualHistory } from './usual';
 import type { Category, Expense, LedgerData, PendingClaim, Transfer } from './types';
 
 const TODAY = '2026-11-10';
@@ -354,5 +355,113 @@ describe('저수지에서 빌린 돈 · 갚기', () => {
     const viaClaim = transfer({ id: claimLoanTransferId('c'), date: TODAY, amount: 100_000, fromAccountId: 'res', toAccountId: 'event' });
     const d2 = ledger({ expenses: [c], transfers: [viaClaim] });
     expect(followLoanTransfers(d2, { ...c, amount: 90_000, updatedAt: at })[0]).toMatchObject({ amount: 90_000 });
+  });
+});
+
+describe('하나씩 고르기 (정산 카드 항목 목록)', () => {
+  it('처음 골라 둔 것 = 이번 달 지급으로 나눈 청구 + 돌려줄 날이 된 저수지 청구', () => {
+    const s = computeSettlement(scenario(), TODAY);
+    expect([...defaultSettlementSelection(s)].sort()).toEqual(['c1', 'c3', 'f1', 'r1', 'r2']);
+    const check = checkSettlementSelection(scenario(), s, defaultSettlementSelection(s));
+    expect(check).toMatchObject({ eventTotal: 320_000, excess: 0, fits: true, over: [] });
+    expect(check.total).toBe(200_000 + 120_000 + 30_000 + 80_000 + 40_000);
+  });
+
+  it('넘어가는 청구까지 고르면 지급할 수 있는 돈보다 많아 넘는 금액과 빌려 줄 청구를 알려 줘요', () => {
+    const d = scenario();
+    const s = computeSettlement(d, TODAY);
+    const check = checkSettlementSelection(d, s, ['c1', 'c2', 'c3']);
+    expect(check.eventTotal).toBe(670_000);
+    expect(check.excess).toBe(170_000);
+    expect(check.fits).toBe(false);
+    expect(check.over).toEqual(['c2']);
+    expect(check.within).toEqual(['c1', 'c3']);
+    // 고른 것을 바꾸면 다시 맞아요 (고정지출 · 저수지 청구는 한도와 견주지 않아요)
+    expect(checkSettlementSelection(d, s, ['c2', 'c3', 'f1', 'r1']).fits).toBe(true);
+  });
+
+  it('한 건만 지급하면 그 청구만 빠지고 같은 사람의 다른 청구는 남아요 (claim:<id> 이체 하나, 다시 넣어도 하나)', () => {
+    const d = scenario();
+    const rows = settleRows(d, ['c3']);
+    expect(rows.map((r) => r.id)).toEqual([claimTransferId('c3')]);
+    const after = computeSettlement(withTransfers(d, rows), TODAY);
+    expect(ids(after.pay)).toEqual(['c1', 'f1']);
+    expect(after.pay.find((g) => g.name === '가람')!.amount).toBe(200_000);
+    // 같은 키로 다시 써도(upsert) 한 번만 빠져요
+    const twice = computeSettlement(withTransfers(d, rows), TODAY);
+    expect(twice.payTotal).toBe(after.payTotal);
+  });
+});
+
+describe('저수지통장 이벤트 청구 = 저수지에서 빌린 돈', () => {
+  // 이벤트통장에 돈이 없어 저수지 돈으로 낸 경조사 청구 (다온) + 저수지에 쓸 돈(이벤트 아닌 카테고리)
+  const resEvent = (id: string, amount: number, date: string) =>
+    claim(id, { amount, date, accountId: 'res', categoryId: 'cat-gift', paidBy: '나래', claimDue: date });
+  const data = () =>
+    ledger({
+      expenses: [
+        resEvent('re1', 300_000, '2026-08-01'),
+        resEvent('re2', 150_000, '2026-09-01'),
+        claim('rn1', { amount: 40_000, date: '2026-08-05', accountId: 'res', categoryId: 'cat-food', claimDue: '2026-08-05' }),
+      ],
+    });
+
+  it('이벤트 카테고리 청구는 저수지에서 빌려 줄 돈, 나머지는 저수지에 쓸 돈으로 나눠요', () => {
+    const d = data();
+    const s = computeSettlement(d, TODAY);
+    expect(s.reservoirLoan.map((g) => [g.name, g.amount, g.claims.length])).toEqual([['나래', 450_000, 2]]);
+    expect(s.reservoirLoanTotal).toBe(450_000);
+    expect(s.reservoir.map((g) => [g.name, g.amount])).toEqual([['가람', 40_000]]);
+    expect(s.dueNow).toBe(true);
+    expect([...defaultSettlementSelection(s)].sort()).toEqual(['re1', 're2', 'rn1']);
+    // 빌려 줄 돈은 지급할 수 있는 돈과 견주지 않아요
+    expect(checkSettlementSelection(d, s, ['re1', 're2']).fits).toBe(true);
+    const groups = claimsBySource(d, pendingClaims(d, TODAY));
+    expect(groups.reservoirLoan.map((g) => g.name)).toEqual(['나래']);
+    expect(groups.reservoir.map((g) => g.name)).toEqual(['가람']);
+  });
+
+  it('평소 쓰는 돈 기록에 이벤트통장 지출로 들어가요', () => {
+    const h = usualHistory(data(), 'event');
+    expect(h.byMonth.get('2026-08')?.get('cat-gift')).toBe(300_000);
+    expect(h.byMonth.get('2026-09')?.get('cat-gift')).toBe(150_000);
+    expect(h.byMonth.get('2026-08')?.get('cat-food')).toBeUndefined();
+  });
+
+  it('지급: 지출을 이벤트통장으로 옮기고 빌린 이체 + 돌려준 이체 → 저수지에 갚을 돈이 늘고 이벤트통장 잔액은 그대로', () => {
+    const d = data();
+    const before = allBalances(d, TODAY);
+    const moved: LedgerData = {
+      ...d,
+      expenses: d.expenses.map((e) => (e.id === 're1' ? { ...e, accountId: 'event' } : e)),
+    };
+    const paid = withTransfers(moved, settleRows(moved, ['re1'], { borrow: true }));
+    const after = allBalances(paid, TODAY);
+    expect(after.res).toBe(before.res! - 300_000);
+    expect(after.event).toBe(before.event);
+    expect(after['inc-b']).toBe(before['inc-b']! + 300_000);
+    expect(loanStatus(paid, TODAY).balance).toBe(300_000);
+    const s = computeSettlement(paid, TODAY);
+    expect(s.reservoirLoanTotal).toBe(150_000);
+  });
+
+  it('저수지에서 이미 돌려준 이벤트 청구를 찾아 갚을 돈으로 바꿀 수 있어요 (바꾼 뒤엔 다시 안 나와요, 잔액 그대로)', () => {
+    const d0 = data();
+    const settled = withTransfers(d0, settleRows(d0, ['re1', 're2', 'rn1'], { date: '2026-09-21' }));
+    expect(settledReservoirEventClaims(settled).map((e) => e.id)).toEqual(['re1', 're2']);
+    const before = allBalances(settled, TODAY);
+    // 바꾸기 (상태 계층과 같은 모양): 지출 → 이벤트통장, 돌려준 이체 → 이벤트통장에서, 빌린 이체 추가
+    const converted: LedgerData = {
+      ...settled,
+      expenses: settled.expenses.map((e) => (e.id === 're1' || e.id === 're2' ? { ...e, accountId: 'event' } : e)),
+      transfers: [
+        ...settled.transfers.map((t) => (t.id === claimTransferId('re1') || t.id === claimTransferId('re2') ? { ...t, fromAccountId: 'event' } : t)),
+        transfer({ id: claimLoanTransferId('re1'), date: '2026-09-21', amount: 300_000, fromAccountId: 'res', toAccountId: 'event' }),
+        transfer({ id: claimLoanTransferId('re2'), date: '2026-09-21', amount: 150_000, fromAccountId: 'res', toAccountId: 'event' }),
+      ],
+    };
+    expect(allBalances(converted, TODAY)).toEqual(before);
+    expect(loanStatus(converted, TODAY).balance).toBe(450_000);
+    expect(settledReservoirEventClaims(converted)).toEqual([]);
   });
 });

@@ -12,7 +12,7 @@
  *   skipHolidays(true/false), perWeek(1~7). 모두 선택이고, 비우면 매일 (예전과 같다)
  */
 import { isClaimExpense } from './balances';
-import { canClaimOnAccount, claimAccountFor, claimTransferId, computeClaimDue } from './claims';
+import { canClaimOnAccount, claimAccountFor, claimTransferId, computeClaimDue, isReservoirEventExpense } from './claims';
 import { addMonths, dateInMonth, isValidDate, isValidMonth, monthOf } from './dates';
 import { buildInstallmentRows, installmentPlanId, validateInstallment } from './installments';
 import { conflictingRemainderRule } from './income';
@@ -593,8 +593,15 @@ export interface ImportPlan {
   claims: {
     pending: { payer: string; count: number; amount: Won }[];
     pendingTotal: Won;
-    /** 그중 저수지통장 청구 (정산 화면의 '저수지에서 돌려받을 돈'). 저수지에서 돌려주면 빌린 돈이 되지 않는다 */
+    /** 그중 저수지에 쓸 돈 (저수지통장의 이벤트 아닌 청구). 저수지에서 돌려주면 빌린 돈이 되지 않는다 */
     reservoirPending: { payer: string; count: number; amount: Won }[];
+    /**
+     * 그중 저수지에서 빌려 줄 돈 (저수지통장의 이벤트 청구: 이벤트 카테고리 · 일정 · 여행). 정산 카드에서 지급하면
+     * 이벤트통장 지출이 되고 저수지에 갚을 돈이 늘어난다 (PLAN 4-9)
+     */
+    reservoirLoanPending: { payer: string; count: number; amount: Won }[];
+    /** 저수지에서 이미 돌려준 이벤트 청구. 정산 카드에서 한 번에 저수지에 갚을 돈으로 바꿀 수 있다 */
+    reservoirLoanSettled: { count: number; amount: Won };
     nextDue: ISODate | null;
     settledCount: number;
     settledAmount: Won;
@@ -649,6 +656,7 @@ export function planImport(
     rules: [...data.rules],
     expenses: [...data.expenses],
     transfers: [...data.transfers],
+    categories: [...data.categories],
   };
   const has = <T extends { id: Id }>(list: T[], id: Id) => list.some((r) => r.id === id);
 
@@ -725,7 +733,9 @@ export function planImport(
       merges.push({ table: 'categories', name: same.name, note: '있던 카테고리에 합쳐요' });
       continue;
     }
-    rows.categories.push({ id, name: c.name, icon: c.icon, defaultAccountRole: c.defaultAccountRole, order: catOrder++, deleted: false });
+    const catRow = { id, name: c.name, icon: c.icon, defaultAccountRole: c.defaultAccountRole, order: catOrder++, deleted: false };
+    rows.categories.push(catRow);
+    work.categories.push(catRow);
     categoryId.set(c.key, id);
   }
   const categoryOf = (key: string | null) => (key ? (categoryId.get(key) ?? null) : null);
@@ -861,6 +871,8 @@ export function planImport(
   let droppedEvent = 0;
   const pendingByPayer = new Map<string, { count: number; amount: Won }>();
   const reservoirByPayer = new Map<string, { count: number; amount: Won }>();
+  const reservoirLoanByPayer = new Map<string, { count: number; amount: Won }>();
+  const reservoirLoanSettled = { count: 0, amount: 0 };
   let settledCount = 0;
   let settledAmount = 0;
   let nextDue: ISODate | null = null;
@@ -896,8 +908,9 @@ export function planImport(
         const p = pendingByPayer.get(payer) ?? { count: 0, amount: 0 };
         pendingByPayer.set(payer, { count: p.count + 1, amount: p.amount + e.amount });
         if (accountRow(acc)?.role === 'reservoir') {
-          const q = reservoirByPayer.get(payer) ?? { count: 0, amount: 0 };
-          reservoirByPayer.set(payer, { count: q.count + 1, amount: q.amount + e.amount });
+          const bucket = isReservoirEventExpense(work, row) ? reservoirLoanByPayer : reservoirByPayer;
+          const q = bucket.get(payer) ?? { count: 0, amount: 0 };
+          bucket.set(payer, { count: q.count + 1, amount: q.amount + e.amount });
         }
         if (nextDue === null || due < nextDue) nextDue = due;
       } else {
@@ -914,6 +927,10 @@ export function planImport(
         }
         settledCount += 1;
         settledAmount += e.amount;
+        if (isReservoirEventExpense(work, row)) {
+          reservoirLoanSettled.count += 1;
+          reservoirLoanSettled.amount += e.amount;
+        }
       }
     }
     const balanceAcc = isClaimExpense(row) ? row.claimAccountId : row.accountId;
@@ -1014,6 +1031,8 @@ export function planImport(
       pending,
       pendingTotal: sum(pending),
       reservoirPending: [...reservoirByPayer.entries()].map(([payer, v]) => ({ payer, ...v })).sort((a, b) => b.amount - a.amount),
+      reservoirLoanPending: [...reservoirLoanByPayer.entries()].map(([payer, v]) => ({ payer, ...v })).sort((a, b) => b.amount - a.amount),
+      reservoirLoanSettled,
       nextDue,
       settledCount,
       settledAmount,

@@ -1,8 +1,8 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { formatMonthKo, formatWon, manWon, nextOccurrenceDate, nextOccurrenceId, seriesAnchorDay, usualSpendingInsight } from '@/domain';
-import type { Category, EventProjection, Id, PlannedEvent, UsualInsight } from '@/domain';
+import { formatMonthKo, formatWon, manWon, nextOccurrenceDate, nextOccurrenceId, projectWhatIf, seriesAnchorDay, usualSpendingInsight } from '@/domain';
+import type { Category, EventProjection, Id, PlannedEvent, UsualInsight, WhatIfChange } from '@/domain';
 import { useLedger } from '@/state';
 import {
   Button,
@@ -25,6 +25,8 @@ import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
 import { LoanCard } from './LoanCard';
 import { ProjectionCard } from './ProjectionCard';
+import { RecurringCard } from './RecurringCard';
+import { WhatIfCard } from './WhatIfCard';
 import {
   errorText,
   eventCategories,
@@ -199,6 +201,10 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
     () => (projection ? usualSpendingInsight(data, today, projection) : null),
     [data, today, projection],
   );
+  // 해 보기: 저장하지 않고 덮어씌운 예측 (null = 해 보기 아님). 화면을 떠나면 사라져요
+  const [whatIf, setWhatIf] = useState<WhatIfChange[] | null>(null);
+  const tried = useMemo(() => (whatIf ? projectWhatIf(data, today, whatIf) : null), [data, today, whatIf]);
+  const shown = tried ?? projection;
 
   return (
     <>
@@ -208,11 +214,13 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
           <SettlementCard />
           <LoanCard />
           <HashTarget />
-          <ProjectionCard projection={projection} today={today} />
+          <ProjectionCard projection={shown ?? projection} today={today} badge={tried ? '해 보는 중' : undefined} />
+          <WhatIfCard data={data} today={today} before={projection} after={tried} changes={whatIf} onChange={setWhatIf} />
           {insight ? <UsualInsightCard insight={insight} today={today} /> : null}
-          {projection.shortages.length > 0 ? (
+          {!tried && projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
           ) : null}
+          <RecurringCard data={data} today={today} categories={data.categories} />
         </>
       ) : (
         <NoEventAccount ledger={ledger} />

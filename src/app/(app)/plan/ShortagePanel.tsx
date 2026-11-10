@@ -58,6 +58,9 @@ export function ShortagePanel({ projection, fix, today }: ShortagePanelProps) {
     month && month.events.length > 0 ? `그달 일정 ${month.events.length}건 · ${formatWon(month.planned)} 예정` : '',
     month && month.usual > 0 ? `평소 쓰는 돈 ${formatWon(month.usual)}` : '',
     summary.others > 0 ? `그 뒤로 ${summary.others}개월 더 모자라요` : '',
+    (projection.range?.highShortages.length ?? 0) > projection.shortages.length
+      ? `많이 쓰면 ${projection.range!.highShortages.length}개월 모자라요`
+      : '',
   ]
     .filter(Boolean)
     .join(' · ');

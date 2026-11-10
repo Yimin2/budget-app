@@ -1,6 +1,8 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { addMonths, dateInMonth, formatDateKo, formatMonthKo, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
+import { addMonths, dateInMonth, formatDateKo, formatMonthKo, formatWon, manWon, monthOf, nextOccurrenceDate, tripBudget, tripEndDate } from '@/domain';
 import type {
+  LedgerData,
+  WhatIfChange,
   Category,
   EventProjection,
   Expense,
@@ -255,6 +257,8 @@ export interface BarsGeometry {
   /** 기준선 아래 칸 높이(px, 금액 글자 자리 포함). 음수 달이 없으면 0 */
   negArea: number;
   bars: Bar[];
+  /** 1원당 px (값 → 높이). 그릴 값이 없으면 0 */
+  scale: number;
 }
 
 /**
@@ -263,14 +267,16 @@ export interface BarsGeometry {
  */
 export function barsGeometry(
   months: Pick<ProjectionMonth, 'month' | 'endBalance'>[],
-  opts: { height?: number; labelRoom?: number; minPos?: number } = {},
+  opts: { height?: number; labelRoom?: number; minPos?: number; extent?: number[] } = {},
 ): BarsGeometry {
   const height = opts.height ?? 144;
   const labelRoom = opts.labelRoom ?? 22;
   const minPos = opts.minPos ?? 20;
   const values = months.map((m) => (Number.isFinite(m.endBalance) ? m.endBalance : 0));
-  const posMax = Math.max(0, ...values);
-  const negMax = Math.max(0, ...values.map((v) => -v));
+  // extent: 막대 말고도 칸 안에 그려야 할 값 (아끼면 · 많이 쓰면 범위)
+  const all = [...values, ...(opts.extent ?? []).filter((v) => Number.isFinite(v))];
+  const posMax = Math.max(0, ...all);
+  const negMax = Math.max(0, ...all.map((v) => -v));
 
   let posArea = height;
   let negArea = 0;
@@ -290,6 +296,7 @@ export function barsGeometry(
   return {
     posArea,
     negArea,
+    scale: Number.isFinite(scale) && scale > 0 ? scale : 0,
     bars: months.map((m, i) => {
       const v = values[i]!;
       return { month: m.month, value: v, pos: v > 0 ? px(v) : 0, neg: v < 0 ? px(v) : 0 };
@@ -364,4 +371,68 @@ export function hasUsual(projection: EventProjection): boolean {
 /** 평소 쓰는 돈 카테고리 줄: '경조사 35만 · 선물 15만 · 여행 12만' */
 export function usualCategoriesText(top: { name: string; amount: Won }[]): string {
   return top.map((c) => `${c.name} ${manWon(c.amount).replace(/원$/, '')}`).join(' · ');
+}
+
+/* ───────── 범위 (아끼면 / 많이 쓰면) ───────── */
+
+/** 예측에 범위 폭이 있는지 (기록이 없으면 띠 없이 보통 선만) */
+export function hasRange(projection: EventProjection): boolean {
+  const r = projection.range;
+  return Boolean(r && r.months.length === projection.months.length && (r.spreadLow > 0 || r.spreadHigh > 0));
+}
+
+/** 범위를 어떻게 정했는지 한 줄 */
+export function rangeNote(projection: EventProjection): string | null {
+  const r = projection.range;
+  if (!r || !hasRange(projection)) return null;
+  const how =
+    r.method === 'percentile'
+      ? `지난 ${r.points}개월 기록 중 가운데 절반(25~75%)`
+      : `지난 ${r.points}개월 기록의 표준편차`;
+  return `띠는 평소 쓰는 돈을 아끼면 · 많이 쓰면이에요. ${how}만큼 넓혔어요`;
+}
+
+/** 값(원) → 차트 칸 위에서부터 px (0 ~ 칸 높이로 자름) */
+export function yOf(geo: Pick<BarsGeometry, 'posArea' | 'negArea' | 'scale'>, value: Won): number {
+  const y = geo.posArea - value * geo.scale;
+  return Math.min(geo.posArea + geo.negArea, Math.max(0, y));
+}
+
+/* ───────── 해 보기 ───────── */
+
+export interface WhatIfTarget {
+  kind: WhatIfChange['kind'];
+  id: Id;
+  name: string;
+  /** 일정 날짜 · 여행 떠나는 날 */
+  date: ISODate;
+  /** 일정 예상 금액 · 여행 총예산 */
+  amount: Won;
+  repeat: Repeat;
+}
+
+/**
+ * 해 볼 수 있는 것: 이벤트통장의 예정 일정(날짜가 지난 것 포함) 중 예측 마지막 달까지인 것과, 끝나지 않은 여행. 날짜순
+ */
+export function whatIfTargets(data: LedgerData, today: ISODate, eventAccountId: Id | null, horizonMonths = 12): WhatIfTarget[] {
+  if (!eventAccountId) return [];
+  const last = addMonths(monthOf(today), horizonMonths - 1);
+  const out: WhatIfTarget[] = [];
+  for (const e of data.events) {
+    if (e.deleted || e.status !== 'planned' || e.accountId !== eventAccountId) continue;
+    if (monthOf(e.date) > last) continue;
+    out.push({ kind: 'event', id: e.id, name: e.name, date: e.date, amount: e.amount, repeat: e.repeat });
+  }
+  for (const t of data.trips) {
+    if (t.deleted || tripEndDate(t) < today || monthOf(t.startDate) > last) continue;
+    out.push({ kind: 'trip', id: t.id, name: t.name, date: t.startDate, amount: tripBudget(t), repeat: 'none' });
+  }
+  return out.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.name.localeCompare(b.name, 'ko')));
+}
+
+/** 변경 목록에서 한 대상의 변경을 바꿔 끼우기 (빈 변경은 뺀다) */
+export function setWhatIfChange(changes: WhatIfChange[], next: WhatIfChange): WhatIfChange[] {
+  const rest = changes.filter((c) => !(c.kind === next.kind && c.id === next.id));
+  const empty = !next.exclude && next.amount === undefined && next.date === undefined;
+  return empty ? rest : [...rest, next];
 }

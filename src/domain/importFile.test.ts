@@ -171,10 +171,25 @@ describe('planImport', () => {
       pending: [{ payer: '나래', count: 1, amount: 70_000 }, { payer: '가람', count: 1, amount: 9_000 }],
       pendingTotal: 79_000,
       reservoirPending: [],
+      reservoirLoanPending: [],
+      reservoirLoanSettled: { count: 0, amount: 0 },
       nextDue: '2026-11-25',
       settledCount: 1,
       settledAmount: 15_000,
     });
+  });
+
+  it('저수지통장의 이벤트 카테고리 청구는 저수지에서 빌려 줄 돈 · 갚을 돈으로 바꿀 수 있는 돌려준 청구로 따로 세요', () => {
+    const raw = sample();
+    (raw.expenses as unknown[]).push(
+      { key: 'r1', date: '2026-09-02', amount: 300_000, account: 'res', category: 'hobby', memo: '동호회 회비', claim: { payer: '가람', status: 'pending' } },
+      { key: 'r2', date: '2026-09-03', amount: 50_000, account: 'res', memo: '비상 수리', claim: { payer: '가람', status: 'pending' } },
+      { key: 'r3', date: '2026-08-02', amount: 200_000, account: 'res', category: 'hobby', memo: '캠핑 장비', claim: { payer: '나래', status: 'settled', settledDate: '2026-08-25' } },
+    );
+    const plan = planImport(base(), parsed(raw), CTX);
+    expect(plan.claims.reservoirLoanPending).toEqual([{ payer: '가람', count: 1, amount: 300_000 }]);
+    expect(plan.claims.reservoirPending).toEqual([{ payer: '가람', count: 1, amount: 50_000 }]);
+    expect(plan.claims.reservoirLoanSettled).toEqual({ count: 1, amount: 200_000 });
   });
 
   it('월급은 시작일 뒤 첫 월급날에 수입 한 건으로 들어가요', () => {
