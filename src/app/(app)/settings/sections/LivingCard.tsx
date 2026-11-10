@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import {
-  addMonths, defaultSpreadFor, formatDateKo, formatWon, hasLegacyLivingRow, HOLIDAY_YEARS, holidayTableEndingSoon, isMonthActive,
+  activeLivingRows, addMonths, defaultSpreadFor, isLivingOverride, livingOverridesOf, splitLivingRow, formatDateKo, formatWon, hasLegacyLivingRow, HOLIDAY_YEARS, holidayTableEndingSoon, isMonthActive,
   isValidDate, monthOf, normalizeDays, previewLivingItem, scheduleLabel, scheduleMode, scheduleOf, schedulePreviewText, WEEK_ORDER,
   WEEKDAY_SHORT, WEEKDAYS, WEEKENDS, type ScheduleMode,
 } from '@/domain';
@@ -79,6 +79,27 @@ function draftScheduleOf(f: FixedExpense | null): Pick<Draft, 'mode' | 'days' | 
   return { mode: scheduleMode(s), days: s.days ?? [...WEEKDAYS], skipHolidays: s.skipHolidays, perWeek: s.perWeek ?? 2 };
 }
 
+/** '2026-12' → '12월' (올해가 아니면 '2027년 1월') */
+function monthText(m: string, base: string): string {
+  const now = Number(base.slice(0, 4));
+  const y = Number(m.slice(0, 4));
+  const mm = Number(m.slice(5, 7));
+  return y === now ? `${mm}월` : `${y}년 ${mm}월`;
+}
+
+/** 고치는 중인 값으로 만든 저장할 행 */
+function nextOf(prev: FixedExpense, d: Draft, cat: Category | undefined): FixedExpense {
+  return {
+    ...prev,
+    name: cat?.name ?? prev.name,
+    categoryId: d.categoryId || null,
+    amount: d.amount!,
+    spread: d.spread,
+    ...scheduleFields(d),
+    accountId: d.accountId,
+  };
+}
+
 /**
  * 생활비 예산: 항목(카테고리)마다 한 달 예산과 쓰는 방식(하루에 나눠 쓰기 / 한 달 한도만).
  * 예전 방식의 '생활비' 한 줄이 있으면 항목으로 나누라고 안내하고, 나누면 그 줄은 이번 달부터 빼요.
@@ -91,6 +112,10 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const [split, setSplit] = useState<LivingDraft[] | null>(null);
   const [newOff, setNewOff] = useState('');
   const [offError, setOffError] = useState<string | undefined>(undefined);
+  // '이 달만 다른 금액' 넣는 칸 (고치는 항목 창 안)
+  const [ovMonth, setOvMonth] = useState('');
+  const [ovAmount, setOvAmount] = useState<number | null>(null);
+  const [ovError, setOvError] = useState<string | undefined>(undefined);
 
   const month = monthOf(ledger.today);
   const data = ledger.data;
@@ -100,14 +125,13 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const catPos = new Map(ledger.activeCategories.map((c, i) => [c.id, i]));
   const catRank = (f: FixedExpense) => (f.categoryId ? (catPos.get(f.categoryId) ?? Number.MAX_SAFE_INTEGER - 1) : Number.MAX_SAFE_INTEGER);
   const rows = visibleFixed(data.fixedExpenses, month)
-    .filter((f) => f.kind === 'living')
+    .filter((f) => f.kind === 'living' && !isLivingOverride(f))
     .sort((a, b) => (accountOrder.get(a.accountId) ?? 999) - (accountOrder.get(b.accountId) ?? 999) || catRank(a) - catRank(b));
   const categories = ledger.activeCategories.filter((c) => c.defaultAccountRole !== 'event');
   const legacy = hasLegacyLivingRow(data, month);
   const legacyRows = rows.filter((f) => f.categoryId === null && isMonthActive(month, f.startMonth, f.endMonth));
-  const thisMonthTotal = rows
-    .filter((f) => isMonthActive(month, f.startMonth, f.endMonth))
-    .reduce((s, f) => s + f.amount, 0);
+  // 이번 달 실제로 쓰는 금액 ('이 달만 다른 금액'이 있으면 그 금액)
+  const thisMonthTotal = activeLivingRows(data, month).reduce((s, f) => s + f.amount, 0);
   const accountId =
     ledger.myLivingAccountId ??
     ledger.living?.livingAccountId ??
@@ -146,6 +170,9 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
 
   function openEdit(f: FixedExpense) {
     setErrors({});
+    setOvMonth('');
+    setOvAmount(null);
+    setOvError(undefined);
     setDraft({ id: f.id, categoryId: f.categoryId ?? '', amount: f.amount, spread: f.spread, accountId: f.accountId, ...draftScheduleOf(f) });
   }
 
@@ -177,6 +204,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
       return;
     }
     const cat: Category | undefined = draft.categoryId ? catById.get(draft.categoryId) : undefined;
+    const splitsNow = !!editing && splitLivingRow(editing, nextOf(editing, draft, cat), month).length > 1;
     const ok = await run(
       'save',
       async () => {
@@ -198,17 +226,9 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         }
         const prev = data.fixedExpenses.find((f) => f.id === draft.id);
         if (!prev) throw new Error('생활비 예산을 찾을 수 없어요');
-        await ledger.saveFixed({
-          ...prev,
-          name: cat?.name ?? prev.name,
-          categoryId: draft.categoryId || null,
-          amount: draft.amount!,
-          spread: draft.spread,
-          ...scheduleFields(draft),
-          accountId: draft.accountId,
-        });
+        await ledger.saveLivingItem(prev.id, nextOf(prev, draft, cat));
       },
-      draft.id ? '생활비 예산을 저장했어요' : '생활비 항목을 추가했어요',
+      draft.id ? (splitsNow ? '이번 달부터 바꿨어요. 지난달은 그대로예요' : '생활비 예산을 저장했어요') : '생활비 항목을 추가했어요',
     );
     if (ok) setDraft(null);
   }
@@ -218,8 +238,8 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
     const { action, row } = confirm;
     const ok =
       action === 'end'
-        ? await run('end', () => ledger.saveFixed({ ...row, endMonth: month }), '다음 달부터 이 항목을 뺄게요')
-        : await run('delete', () => ledger.saveFixed({ ...row, deleted: true }), '생활비 항목을 지웠어요');
+        ? await run('end', () => ledger.saveLivingItem(row.id, { ...row, endMonth: month }), '다음 달부터 이 항목을 뺄게요')
+        : await run('delete', () => ledger.saveLivingItem(row.id, { ...row, deleted: true }), '생활비 항목을 지웠어요');
     if (ok) setConfirm(null);
   }
 
@@ -255,6 +275,32 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
       '생활비를 항목으로 나눴어요',
     );
     if (ok) setSplit(null);
+  }
+
+  // 이 항목의 '이 달만 다른 금액' (이번 달 이후)
+  const overrides = editing ? livingOverridesOf(data.fixedExpenses, editing, month) : [];
+  const editingEnd = editing?.endMonth || null;
+  const overrideMonths = Array.from({ length: 12 }, (_, i) => addMonths(month, i)).filter(
+    (m) => (!editingEnd || m <= editingEnd) && !overrides.some((o) => o.startMonth === m),
+  );
+  const startsBefore = !!editing && editing.startMonth < month;
+
+  async function addOverride() {
+    if (!editing) return;
+    if (!ovMonth) {
+      setOvError('달을 골라 주세요');
+      return;
+    }
+    if (ovAmount === null || ovAmount < 0) {
+      setOvError('금액을 입력해 주세요');
+      return;
+    }
+    setOvError(undefined);
+    const ok = await run('override', () => ledger.setLivingOverride(editing.id, ovMonth, ovAmount), `${monthText(ovMonth, month)}만 ${formatWon(ovAmount)}으로 할게요`);
+    if (ok) {
+      setOvMonth('');
+      setOvAmount(null);
+    }
   }
 
   const categoryOptions = [
@@ -338,6 +384,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         <ul className="list">
           {shownRows.map((f) => {
             const label = periodLabel(f.startMonth, f.endMonth, month);
+            const once = livingOverridesOf(data.fixedExpenses, f, month);
             return (
               <li key={f.id}>
                 <ListRow
@@ -357,6 +404,12 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                         <Badge size="sm" tone="info">
                           {label}
                         </Badge>
+                      ) : null}
+                      {once[0] ? (
+                        <span>
+                          {monthText(once[0].startMonth, month)}만 {formatWon(once[0].amount)}
+                          {once.length > 1 ? ` 외 ${once.length - 1}달` : ''}
+                        </span>
                       ) : null}
                     </span>
                   }
@@ -457,7 +510,12 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                 />
               </Field>
             ) : null}
-            <Field label="한 달 예산" error={errors.amount} required>
+            <Field
+              label="한 달 예산"
+              error={errors.amount}
+              required
+              hint={startsBefore ? `바꾸면 ${monthText(month, month)}부터 적용돼요. 지난달 계산은 그대로예요.` : undefined}
+            >
               <MoneyInput value={draft.amount} onChange={(v) => setDraft({ ...draft, amount: v })} data-autofocus="" />
             </Field>
             <div className="stack gap-2">
@@ -536,6 +594,53 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                   </p>
                 ) : null}
               </div>
+            ) : null}
+            {editing ? (
+              <section className="st-once" aria-labelledby="st-once-title">
+                <h3 className="st-label" id="st-once-title">
+                  이 달만 다른 금액
+                </h3>
+                <p className="st-desc">한 달만 예산이 다르면 넣어 주세요. 그 달만 평소 금액 대신 써요.</p>
+                {overrides.length > 0 ? (
+                  <ul className="st-once-list" aria-label="이 달만 다른 금액 목록">
+                    {overrides.map((o) => (
+                      <li key={o.id}>
+                        <span>
+                          {o.startMonth} · <strong>{formatWon(o.amount)}</strong>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          disabled={busy !== null}
+                          aria-label={`${o.startMonth} 금액 지우기`}
+                          onClick={() =>
+                            void run('override', () => ledger.setLivingOverride(editing.id, o.startMonth, null), `${monthText(o.startMonth, month)} 금액을 지웠어요`)
+                          }
+                        >
+                          지우기
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {overrideMonths.length > 0 ? (
+                  <div className="st-once-add">
+                    <Field label="달" error={ovError}>
+                      <Select
+                        value={ovMonth}
+                        onChange={(v) => setOvMonth(v)}
+                        options={overrideMonths.map((m) => ({ value: m, label: m }))}
+                        placeholder="달 고르기"
+                      />
+                    </Field>
+                    <Field label="그 달 금액">
+                      <MoneyInput value={ovAmount} onChange={(v) => setOvAmount(v)} />
+                    </Field>
+                    <Button variant="outline" icon="plus" onClick={() => void addOverride()} loading={busy === 'override'} disabled={busy !== null}>
+                      넣기
+                    </Button>
+                  </div>
+                ) : null}
+              </section>
             ) : null}
             {editing ? (
               <div className="st-danger">

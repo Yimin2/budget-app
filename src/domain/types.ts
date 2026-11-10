@@ -194,6 +194,11 @@ export interface FixedExpense {
   endDate?: ISODate | null;
   /** 고정비만: 세부 항목. 있으면 결제 금액 = 그 결제일에 살아 있는 항목 합 (amount 는 보기용 합계) */
   subItems?: FixedSubItem[] | null;
+  /**
+   * living 만: '이 달만 다른 금액' 행 (PLAN 4-1). startMonth = endMonth = 그 달이고, 그달 같은 통장 · 같은 항목의
+   * 평소 금액 대신 이 금액을 쓴다. 시트 '이달만' 빈 셀 = 아님 (예전 행은 모두 평소 행)
+   */
+  override?: boolean;
   deleted: boolean;
 }
 
