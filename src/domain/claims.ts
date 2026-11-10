@@ -1,6 +1,6 @@
 /**
  * 청구(돌려받기) — PLAN 4-9.
- * 누군가 이벤트통장·고정지출통장(생활비 포함)에 쓸 돈을 개인 돈으로 내면, 함께 쓰는 통장이 나중에 돌려준다.
+ * 누군가 이벤트통장·고정지출통장(생활비 포함)·저수지통장에 쓸 돈을 개인 돈으로 내면, 함께 쓰는 통장이 나중에 돌려준다.
  * - 지출 행에 낸 사람(paidBy) · 돌려받을 통장(claimAccountId) · 정산일(claimDue)을 적는다
  * - 돌려주면 이체 claim:<지출id> (함께 쓰는 통장 → 낸 사람 통장, 없으면 받는 통장 없이) 를 남긴다.
  *   이 이체가 있으면(지워지지 않은 완료 이체) 돌려준 것으로 본다 — 지출 행을 다시 쓰지 않아도 되고 다시 시도해도 하나만 생긴다
@@ -11,6 +11,7 @@ import { addMonths, dateInMonth, formatDateKo, isMonthActive, isValidDate, month
 import { activeAccountsSorted } from './internal';
 import { withSubject } from './korean';
 import { formatWon } from './money';
+import { ledgerPeople, personByName } from './people';
 import type { ClaimSummary, Expense, Id, ISODate, LedgerData, PendingClaim, Won } from './types';
 
 /** 정산일을 정할 규칙이 없을 때의 기본 월급날 */
@@ -156,10 +157,16 @@ export function computeClaimDue(
   return nextSettleDate(data, today, true);
 }
 
-/** 낸 사람 이름으로 돌려받을 통장 찾기: 그 사람이 주인인 수입통장 → 용돈 · 기타 통장. 없으면 null */
+/**
+ * 낸 사람 이름으로 돌려받을 통장 찾기.
+ * 1) 이 가계부의 사람(ledgerPeople)이면 그 사람과 이어진 통장
+ * 2) 아니면 그 이름이 주인인 수입통장 → 용돈 · 기타 통장 (예전 청구 · 아직 초대하지 않은 사람). 없으면 null
+ */
 export function claimAccountFor(data: LedgerData, payer: string): Id | null {
   const name = payer.trim();
   if (!name) return null;
+  const person = personByName(data, name);
+  if (person?.accountId) return person.accountId;
   const owned = activeAccountsSorted(data).filter((a) => (a.ownerName ?? '').trim() === name);
   const rank = (role: string) => (role === 'income' ? 0 : role === 'allowance' ? 1 : role === 'other' ? 2 : 3);
   owned.sort((a, b) => rank(a.role) - rank(b.role));
@@ -167,21 +174,14 @@ export function claimAccountFor(data: LedgerData, payer: string): Id | null {
   return best && rank(best.role) < 3 ? best.id : null;
 }
 
-/** 낸 사람으로 고를 수 있는 이름: 통장 주인(수입통장 먼저) → 멤버 표시 이름. 겹치면 한 번 */
+/** 낸 사람으로 고를 수 있는 이름: 이 가계부의 사람(멤버)만, 한 번씩 (PLAN 4-9) */
 export function claimPayers(data: LedgerData): string[] {
   const out: string[] = [];
-  const add = (n: string | null | undefined) => {
-    const v = (n ?? '').trim();
-    if (v && !out.includes(v)) out.push(v);
-  };
-  const accounts = activeAccountsSorted(data);
-  for (const a of accounts) if (a.role === 'income') add(a.ownerName);
-  for (const a of accounts) if (a.role !== 'income') add(a.ownerName);
-  for (const m of data.members) add(m.displayName);
+  for (const p of ledgerPeople(data)) if (p.name && !out.includes(p.name)) out.push(p.name);
   return out;
 }
 
-/** 청구할 수 있는 통장인지: 이벤트통장 · 고정지출통장 · 저수지통장(생활비 포함) · 저수지통장 */
+/** 청구할 수 있는 통장인지: 이벤트통장 · 고정지출통장(생활비 포함) · 저수지통장 */
 export function canClaimOnAccount(data: LedgerData, accountId: Id): boolean {
   const role = data.accounts.find((a) => a.id === accountId)?.role;
   return role === 'event' || role === 'fixed' || role === 'reservoir';

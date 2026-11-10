@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { current, renderApp, startDemo } from '../_components/__tests__/harness';
 
@@ -105,6 +105,26 @@ describe('지출 화면', () => {
     const added = current(h).ledger.data!.expenses.find((e) => e.memo === '반찬')!;
     expect(added).toMatchObject({ accountId: 'demo-acc-fixed', paidBy: '준호', claimDue: '2026-12-01' });
     expect(within(list()).getAllByText('준호 돌려받기 전').length).toBeGreaterThan(0);
+  });
+
+  it('낸 사람은 멤버만 고를 수 있고, 예전 청구에 적힌 다른 이름은 그 지출을 고칠 때 보여요', async () => {
+    const h = await open();
+    await act(async () => {
+      await current(h).ledger.addExpense({
+        date: '2026-11-20', amount: 9_000, accountId: 'demo-acc-fixed', categoryId: null, memo: '예전 청구', paidBy: '가온',
+      });
+    });
+    expect(current(h).ledger.claimPayers).toEqual(['민지', '준호']);
+    const row = within(list()).getAllByText('예전 청구')[0]!.closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button'));
+    const dialog = await screen.findByRole('dialog', { name: '지출 고치기' });
+    const payer = within(dialog).getByLabelText(/누가 냈나요/) as HTMLSelectElement;
+    expect(payer.value).toBe('가온');
+    const names = () => [...payer.options].filter((o) => !o.disabled).map((o) => o.value);
+    expect(names()).toEqual(['민지', '준호', '가온']);
+    // 다른 사람으로 바꿔도 원래 이름은 목록에 남아 되돌릴 수 있어요
+    fireEvent.change(payer, { target: { value: '준호' } });
+    expect(names()).toEqual(['민지', '준호', '가온']);
   });
 
   it('개인 돈으로 냈어요를 고른 채 청구할 수 없는 통장으로 바꾸면 기록하지 않고 알려 줘요', async () => {

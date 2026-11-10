@@ -6,6 +6,7 @@ export * from './balances';
 export * from './living';
 export * from './events';
 export * from './claims';
+export * from './people';
 export * from './installments';
 export * from './trips';
 export * from './verdict';

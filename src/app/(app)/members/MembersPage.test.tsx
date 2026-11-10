@@ -44,6 +44,37 @@ describe('멤버 화면', () => {
     expect((email as HTMLInputElement).value).toBe('');
   });
 
+  it('수입통장: 초대할 때 고르고, 멤버 줄에서 바꿔 이어요', async () => {
+    const h = renderApp(<MembersPage />);
+    await startDemo(h);
+    let extraId = '';
+    await act(async () => {
+      extraId = (await current(h).ledger.addAccount({ name: '새 수입통장', role: 'income', openingBalance: 0 })).id;
+    });
+    const accountOf = (id: string) => current(h).ledger.data!.accounts.find((a) => a.id === id)!;
+    const junhoIncome = current(h).ledger.data!.accounts.find((a) => a.ownerEmail === 'junho@demo')!.id;
+
+    // 멤버 줄마다 수입통장이 보여요 (체험: 민지 · 준호)
+    const rowOf = (email: string) => screen.getByText(email).closest('li') as HTMLElement;
+    const junhoSelect = within(rowOf('junho@demo')).getByRole('combobox', { name: '수입통장' }) as HTMLSelectElement;
+    expect(junhoSelect.value).toBe(junhoIncome);
+
+    // 초대하면서 수입통장을 고르면 그 통장 주인이 돼요
+    fireEvent.change(screen.getByLabelText(/^이메일/), { target: { value: 'sora@example.com' } });
+    fireEvent.change(screen.getByLabelText(/표시 이름/), { target: { value: '최소라' } });
+    const inviteCard = screen.getByRole('heading', { level: 2, name: '멤버 초대' }).closest('.card') as HTMLElement;
+    fireEvent.change(within(inviteCard).getByRole('combobox', { name: /수입통장/ }), { target: { value: extraId } });
+    fireEvent.click(screen.getByRole('button', { name: '초대하기' }));
+    await waitFor(() => expect(accountOf(extraId).ownerEmail).toBe('sora@example.com'));
+    expect(accountOf(extraId).ownerName).toBe('최소라');
+
+    // 준호 줄에서 그 통장으로 바꾸면: 그 통장은 준호 것, 준호의 예전 통장 · 소라는 이메일이 비워져요
+    fireEvent.change(within(rowOf('junho@demo')).getByRole('combobox', { name: '수입통장' }), { target: { value: extraId } });
+    await waitFor(() => expect(accountOf(extraId).ownerEmail).toBe('junho@demo'));
+    expect(accountOf(junhoIncome).ownerEmail).toBeNull();
+    expect(await screen.findByText('수입통장을 이었어요')).toBeTruthy();
+  });
+
   it('개인 가계부는 초대 대신 안내', async () => {
     const h = renderApp(<MembersPage />);
     await startDemo(h);

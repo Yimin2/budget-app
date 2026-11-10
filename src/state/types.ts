@@ -119,7 +119,7 @@ export interface LedgerApi {
   // 청구 (개인 돈으로 내고 돌려받기)
   /** 돌려받을 돈 요약 (data 가 있을 때) */
   claims: ClaimSummary | null;
-  /** 낸 사람으로 고를 수 있는 이름 (통장 주인 · 멤버) */
+  /** 낸 사람으로 고를 수 있는 이름 (이 가계부의 멤버, 이어진 통장 주인 이름으로 한 번씩) */
   claimPayers: string[];
   /** 이 통장에서 이 금액을 개인 돈으로 내면 돌려줄 날 (청구할 수 없는 통장이면 null). expenseId: 고치는 지출 */
   previewClaimDue(accountId: Id, amount: Won, expenseId?: Id): ISODate | null;
@@ -217,7 +217,14 @@ export interface LedgerApi {
   // 월말
   decideMonthEnd(choice: 'reservoir' | 'carryover'): Promise<void>;
   // 멤버
-  inviteMember(email: string, displayName: string): Promise<void>;
+  /** 멤버 초대. incomeAccountId 를 주면 그 수입통장과 이어요 (linkMemberAccount) */
+  inviteMember(email: string, displayName: string, incomeAccountId?: Id | null): Promise<void>;
+  /**
+   * 멤버와 통장 잇기: 그 통장의 주인 이메일을 멤버 이메일로 바꾸고, 같은 이메일인 다른 통장은 비워요.
+   * accountId=null 이면 이어진 통장을 모두 풀어요
+   */
+  linkMemberAccount(email: string, accountId: Id | null): Promise<void>;
   renameLedger(name: string): Promise<void>;
+  /** 기록한 사람 이름: 멤버면 이어진 통장 주인 이름 → 표시 이름, 아니면 이메일 앞부분 */
   displayName(email: string): string;
 }

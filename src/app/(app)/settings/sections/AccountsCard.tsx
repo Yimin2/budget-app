@@ -83,6 +83,8 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
               openingBalance: balance,
               openingDate: draft.openingDate || prev.openingDate,
             });
+            // 한 이메일은 한 통장에만: 같은 주인 이메일인 다른 통장은 비워요 (멤버 화면의 수입통장과 같게)
+            if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, prev.id);
           },
           '통장을 저장했어요',
         )
@@ -93,10 +95,19 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             if (draft.openingDate && draft.openingDate !== created.openingDate) {
               await ledger.saveAccount({ ...created, openingDate: draft.openingDate });
             }
+            if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, created.id);
           },
           '통장을 추가했어요',
         );
     if (ok) setDraft(null);
+  }
+
+  /** 주인 이메일이 멤버면 이어진다고 알려 줘요 */
+  function ownerEmailHint(email: string): string | undefined {
+    const clean = email.trim().toLowerCase();
+    const member = clean ? ledger.data.members.find((m) => m.email.toLowerCase() === clean) : undefined;
+    if (member) return `멤버 ${member.displayName || member.email}님과 이어져요. 다른 통장에 같은 이메일이 있으면 비워요.`;
+    return isShared ? '멤버 이메일을 적으면 그 멤버와 이어져요.' : undefined;
   }
 
   async function remove(a: Account) {
@@ -216,7 +227,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                 onChange={(e) => setDraft({ ...draft, ownerName: e.target.value })}
               />
             </Field>
-            <Field label="주인 이메일" optional error={emailError}>
+            <Field label="주인 이메일" optional error={emailError} hint={ownerEmailHint(draft.ownerEmail)}>
               <TextInput
                 type="email"
                 inputMode="email"

@@ -276,6 +276,9 @@
 }
 
 /* 멤버 */
+.mb-income {
+  padding: 0 var(--space-4) var(--space-3);
+}
 .mb-steps {
   display: flex;
   flex-direction: column;

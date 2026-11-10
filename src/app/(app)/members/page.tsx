@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
+import { ledgerPeople } from '@/domain';
+import type { Member } from '@/domain/types';
 import { buildInviteLink, useSession } from '@/state';
-import { Avatar, Badge, Banner, Button, Card, EmptyState, Field, ListRow, PageHeader, TextInput, useToast } from '@/ui';
+import { Avatar, Badge, Banner, Button, Card, EmptyState, Field, ListRow, PageHeader, Select, TextInput, useToast } from '@/ui';
 import { isEmail } from '@/app/start/new/wizard';
 import { PageSkeleton } from '../_components/PageSkeleton';
 import { RequireLedger, type ReadyLedger } from '../_components/RequireLedger';
 import { spreadsheetUrl } from '../settings/helpers';
+import { useRunner } from '../settings/useRunner';
 
 /** 멤버: 목록 · 이메일로 초대 (구글 시트 공유) */
 export default function MembersPage() {
@@ -30,6 +33,8 @@ function Members({ ledger }: { ledger: ReadyLedger }) {
     return am - bm || a.displayName.localeCompare(b.displayName, 'ko');
   });
   const isShared = ledger.data.settings.kind === 'shared';
+  const people = new Map(ledgerPeople(ledger.data).map((p) => [p.email.toLowerCase(), p]));
+  const canLink = isShared && ledger.incomeAccounts.length > 0;
 
   return (
     <div className="st-grid">
@@ -40,17 +45,18 @@ function Members({ ledger }: { ledger: ReadyLedger }) {
           <ul className="list">
             {members.map((m, i) => {
               const mine = m.email.toLowerCase() === me;
+              const name = people.get(m.email.toLowerCase())?.name || m.displayName || m.email;
               return (
                 <li key={m.email}>
                   <ListRow
                     leading={
                       <Avatar
-                        name={m.displayName || m.email}
+                        name={name}
                         src={mine ? (session.user?.picture ?? null) : null}
                         alt={i % 2 === 1}
                       />
                     }
-                    title={m.displayName || m.email}
+                    title={name}
                     subtitle={m.email}
                     trailing={
                       mine ? (
@@ -60,6 +66,7 @@ function Members({ ledger }: { ledger: ReadyLedger }) {
                       ) : undefined
                     }
                   />
+                  {canLink ? <IncomeLink ledger={ledger} member={m} linkedId={people.get(m.email.toLowerCase())?.accountId ?? null} /> : null}
                 </li>
               );
             })}
@@ -75,10 +82,30 @@ function Members({ ledger }: { ledger: ReadyLedger }) {
   );
 }
 
+/** 멤버 한 줄의 수입통장 고르기: 고르면 그 통장의 주인 이메일이 이 멤버가 돼요 (청구 · 낸 사람 이름에 쓰여요) */
+function IncomeLink({ ledger, member, linkedId }: { ledger: ReadyLedger; member: Member; linkedId: string | null }) {
+  const { busy, run } = useRunner();
+  const income = ledger.incomeAccounts;
+  const value = linkedId && income.some((a) => a.id === linkedId) ? linkedId : '';
+  return (
+    <Field label="수입통장" className="mb-income">
+      <Select
+        value={value}
+        disabled={busy !== null}
+        onChange={(v) =>
+          void run('link', () => ledger.linkMemberAccount(member.email, v || null), v ? '수입통장을 이었어요' : '수입통장을 풀었어요')
+        }
+        options={[{ value: '', label: '없음' }, ...income.map((a) => ({ value: a.id, label: a.name }))]}
+      />
+    </Field>
+  );
+}
+
 function InviteCard({ ledger }: { ledger: ReadyLedger }) {
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [incomeId, setIncomeId] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   /** 방금 초대한 사람 (링크를 보내 달라고 알려 줘요) */
@@ -98,11 +125,12 @@ function InviteCard({ ledger }: { ledger: ReadyLedger }) {
     setError(undefined);
     setBusy(true);
     try {
-      await ledger.inviteMember(clean, name);
+      await ledger.inviteMember(clean, name, incomeId || null);
       toast.success(isLocal ? '멤버로 기록했어요' : `${name.trim() || clean}님에게 시트를 공유했어요`);
       setInvited(name.trim() || clean);
       setEmail('');
       setName('');
+      setIncomeId('');
     } catch (e) {
       toast.error(e instanceof Error && e.message ? e.message : '초대하지 못했어요. 잠시 뒤 다시 시도해 주세요');
     } finally {
@@ -141,6 +169,15 @@ function InviteCard({ ledger }: { ledger: ReadyLedger }) {
         <Field label="표시 이름" optional hint="기록에 보일 이름이에요. 비우면 이메일 앞부분을 써요.">
           <TextInput value={name} maxLength={20} onChange={(e) => setName(e.target.value)} />
         </Field>
+        {ledger.incomeAccounts.length > 0 ? (
+          <Field label="수입통장" optional hint="이 사람 월급이 들어오는 통장이에요. 청구에서 이 통장 주인 이름으로 보여요.">
+            <Select
+              value={incomeId}
+              onChange={setIncomeId}
+              options={[{ value: '', label: '없음' }, ...ledger.incomeAccounts.map((a) => ({ value: a.id, label: a.name }))]}
+            />
+          </Field>
+        ) : null}
         <div>
           <Button type="submit" icon="user-plus" loading={busy}>
             초대하기
