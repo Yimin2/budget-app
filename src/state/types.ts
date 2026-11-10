@@ -99,6 +99,12 @@ export interface NewEvent {
 }
 
 /** 선택된 가계부의 데이터·계산값·행동 */
+/** 고치기 · 취소하기 전 행 (되돌리기용) */
+export interface RowSnapshot {
+  expenses: Expense[];
+  transfers: Transfer[];
+}
+
 export interface LedgerApi {
   status: 'idle' | 'loading' | 'ready' | 'error';
   error: string | null;
@@ -184,6 +190,19 @@ export interface LedgerApi {
   convertSettledReservoirClaims(expenseIds: Id[]): Promise<void>;
   /** 위 두 가지 되돌리기 (borrowed = 아직 안 돌려준 청구로, converted = 저수지에서 돌려준 청구로) */
   undoReservoirClaims(expenseIds: Id[], mode: 'borrowed' | 'converted'): Promise<void>;
+  /**
+   * 지급 취소 (정산 화면 '지급한 기록'): 돌려준 이체와 빌린 이체(있으면)를 지우고, 빌려 지급하며 옮긴 저수지 지출은 저수지로 되돌려요.
+   * 다시 해도 같아요. 바꾸기 전 행을 돌려줘요 (restoreRows 로 되돌리기)
+   */
+  undoClaimPayments(expenseIds: Id[]): Promise<RowSnapshot>;
+  /** 빌린 기록만 취소 (지급은 그대로). 옮긴 저수지 지출이면 지출 · 돌려준 이체를 저수지로 되돌려요 */
+  cancelClaimLoans(expenseIds: Id[]): Promise<RowSnapshot>;
+  /** 갚은 기록(loanpay:) 또는 지출을 바꾼 빌린 기록(loan:<지출id>) 하나 취소 */
+  cancelLoanTransfer(transferId: Id): Promise<RowSnapshot>;
+  /** 빌린 · 갚은 이체의 금액만 고치기 (저수지에 갚을 돈 셈만 바뀌어요) */
+  updateLoanAmount(transferId: Id, amount: Won): Promise<RowSnapshot>;
+  /** 위 고치기 · 취소 되돌리기: 바꾸기 전 행을 다시 써요 */
+  restoreRows(snapshot: RowSnapshot): Promise<void>;
   /** 저수지에 갚았어요: 이번 달 이체 loanpay:<월> (이벤트통장 → 저수지) */
   repayLoan(amount: Won): Promise<void>;
   /** 이번 달 갚은 기록 되돌리기 */

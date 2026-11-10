@@ -16,7 +16,9 @@ import { Badge, Button, Card, EmptyState, Icon, PageHeader, cx, isIconName } fro
 import { PageSkeleton, RequireLedger, type ReadyLedger } from '../../_components';
 import { useSettleActions } from '../../_components/SettlementCard';
 import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
+import { HashTarget } from '../../_components/HashTarget';
 import { LoanSection } from '../LoanCard';
+import { PaidSection } from './PaidSection';
 import claims from '../../_components/claims.module.css';
 import styles from './settle.module.css';
 
@@ -25,7 +27,7 @@ import styles from './settle.module.css';
  * 지급할 수 있는 돈과 어떻게 셌는지 → 사람마다 항목 목록(전체 선택 · 사람 선택 · 항목 선택) → 고른 합 막대 · [지급했어요].
  * 고른 이벤트통장 청구가 지급할 수 있는 돈보다 많으면 넘는 금액을 보이고 [저수지에서 빌려 지급].
  * 저수지 돈으로 낸 이벤트 청구는 사람 목록 안에 '저수지에서 빌려 지급' 표시로 함께 있어요 (저수지는 받는 사람이 아니에요).
- * 맨 아래 '저수지' 칸(#loan)에 빌리고 갚은 기록 · 하나씩 갚을 돈으로 바꾸기가 있어요
+ * 그 아래 '지급한 기록'(#paid, [지급 취소])과 맨 아래 '저수지' 칸(#loan: 빌리고 갚은 기록의 금액 고치기 · 취소, 하나씩 갚을 돈으로 바꾸기)이 있어요
  */
 export function SettleScreen() {
   return (
@@ -58,7 +60,9 @@ function SettleBody({ ledger }: { ledger: ReadyLedger }) {
   }
   return (
     <>
+      <HashTarget />
       <SettleContent ledger={ledger} s={s} />
+      <PaidSection />
       <LoanSection />
     </>
   );

@@ -2,11 +2,10 @@
 
 import Link from 'next/link';
 import { useId, useState } from 'react';
-import { formatMan, formatShortDate, formatWon, settledReservoirEventClaims } from '@/domain';
-import type { Expense, LedgerData } from '@/domain';
-import { useLedger } from '@/state';
-import { Badge, Button, Card, Icon, useToast } from '@/ui';
-import { HashTarget } from '../_components/HashTarget';
+import { formatMan, formatShortDate, formatWon, hasBatchim, loanRecords, settledReservoirEventClaims } from '@/domain';
+import type { Expense, LedgerData, LoanRecord } from '@/domain';
+import { useLedger, type RowSnapshot } from '@/state';
+import { Badge, Button, Card, Icon, MoneyInput, useToast } from '@/ui';
 import styles from '../_components/claims.module.css';
 
 /** 정산 화면의 저수지 칸 (빌리고 갚은 기록 · 하나씩 바꾸기) */
@@ -21,24 +20,35 @@ function expenseTitle(data: LedgerData, e: Expense): string {
   return cat ?? '지출';
 }
 
-/** 저장 → 알림(되돌리기 버튼은 undo 가 있을 때만). 한 번에 하나만 눌려요 */
-function useLoanActions() {
+/**
+ * 저장 → 알림(되돌리기 버튼은 undo 가 있거나, 작업이 바꾸기 전 행을 돌려줬을 때 restoreRows 로). 한 번에 하나만 눌려요.
+ * 성공하면 true
+ */
+export function useLoanActions() {
+  const ledger = useLedger();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function act(key: string, work: () => Promise<void>, message: string, undo?: () => Promise<void>) {
-    if (busy) return;
+  async function act(
+    key: string,
+    work: () => Promise<RowSnapshot | void>,
+    message: string,
+    undo?: () => Promise<void>,
+  ): Promise<boolean> {
+    if (busy) return false;
     setBusy(key);
     try {
-      await work();
+      const before = await work();
+      const restore =
+        undo ?? (before && (before.expenses.length > 0 || before.transfers.length > 0) ? () => ledger.restoreRows(before) : undefined);
       toast.success(
         message,
-        undo
+        restore
           ? {
               action: {
                 label: '되돌리기',
                 onClick: () => {
-                  undo().then(
+                  restore().then(
                     () => toast.show('되돌렸어요'),
                     (e: unknown) => toast.error(errorText(e, '되돌리지 못했어요')),
                   );
@@ -47,8 +57,10 @@ function useLoanActions() {
             }
           : undefined,
       );
+      return true;
     } catch (e) {
       toast.error(errorText(e, '저장하지 못했어요'));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -152,24 +164,54 @@ export function LoanCard() {
 
 /**
  * 정산 화면 맨 아래 '저수지' 칸 (id="loan"). 이벤트 화면 저수지 카드의 링크로 들어와요.
- * 저수지에서 쓴 이벤트 지출을 하나씩 갚을 돈으로 바꾸기 · 빌리고 갚은 기록(바꾼 지출은 되돌리기). 펼치기 없이 그대로 보여요
+ * 저수지에서 쓴 이벤트 지출을 하나씩 갚을 돈으로 바꾸기 · 빌리고 갚은 기록(최근 순). 기록마다 [금액 고치기](그 줄이 금액 칸 + [저장] / [취소]로)와
+ * [취소]: 청구를 빌려 지급한 기록은 그 자리에서 "지급도 함께 취소할까요?" (지급까지 취소 / 빌린 기록만 취소), 지출을 바꾼 기록은 지출을 저수지로 되돌리고,
+ * 갚은 기록은 지워요. 창은 띄우지 않아요
  */
 export function LoanSection() {
   const ledger = useLedger();
   const titleId = useId();
   const { act, lock } = useLoanActions();
+  const [editing, setEditing] = useState<{ id: string; amount: number | null } | null>(null);
+  const [asking, setAsking] = useState<string | null>(null);
   const s = ledger.settlement;
   const data = ledger.data;
   if (!s || !data || !s.reservoirAccountId) return null;
   const { loan } = s;
   const candidates = ledger.loanCandidates;
-  const history = loan.entries.length + loan.repayments.length;
-  if (history === 0 && candidates.length === 0) return null;
+  const records = loanRecords(loan);
+  if (records.length === 0 && candidates.length === 0) return null;
   const expenseById = new Map(data.expenses.map((e) => [e.id, e]));
+
+  const nameOf = (r: LoanRecord): string => {
+    if (r.kind === 'repay') return '저수지에 갚음';
+    const e = expenseById.get(r.expenseId);
+    const name = e ? expenseTitle(data, e) : r.transfer.memo;
+    return r.kind === 'claim' && e?.paidBy ? `${e.paidBy}에게 지급 · ${name}` : name;
+  };
+
+  const save = async (r: LoanRecord, amount: number | null) => {
+    if (amount === null || !(amount > 0)) return;
+    const ok = await act(`edit:${r.transfer.id}`, () => ledger.updateLoanAmount(r.transfer.id, amount), `금액을 ${formatWon(amount)}으로 고쳤어요`);
+    if (ok) setEditing(null);
+  };
+
+  const cancel = (r: LoanRecord) => {
+    const name = nameOf(r);
+    if (r.kind === 'claim') {
+      setEditing(null);
+      setAsking(r.transfer.id);
+      return;
+    }
+    void act(
+      `cancel:${r.transfer.id}`,
+      () => ledger.cancelLoanTransfer(r.transfer.id),
+      r.kind === 'repay' ? '갚은 기록을 취소했어요' : `${name}${hasBatchim(name) ? '을' : '를'} 저수지 지출로 되돌렸어요`,
+    );
+  };
 
   return (
     <Card as="section" id="loan" aria-labelledby={titleId}>
-      <HashTarget />
       <h2 id={titleId} className="card-title">
         저수지 · 갚을 돈 {formatMan(loan.balance)}
       </h2>
@@ -214,46 +256,125 @@ export function LoanSection() {
         </>
       ) : null}
 
-      {history > 0 ? (
+      {records.length > 0 ? (
         <>
-          <h3 className={styles.sectionHead}>빌리고 갚은 기록 {history}건</h3>
+          <h3 className={styles.sectionHead}>빌리고 갚은 기록 {records.length}건</h3>
           <ul className={styles.moreList} aria-label="빌리고 갚은 기록">
-            {loan.entries.map(({ transfer: t, kind, expenseId }) => {
-              const e = expenseById.get(expenseId);
-              const name = e ? expenseTitle(data, e) : t.memo;
+            {records.map((r) => {
+              const t = r.transfer;
+              const name = nameOf(r);
+              const isEditing = editing?.id === t.id;
+              const isAsking = asking === t.id;
               return (
-                <li key={t.id}>
-                  <span className={styles.moreTitle}>
-                    {kind === 'claim' && e?.paidBy ? `${e.paidBy}에게 지급 · ${name}` : name}{' '}
-                    <Badge tone="info" size="sm" dot={false}>
-                      저수지에서 지급
-                    </Badge>
-                    <span className={styles.moreMeta}>{formatShortDate(t.date)} · 빌림</span>
-                  </span>
-                  <span className={styles.moreAmount}>{formatWon(t.amount)}</span>
-                  {kind === 'expense' ? (
-                    <Button
-                      variant="ghost"
-                      className={styles.moreBtn}
-                      {...lock(`unconv:${expenseId}`)}
-                      onClick={() => void act(`unconv:${expenseId}`, () => ledger.unconvertLoan([expenseId]), '저수지 지출로 되돌렸어요')}
-                      aria-label={`${name} 저수지 지출로 되돌리기`}
+                <li key={t.id} className={styles.recordItem} data-testid={`loan-row-${t.id}`}>
+                  <div className={styles.recordLine}>
+                    <span className={styles.moreTitle}>
+                      {name}
+                      {r.kind !== 'repay' ? (
+                        <>
+                          {' '}
+                          <Badge tone="info" size="sm" dot={false}>
+                            저수지에서 지급
+                          </Badge>
+                        </>
+                      ) : null}
+                      <span className={styles.moreMeta}>
+                        {formatShortDate(t.date)} · {r.kind === 'repay' ? '갚음' : '빌림'}
+                      </span>
+                    </span>
+                    {isEditing ? null : (
+                      <span className={styles.moreAmount}>
+                        {r.kind === 'repay' ? '−' : ''}
+                        {formatWon(t.amount)}
+                      </span>
+                    )}
+                  </div>
+                  {isEditing ? (
+                    <form
+                      className={styles.recordEdit}
+                      onSubmit={(ev) => {
+                        ev.preventDefault();
+                        void save(r, editing.amount);
+                      }}
                     >
-                      되돌리기
-                    </Button>
-                  ) : null}
+                      <MoneyInput
+                        aria-label={`${name} 금액`}
+                        value={editing.amount}
+                        onChange={(v) => setEditing({ id: t.id, amount: v })}
+                        autoFocus
+                      />
+                      <Button
+                        type="submit"
+                        className={styles.moreBtn}
+                        {...lock(`edit:${t.id}`)}
+                        disabled={editing.amount === null || !(editing.amount > 0) || lock(`edit:${t.id}`).disabled}
+                      >
+                        저장
+                      </Button>
+                      <Button type="button" variant="ghost" className={styles.moreBtn} onClick={() => setEditing(null)}>
+                        취소
+                      </Button>
+                    </form>
+                  ) : isAsking ? (
+                    <div className={styles.recordAsk} role="group" aria-label={`${name} 취소`}>
+                      <p className={styles.rowText}>지급도 함께 취소할까요?</p>
+                      <div className={styles.recordBtns}>
+                        <Button
+                          variant="outline"
+                          className={styles.moreBtn}
+                          {...lock(`unpay:${r.expenseId}`)}
+                          onClick={() =>
+                            void act(`unpay:${r.expenseId}`, () => ledger.undoClaimPayments([r.expenseId!]), '지급과 빌린 기록을 함께 취소했어요').then(
+                              (ok) => ok && setAsking(null),
+                            )
+                          }
+                        >
+                          지급까지 취소
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className={styles.moreBtn}
+                          {...lock(`unloan:${r.expenseId}`)}
+                          onClick={() =>
+                            void act(`unloan:${r.expenseId}`, () => ledger.cancelClaimLoans([r.expenseId!]), '빌린 기록만 취소했어요').then(
+                              (ok) => ok && setAsking(null),
+                            )
+                          }
+                        >
+                          빌린 기록만 취소
+                        </Button>
+                        <Button variant="ghost" className={styles.moreBtn} onClick={() => setAsking(null)}>
+                          그대로 두기
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.recordBtns}>
+                      <Button
+                        variant="ghost"
+                        className={styles.moreBtn}
+                        onClick={() => {
+                          setAsking(null);
+                          setEditing({ id: t.id, amount: t.amount });
+                        }}
+                        aria-label={`${name} 금액 고치기`}
+                      >
+                        금액 고치기
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className={styles.moreBtn}
+                        {...lock(`cancel:${t.id}`)}
+                        onClick={() => cancel(r)}
+                        aria-label={`${name} 취소`}
+                      >
+                        취소
+                      </Button>
+                    </div>
+                  )}
                 </li>
               );
             })}
-            {loan.repayments.map((t) => (
-              <li key={t.id}>
-                <span className={styles.moreTitle}>
-                  저수지에 갚음
-                  <span className={styles.moreMeta}>{formatShortDate(t.date)}</span>
-                </span>
-                <span className={styles.moreAmount}>−{formatWon(t.amount)}</span>
-              </li>
-            ))}
           </ul>
         </>
       ) : null}

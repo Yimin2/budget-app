@@ -57,16 +57,18 @@ function nextText(sum: SettlementSummary, baseYear: number): string | null {
 }
 
 /**
- * 이번 달 정산 한 줄 요약 (PLAN 4-9). 이벤트 화면과 홈(compact, 지금 돌려줄 돈이 있을 때)에 보여요.
- * '이번 달 줄 돈 32.4만 (민구 30만 · 기쁜 2.4만) · 11/21 [정산하기]'. 항목 고르기 · 지급은 정산 화면(/plan/settle)에서 해요.
- * 아직 안 돌려준 청구가 하나도 없으면 그리지 않아요
+ * 이번 달 정산 한 줄 요약 (PLAN 4-9). 이벤트 화면과 홈에 보여요.
+ * '이번 달 줄 돈 32.4만 (민구 30만 · 기쁜 2.4만) · 11/21 [정산하기]', 줄 돈이 없으면 '이번 달 줄 돈이 없어요 · 다음 정산 12/21 2.4만'.
+ * 항목 고르기 · 지급은 정산 화면(/plan/settle)에서 해요. 아직 안 돌려준 청구가 하나도 없으면 그리지 않아요.
+ * compact: 지금 돌려줄 돈이 있을 때만. home: 홈 (늘 같은 한 줄, 사람별 목록 카드 대신)
  */
-export function SettlementCard({ compact = false, className }: { compact?: boolean; className?: string }) {
+export function SettlementCard({ compact = false, home = false, className }: { compact?: boolean; home?: boolean; className?: string }) {
   const ledger = useLedger();
   const s = ledger.settlement;
   if (!s || !ledger.data) return null;
   if (compact && !s.dueNow) return null;
-  return <SettlementLine s={s} baseYear={Number(ledger.today.slice(0, 4))} className={className} id={compact ? undefined : 'settlement'} />;
+  const id = compact || home ? undefined : 'settlement';
+  return <SettlementLine s={s} baseYear={Number(ledger.today.slice(0, 4))} className={className} id={id} />;
 }
 
 function SettlementLine({ s, baseYear, className, id }: { s: Settlement; baseYear: number; className?: string; id?: string }) {

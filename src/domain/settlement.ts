@@ -633,3 +633,95 @@ export function planSettlement(data: LedgerData, s: Settlement, selected: Iterab
     fits: check.fits,
   };
 }
+
+/* ───────── 지급한 기록 · 저수지 기록 고치기 (/plan/settle#paid · #loan) ───────── */
+
+/**
+ * 저수지통장 지출을 이벤트통장으로 옮겨 빌려 지급(또는 갚을 돈으로 바꾸기)했다는 표시. 빌린 이체 loan:claim:<지출id> 의 메모에 넣는다.
+ * [지급 취소] · [빌린 기록만 취소]가 지출을 저수지로 되돌릴지 이 표시로 정한다 (이벤트통장 청구를 빌려 지급한 것은 옮기지 않았다)
+ */
+export const RESERVOIR_MOVED_MEMO = '저수지 돈으로 낸 지출';
+
+/** 빌린 이체 메모: '저수지에서 빌림 · (저수지 돈으로 낸 지출 · )나머지' */
+export function claimLoanMemo(rest: string, moved: boolean): string {
+  return `저수지에서 빌림 · ${moved ? `${RESERVOIR_MOVED_MEMO} · ` : ''}${rest}`;
+}
+
+/**
+ * 빌려 지급할 때 지출을 저수지에서 이벤트통장으로 옮겼으면 되돌릴 저수지통장 id, 아니면 null.
+ * 빌린 이체가 살아 있고, 메모에 옮긴 표시가 있고, 보낸 통장이 저수지이고, 지출이 지금 그 통장에 있지 않을 때
+ */
+export function claimLoanMovedFrom(data: LedgerData, expenseId: Id): Id | null {
+  const loan = data.transfers.find((t) => t.id === claimLoanTransferId(expenseId) && !t.deleted);
+  const e = data.expenses.find((x) => x.id === expenseId);
+  if (!loan || !e || !loan.fromAccountId || !loan.memo.includes(RESERVOIR_MOVED_MEMO)) return null;
+  const from = data.accounts.find((a) => a.id === loan.fromAccountId);
+  if (!from || from.role !== 'reservoir' || e.accountId === from.id) return null;
+  return from.id;
+}
+
+export interface PaidClaim {
+  expense: Expense;
+  /** 돌려준 이체 claim:<지출id> */
+  transfer: Transfer;
+  payer: string;
+  amount: Won;
+  /** 지급한 날 (돌려준 이체 날짜) */
+  date: ISODate;
+  /** 저수지에서 빌려 지급했는지 (빌린 이체 loan:claim:<지출id> 가 살아 있으면) */
+  borrowed: boolean;
+}
+
+/** 지급한 청구 (지운 지출 제외), 최근 순: 지급한 날 → 만든 시각 → id */
+export function paidClaims(data: LedgerData): PaidClaim[] {
+  const live = new Map(data.transfers.filter((t) => !t.deleted && t.status === 'done').map((t) => [t.id, t]));
+  const out: PaidClaim[] = [];
+  for (const e of data.expenses) {
+    if (e.deleted || !isClaimExpense(e)) continue;
+    const t = live.get(claimTransferId(e.id));
+    if (!t) continue;
+    out.push({
+      expense: e,
+      transfer: t,
+      payer: (e.paidBy ?? '').trim(),
+      amount: t.amount,
+      date: t.date,
+      borrowed: live.has(claimLoanTransferId(e.id)),
+    });
+  }
+  return out.sort((a, b) =>
+    a.date !== b.date
+      ? a.date < b.date ? 1 : -1
+      : a.transfer.createdAt !== b.transfer.createdAt
+        ? a.transfer.createdAt < b.transfer.createdAt ? 1 : -1
+        : a.expense.id < b.expense.id ? 1 : a.expense.id > b.expense.id ? -1 : 0,
+  );
+}
+
+/** 정산 화면의 저수지 기록 한 줄: 빌린 기록(청구 지급 · 지출 바꾸기) 또는 갚은 기록 */
+export type LoanRecord =
+  | { kind: 'claim' | 'expense'; transfer: Transfer; expenseId: Id }
+  | { kind: 'repay'; transfer: Transfer; expenseId: null };
+
+/** 빌리고 갚은 기록을 한 목록으로 (최근 순) */
+export function loanRecords(loan: LoanStatus): LoanRecord[] {
+  const list: LoanRecord[] = [
+    ...loan.entries.map((e) => ({ kind: e.kind, transfer: e.transfer, expenseId: e.expenseId })),
+    ...loan.repayments.map((t) => ({ kind: 'repay' as const, transfer: t, expenseId: null })),
+  ];
+  return list.sort((a, b) =>
+    a.transfer.date !== b.transfer.date
+      ? a.transfer.date < b.transfer.date ? 1 : -1
+      : a.transfer.createdAt < b.transfer.createdAt ? 1 : a.transfer.createdAt > b.transfer.createdAt ? -1 : 0,
+  );
+}
+
+/**
+ * 내역 → 이체에서 이 이체를 고칠 곳: 돌려준 이체(claim:)는 정산 화면 '지급한 기록', 빌리고 갚은 이체(loan: · loanpay:)는 '저수지'.
+ * 그 밖의 이체는 null
+ */
+export function settleEditHref(transferId: string): string | null {
+  if (transferId.startsWith('claim:')) return '/plan/settle#paid';
+  if (isLoanTransferId(transferId) || isLoanRepayId(transferId)) return '/plan/settle#loan';
+  return null;
+}

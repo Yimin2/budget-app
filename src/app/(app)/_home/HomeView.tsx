@@ -106,11 +106,8 @@ function HomeBody() {
             {banner.description}
           </Banner>
         ) : null}
-        {ledger.settlement?.dueNow ? (
-          <SettlementCard compact className={styles.oClaims} />
-        ) : (
-          <ClaimsCard className={styles.oClaims} />
-        )}
+        {/* 이번 달 정산 한 줄 (줄 돈이 없으면 '이번 달 줄 돈이 없어요 · 다음 정산 …', 청구가 없으면 숨김). 이벤트통장이 없을 때만 사람별 목록 */}
+        {ledger.settlement ? <SettlementCard home className={styles.oClaims} /> : <ClaimsCard className={styles.oClaims} />}
         <EventAccountCard />
         {wide ? null : <RecentExpenses />}
       </div>

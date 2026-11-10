@@ -156,3 +156,15 @@
   color: var(--warning-text);
   font-weight: 500;
 }
+
+/* 지급한 기록 (#paid): 달마다 줄 — 사람 · 항목 / 금액 / [지급 취소] */
+.paidMonth + .paidMonth {
+  margin-top: var(--space-2);
+}
+.paidMonth li.recordRow {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.paidMonth li.recordRow > :first-child {
+  flex: 1 1 12em;
+}
