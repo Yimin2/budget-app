@@ -97,6 +97,13 @@ import {
   mySpenderKey,
   conflictingRemainderRule,
   isRemainderRule,
+  nextBudgetMonth,
+  nextMonthCopy,
+  nextMonthReset,
+  splitFixedRow,
+  splitMonthRow,
+  type BudgetTable,
+  type NextMonthWrites,
 } from '@/domain';
 import type {
   Account,
@@ -1869,8 +1876,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addIncomePlan = useCallback<LedgerApi['addIncomePlan']>(
-    async (input) => {
-      const row: IncomePlan = { ...cleanIncomePlan(input), id: newId(), deleted: false };
+    async ({ id: givenId, ...input }) => {
+      const row: IncomePlan = { ...cleanIncomePlan(input), id: givenId || newId(), deleted: false };
       await insertRows('incomePlans', [row], '수입 계획을 추가하지 못했어요');
       await syncAutoNow();
       return row;
@@ -2318,10 +2325,84 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     },
     [requireData, mutate, syncAutoNow],
   );
+  /* ---------- 예산 달별 보기: 다음 달 준비 (작업정리 13) ---------- */
+
+  /** 다음 달 행 나누기 · 지우기를 표마다 한 번에: first(새 행 / 지울 행) → then(앞 행) → 설정 '준비한달' */
+  const writeNextMonth = useCallback(
+    async (w: NextMonthWrites, preparedMonth: YearMonth | null, failMessage: string) => {
+      const tables: BudgetTable[] = ['rules', 'incomePlans', 'fixedExpenses'];
+      await mutate(
+        (x) => {
+          let out: LedgerData = { ...x, settings: { ...x.settings, preparedMonth } };
+          for (const step of [w.first, w.then]) {
+            for (const t of tables) {
+              const rows = step[t] as Keyed[];
+              if (rows.length) out = { ...out, [t]: rows.reduce((list, r) => upsertIn(list, r), out[t] as Keyed[]) };
+            }
+          }
+          return out;
+        },
+        async (repo) => {
+          for (const step of [w.first, w.then]) {
+            for (const t of tables) {
+              const rows = step[t];
+              if (rows.length) await repo.upsertMany(t, rows as never);
+            }
+          }
+          await repo.updateSettings({ preparedMonth });
+        },
+        failMessage,
+        { multiStep: true },
+      );
+    },
+    [mutate],
+  );
+
+  const prepareNextMonth = useCallback<LedgerApi['prepareNextMonth']>(async () => {
+    const { data: d } = requireData();
+    await writeNextMonth(nextMonthCopy(d, todayRef.current), nextBudgetMonth(todayRef.current), '다음 달 예산을 준비하지 못했어요');
+  }, [requireData, writeNextMonth]);
+
+  const resetNextMonth = useCallback<LedgerApi['resetNextMonth']>(async () => {
+    const { data: d } = requireData();
+    await writeNextMonth(nextMonthReset(d, todayRef.current), null, '다음 달 예산을 초기화하지 못했어요');
+    await syncAutoNow();
+  }, [requireData, writeNextMonth, syncAutoNow]);
+
+  const splitForNextMonth = useCallback<LedgerApi['splitForNextMonth']>(
+    async (table, rowId) => {
+      const { data: d } = requireData();
+      const today = todayRef.current;
+      const next = nextBudgetMonth(today);
+      const w: NextMonthWrites = {
+        first: { rules: [], incomePlans: [], fixedExpenses: [] },
+        then: { rules: [], incomePlans: [], fixedExpenses: [] },
+      };
+      let createdId: Id = rowId;
+      if (table === 'rules') {
+        const row = d.rules.find((r) => r.id === rowId);
+        const s = row ? splitMonthRow('rules', row, next) : null;
+        if (s) [w.first.rules, w.then.rules, createdId] = [[s.created], [s.ended], s.created.id];
+      } else if (table === 'incomePlans') {
+        const row = d.incomePlans.find((r) => r.id === rowId);
+        const s = row ? splitMonthRow('incomePlans', row, next) : null;
+        if (s) [w.first.incomePlans, w.then.incomePlans, createdId] = [[s.created], [s.ended], s.created.id];
+      } else {
+        const row = d.fixedExpenses.find((r) => r.id === rowId);
+        const s = row ? splitFixedRow(row, next, today) : null;
+        if (s) [w.first.fixedExpenses, w.then.fixedExpenses, createdId] = [[s.created], [s.ended], s.created.id];
+      }
+      if (createdId === rowId) return rowId;
+      await writeNextMonth(w, d.settings.preparedMonth ?? null, '다음 달 예산을 나누지 못했어요');
+      return createdId;
+    },
+    [requireData, writeNextMonth],
+  );
+
   const addFixed = useCallback(
-    async (input: Omit<FixedExpense, 'id' | 'deleted'>): Promise<FixedExpense> => {
+    async ({ id: givenId, ...input }: Omit<FixedExpense, 'id' | 'deleted'> & { id?: string }): Promise<FixedExpense> => {
       if (!input.name.trim()) throw new Error('이름을 입력해 주세요');
-      const raw: FixedExpense = { ...input, name: input.name.trim(), id: newId(), deleted: false };
+      const raw: FixedExpense = { ...input, name: input.name.trim(), id: givenId || newId(), deleted: false };
       const row = isDatedBill(raw) ? normalizeBill(raw, todayRef.current) : raw;
       await insertRows('fixedExpenses', [row], '고정 지출을 추가하지 못했어요');
       await syncAutoNow();
@@ -2727,6 +2808,9 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       saveIncomePlan,
       saveFixed,
       addFixed,
+      prepareNextMonth,
+      resetNextMonth,
+      splitForNextMonth,
       saveCategory,
       moveCategory,
       moveCategoryTo,
@@ -2756,7 +2840,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       restoreTrip, addExpense, updateExpense,
       deleteExpense, setExpenseExclusions, addEvent, registerAnnualEvents, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, changeFixedAmount, endFixedSeries, saveLivingItem, setLivingOverride, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, setCategoriesHidden, mergeCategory, undoCategoryMerge, saveFavorite, addFavorite, recordFavorite,
+      changeRuleAmount, changeFixedAmount, endFixedSeries, saveLivingItem, setLivingOverride, saveFixed, addFixed, prepareNextMonth, resetNextMonth, splitForNextMonth, saveCategory, moveCategory, moveCategoryTo, addCategory, setCategoriesHidden, mergeCategory, undoCategoryMerge, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );

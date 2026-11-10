@@ -32,3 +32,4 @@ export * from './yearly';
 export * from './exceptions';
 export * from './annual';
 export * from './compromise';
+export * from './budgetMonth';

@@ -306,3 +306,93 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
+
+/* ───────── 달별 보기 (작업정리 13) ───────── */
+.monthBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  margin-left: calc(var(--space-3) * -1);
+}
+.monthTitle {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 112px;
+  text-align: center;
+}
+.monthNote {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.monthEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.monthEmptyTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.monthEmptyText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.monthActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.monthPrepared {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.monthConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+.monthConfirmText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+.readOnly {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.readOnlyNote {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+/* 보기만: 추가 · 고치기 단추는 숨기고, 목록 줄은 흐리지 않게 */
+.readOnly :global(.btn) {
+  display: none;
+}
+.readOnly :global(.lrow:disabled) {
+  opacity: 1;
+  cursor: default;
+  color: inherit;
+}
+.readOnly :global(.lrow .chev) {
+  display: none;
+}

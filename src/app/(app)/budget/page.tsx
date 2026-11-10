@@ -1,12 +1,15 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { budgetMonthView, monthOf } from '@/domain';
 import { PageHeader } from '@/ui';
 import { HashTarget } from '../_components/HashTarget';
 import { PageSkeleton } from '../_components/PageSkeleton';
-import { RequireLedger } from '../_components/RequireLedger';
+import { RequireLedger, type ReadyLedger } from '../_components/RequireLedger';
 import { AccountCards } from './AccountCards';
 import { MoneyFlow } from './MoneyFlow';
+import { MonthNotice, MonthSwitcher } from './MonthBar';
+import { ledgerForMonth } from './monthLedger';
 
 /** 예산 화면의 묶음 (차례와 같은 순서) */
 const BUDGET_SECTIONS = [
@@ -30,33 +33,53 @@ export default function BudgetPage() {
   return (
     <>
       <PageHeader title="예산" subtitle="돈이 어디로 얼마나 가고 나가는지 한눈에 보고 여기서 고쳐요" />
-      <nav aria-label="예산 차례">
-        <ol className="bd-index">
-          {BUDGET_SECTIONS.map((s, i) => (
-            <li key={s.id}>
-              <a href={`#${s.id}`}>
-                <span className="num" aria-hidden>
-                  {i + 1}
-                </span>
-                {s.title}
-              </a>
-            </li>
-          ))}
-        </ol>
-      </nav>
       <RequireLedger skeleton={<PageSkeleton withHeader={false} cards={3} label="예산을 불러오는 중이에요" />}>
-        {(ledger) => (
-          <>
-            <HashTarget />
-            <BudgetSection index={0}>
-              <MoneyFlow ledger={ledger} />
-            </BudgetSection>
-            <BudgetSection index={1}>
-              <AccountCards ledger={ledger} />
-            </BudgetSection>
-          </>
-        )}
+        {(ledger) => <BudgetMonths ledger={ledger} />}
       </RequireLedger>
+    </>
+  );
+}
+
+/**
+ * 예산 달별 보기 (작업정리 13): 맨 위 ◀ 달 ▶ 이 화면 전체(돈 흐름 · 통장 카드 · 배분 · 고정비 · 할부 · 생활비)를 그 달 기준으로 바꿔요.
+ * 지난 달은 보기만, 이번 달은 지금처럼, 다음 달은 [전달 복사]로 준비해야 따로 고쳐요 (준비하지 않으면 이번 달 예산이 이어져요)
+ */
+function BudgetMonths({ ledger }: { ledger: ReadyLedger }) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const view = budgetMonthView(ledger.data, ledger.today, picked ?? monthOf(ledger.today));
+  const shown = useMemo(() => ledgerForMonth(ledger, view), [ledger, view.month, view.kind, view.editable, view.asOf]); // eslint-disable-line react-hooks/exhaustive-deps
+  const readOnly = !view.editable;
+  return (
+    <>
+      <div className="stack gap-3">
+        <MonthSwitcher ledger={ledger} view={view} onChange={setPicked} />
+        <MonthNotice ledger={ledger} view={view} />
+      </div>
+      {view.empty ? null : (
+        <>
+          <nav aria-label="예산 차례">
+            <ol className="bd-index">
+              {BUDGET_SECTIONS.map((s, i) => (
+                <li key={s.id}>
+                  <a href={`#${s.id}`}>
+                    <span className="num" aria-hidden>
+                      {i + 1}
+                    </span>
+                    {s.title}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </nav>
+          <HashTarget />
+          <BudgetSection index={0}>
+            <MoneyFlow key={view.month} ledger={shown} readOnly={readOnly} />
+          </BudgetSection>
+          <BudgetSection index={1}>
+            <AccountCards key={view.month} ledger={shown} readOnly={readOnly} kind={view.kind} />
+          </BudgetSection>
+        </>
+      )}
     </>
   );
 }
