@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createDemoLedger, projectEventAccount, suggestShortageFixes } from '@/domain';
 import type { Category, Expense, PlannedEvent, ProjectionMonth } from '@/domain';
 import {
+  usualCategoriesText,
   barsGeometry,
   compactWon,
   dateLabel,
@@ -244,6 +245,7 @@ describe('monthDetailRows', () => {
     transfersIn: 300_000,
     transfersOut: 0,
     planned: 1_400_000,
+    usual: 0,
     extra: 0,
     endBalance: 300_000,
     events: [{ id: 'a', name: 'A', date: '2027-04-02', amount: 1_400_000 }],
@@ -262,6 +264,22 @@ describe('monthDetailRows', () => {
       { label: '지금 잔액', amount: 1_100_000, sign: '' },
       { label: '예정 일정 0건', amount: 0, sign: '' },
     ]);
+  });
+  it('평소 쓰는 돈은 흐린 줄로, 근거(작년 같은 달 · 최근 평균)와 함께 빼요', () => {
+    const rows = monthDetailRows({ ...month, usual: 120_000, usualBasis: 'lastYear' }, false);
+    expect(rows).toContainEqual({ label: '평소 쓰는 돈 (작년 같은 달)', amount: 120_000, sign: '-', muted: true });
+    const recent = monthDetailRows({ ...month, usual: 80_000, usualBasis: 'recent' }, false);
+    expect(recent).toContainEqual({ label: '평소 쓰는 돈 (최근 평균)', amount: 80_000, sign: '-', muted: true });
+    expect(monthDetailRows(month, false).some((r) => r.label.startsWith('평소'))).toBe(false);
+  });
+  it('평소 쓰는 돈 카테고리 줄', () => {
+    expect(
+      usualCategoriesText([
+        { name: '경조사', amount: 350_000 },
+        { name: '선물', amount: 150_000 },
+        { name: '여행', amount: 124_400 },
+      ]),
+    ).toBe('경조사 35만 · 선물 15만 · 여행 12.4만');
   });
   it('이벤트통장 할부는 할부 줄로 빼요', () => {
     const rows = monthDetailRows({ ...month, installments: 100_000, endBalance: 200_000 }, false);

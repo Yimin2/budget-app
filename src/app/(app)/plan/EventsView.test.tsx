@@ -20,6 +20,19 @@ async function renderEvents() {
 }
 
 describe('EventsView — 체험 가계부', () => {
+  it('평소 쓰는 돈: 일정에 묶지 않은 지난 지출이 있으면 안내 카드와 예측 줄이 보여요', async () => {
+    const h = await renderEvents();
+    expect(screen.queryByRole('region', { name: '평소 쓰는 돈과 적립' })).toBeNull();
+    await act(async () => {
+      await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 900_000, accountId: 'demo-acc-event', categoryId: null });
+    });
+    const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
+    expect(card.textContent).toMatch(/평소 매달 .+만원을 쓰는데 적립은 .+이에요. 이대로면 매달 .+씩 줄어요/);
+    const chart = screen.getByRole('region', { name: '앞으로 12개월 예상 잔액' });
+    expect(within(chart).getByText(/작년 같은 달 기록, 없으면 최근 6개월 평균이에요/)).toBeTruthy();
+    expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
+  });
+
   it('돌려받을 돈 카드: 이벤트 화면에도 보이고, 이번 달 예측에 돌려줄 돈이 들어가요', async () => {
     const h = await renderEvents();
     const card = screen.getByRole('region', { name: '돌려받을 돈' });

@@ -86,7 +86,8 @@ export function shortageBannerText(
   const month = projection.months.find((m) => m.month === first.month);
   const names = month ? summarizeEventNames(month.events.map((e) => e.name)) : '';
   const others = projection.shortages.length - 1;
-  const parts = [names, others > 0 ? `다른 ${others}개월도 모자라요` : ''].filter(Boolean);
+  const usual = month && month.usual > 0 ? `평소 쓰는 돈 ${formatWon(month.usual)} 포함` : '';
+  const parts = [names, usual, others > 0 ? `다른 ${others}개월도 모자라요` : ''].filter(Boolean);
   return { title, description: parts.length > 0 ? parts.join(' · ') : '미리 채워 두면 걱정 없어요' };
 }
 
