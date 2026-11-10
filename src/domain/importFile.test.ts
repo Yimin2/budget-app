@@ -428,3 +428,61 @@ describe('budget-import v2', () => {
     expect(plan.errors).toEqual([expect.stringContaining("'rest21b'")]);
   });
 });
+
+describe('budget-import v2 — 고정비 시작일 · 해지일 · 세부 항목 · 자동 배분 (PLAN 4-15)', () => {
+  function withDated(): Record<string, unknown> {
+    const raw = sampleV2();
+    (raw.fixedExpenses as Record<string, unknown>[]).push(
+      { key: 'stream', name: '영상 구독', amount: 13_500, account: 'liv-a', kind: 'bill', startDate: '2026-11-15', endDate: '2027-02-10' },
+      {
+        key: 'club', name: '모임 회비', account: 'liv-b', kind: 'bill', dayOfMonth: 21, startMonth: '2026-11',
+        subItems: [{ name: '정기 모임', amount: 40_000 }, { name: '연말 행사', amount: 30_000, startDate: '2026-12-01', endDate: '2026-12-31' }],
+      },
+    );
+    (raw.rules as Record<string, unknown>[]).push({ key: 'auto-b', from: 'salary', to: 'pocket-a', kind: 'auto', dayOfMonth: 25, startMonth: '2026-12' });
+    return raw;
+  }
+
+  it('reads the new optional fields; startDate stands in for startMonth and dayOfMonth', () => {
+    const f = parsed(withDated());
+    const stream = f.fixedExpenses.find((x) => x.key === 'stream')!;
+    expect([stream.startDate, stream.endDate, stream.dayOfMonth, stream.startMonth]).toEqual(['2026-11-15', '2027-02-10', 15, '2026-11']);
+    expect(f.fixedExpenses.find((x) => x.key === 'club')!.subItems).toHaveLength(2);
+    expect(f.rules.find((r) => r.key === 'auto-b')).toMatchObject({ kind: 'auto', amount: 0 });
+    // 예전 행은 빈 값
+    expect(f.fixedExpenses.find((x) => x.key === 'dues-a')).toMatchObject({ startDate: null, endDate: null, subItems: [] });
+  });
+
+  it('plans rows with derived months and sub-item totals; legacy rows have no new fields', () => {
+    const plan = planImport(base(), parsed(withDated()), CTX);
+    const stream = plan.rows.fixedExpenses.find((x) => x.id === importRowId('couple-1', 'fx', 'stream'))!;
+    expect([stream.startMonth, stream.endMonth, stream.startDate, stream.endDate]).toEqual(['2026-11', '2027-01', '2026-11-15', '2027-02-10']);
+    const club = plan.rows.fixedExpenses.find((x) => x.id === importRowId('couple-1', 'fx', 'club'))!;
+    expect(club.amount).toBe(40_000);
+    expect(club.subItems).toEqual([{ name: '정기 모임', amount: 40_000 }, { name: '연말 행사', amount: 30_000, startDate: '2026-12-01', endDate: '2026-12-31' }]);
+    const dues = plan.rows.fixedExpenses.find((x) => x.id === importRowId('couple-1', 'fx', 'dues-a'))!;
+    expect('startDate' in dues || 'subItems' in dues).toBe(false);
+    expect(plan.rows.rules.find((r) => r.id === importRowId('couple-1', 'rule', 'auto-b'))).toMatchObject({ kind: 'auto', amount: 0 });
+  });
+
+  it('rejects auto into an event account, new fields on living rows and in v1 files', () => {
+    const raw = withDated();
+    (raw.rules as Record<string, unknown>[]).push({ key: 'auto-ev', from: 'salary', to: 'event', kind: 'auto', dayOfMonth: 21, startMonth: '2026-11' });
+    const plan = planImport(base(), parsed(raw), CTX);
+    expect(plan.errors.some((e) => e.includes("'auto-ev'") && e.includes('생활비 · 용돈'))).toBe(true);
+
+    const living = sampleV2();
+    (living.fixedExpenses as Record<string, unknown>[])[2]!.startDate = '2026-11-01';
+    const r1 = parseImportFile(JSON.stringify(living));
+    expect(r1.ok).toBe(false);
+
+    const v1 = sample();
+    (v1.fixedExpenses as Record<string, unknown>[])[0]!.subItems = [{ name: '관리비', amount: 1 }];
+    const r2 = parseImportFile(JSON.stringify(v1));
+    expect(!r2.ok && r2.errors.some((e) => e.includes("'subItems' 는 버전 2"))).toBe(true);
+
+    const badItem = sampleV2();
+    (badItem.fixedExpenses as Record<string, unknown>[])[0]!.subItems = [{ name: '', amount: 'x' }];
+    expect(parseImportFile(JSON.stringify(badItem)).ok).toBe(false);
+  });
+});

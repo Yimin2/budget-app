@@ -530,7 +530,7 @@ A를 이번 달 지출로 넣고 4-2 예측을 다시 돌린다. 예측에는 �
 
 ### 4-12. 파일에서 가져오기
 
-- 파일: `{ format: 'budget-import', version: 1 | 2, source, name?, accounts?, categories?, rules?, incomePlans?(v2), fixedExpenses?, installments?, events?, trips?, expenses?, transfers? }`. 모양은 [README](README.md#가져오기-파일-형식-budget-import-v2). v2 는 `incomePlans`(person · email? · amount · dayOfMonth · account · startMonth · endMonth?)와 `rules[].kind`(`fixed` · `remainder`, remainder 는 amount 를 비우거나 0), 생활비 쓰는 날 `fixedExpenses[].useDays`(`every` · `weekdays` · `weekends` · `["mon", "wed", …]`) · `skipHolidays`(true/false) · `perWeek`(1~7)(모두 선택, 비우면 매일)를 더한다. 사람별 생활비 · 용돈 통장은 v1 처럼 통장 `ownerName` · `ownerEmail`. v1 파일은 그대로 읽고, v1 에 v2 칸을 쓰면 버전을 올리라고 알린다. 수입 계획 행 id 는 `imp:<source>:inc:<key>`, 같은 통장 · 같은 날 나머지 배분이 둘이면 막는다
+- 파일: `{ format: 'budget-import', version: 1 | 2, source, name?, accounts?, categories?, rules?, incomePlans?(v2), fixedExpenses?, installments?, events?, trips?, expenses?, transfers? }`. 모양은 [README](README.md#가져오기-파일-형식-budget-import-v2). v2 는 `incomePlans`(person · email? · amount · dayOfMonth · account · startMonth · endMonth?)와 `rules[].kind`(`fixed` · `remainder`, remainder 는 amount 를 비우거나 0), 생활비 쓰는 날 `fixedExpenses[].useDays`(`every` · `weekdays` · `weekends` · `["mon", "wed", …]`) · `skipHolidays`(true/false) · `perWeek`(1~7)(모두 선택, 비우면 매일), 4-15 의 `rules[].kind = auto`(생활비 · 용돈 통장으로만) · 고정비 `fixedExpenses[].startDate` · `endDate` · `subItems`([{name, amount, startDate?, endDate?}], 생활비 행에는 못 씀. startDate 가 있으면 startMonth · dayOfMonth 를 비워도 됨)를 더한다. 사람별 생활비 · 용돈 통장은 v1 처럼 통장 `ownerName` · `ownerEmail`. v1 파일은 그대로 읽고, v1 에 v2 칸을 쓰면 버전을 올리라고 알린다. 수입 계획 행 id 는 `imp:<source>:inc:<key>`, 같은 통장 · 같은 날 나머지 배분이 둘이면 막는다
 - 확인: 형식 · 버전 · source · 행마다 key(파일 안에서 겹치지 않음) · 칸 모양(금액은 양의 정수, 날짜 · 월) · key 로 가리킨 통장 · 카테고리 · 일정 · 여행이 파일에 있는지. 틀리면 미리보기 없이 고칠 곳을 (앞 30개) 알려 준다. 여행은 4-11 의 입력 확인을 그대로 쓴다
 - 계획 (지금 가계부 기준, 쓰지 않음):
   ```
@@ -835,6 +835,9 @@ id, 이름, 금액, 카테고리, 통장, 순서, 삭제됨
    ├─ 항목별 생활비: 항목마다 막대 · 남은 돈 · (하루 항목) 오늘 쓴 돈이 있으면 '오늘 쓴 돈 ○원 · 써도 되는 돈 ○원', 없으면 '오늘 써도 되는 돈 ○원', 넘으면 '오늘 ○원 넘었어요'(경고 색)
    │    쓰는 날 항목은 표시('평일 · 공휴일 빼기' · '주 2회')를 붙이고, 쉬는 날엔 '오늘은 쓰는 날이 아니에요 · 다음: 월요일 14,600원',
    │    주 N회는 '이번 주 남은 1회 · 한 번에 ○원' / '이번 주는 다 썼어요'
+   ├─ 이번 달 쓴 돈 (항목별 생활비 아래, 위에서 고른 사람 · 사람 선택이 없으면 모두 합쳐): '기타 (예산 없음) · 23,400원 · 5건'(있을 때 → 내역 지출 · 이번 달) ·
+   │    '용돈 · 4만 썼어요 · 남은 돈 31만'(그 사람 용돈 통장이 있을 때, 모두 합쳐면 합) · '이벤트통장 · 32만 썼어요 · 적립 50만 · 잔액 45만'(→ 이벤트,
+   │    이번 달 그 통장 지출 · 청구는 지출 금액으로). 줄이 모두 없거나 0원이면 카드 없음
    ├─ 이번 달 정산 (돌려줄 날이 된 청구가 있을 때): 이번 달 지급 · 다음 달로 넘어가요 · 저수지에서 돌려받을 돈 (사람별 한 줄씩) · [모두 지급했어요] · [정산 자세히 보기]
    ├─ 사람별 돌려받을 돈 (그 밖에 청구가 있을 때): 사람마다 합 · 저수지 몫 따로 · 다음 정산일 · [이번 달 정산 보기]
    ├─ 이벤트통장: 잔액 · 다가오는 일정 3개 (다가오는 여행은 떠나는 날 · 남은 예산으로 함께) · 부족 알림 (평소 쓰는 돈 포함 예측 기준, 있을 때 → [대처하기] 이벤트)
