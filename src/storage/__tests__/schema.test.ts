@@ -321,3 +321,49 @@ describe('시작월 검증', () => {
     expect(rows[0]!.startMonth).toBe('');
   });
 });
+
+describe('고정지출 시작일 · 종료일 · 세부 (PLAN 4-15)', () => {
+  const header = canonicalHeaders('fixedExpenses');
+  const at = (h: string) => header.indexOf(h);
+
+  it('blank cells decode as missing so legacy rows stay unchanged', () => {
+    const legacy = ['f1', '월세', 500000, 'acc', '', 10, '일반', '', '2026-01', '', '', false];
+    const [row] = decodeTable('fixedExpenses', [header.slice(0, legacy.length), legacy as RawCell[]]);
+    expect(row!.startDate).toBeUndefined();
+    expect(row!.endDate).toBeUndefined();
+    expect(row!.subItems).toBeUndefined();
+    const withBlanks = [...legacy, ...header.slice(legacy.length).map(() => '')];
+    const [again] = decodeTable('fixedExpenses', [header, withBlanks as RawCell[]]);
+    expect(again).toEqual(row);
+  });
+
+  it('round-trips dates and sub-items, reads code keys and skips junk', () => {
+    const cells: RawCell[] = header.map(() => '');
+    cells[at('id')] = 'dues';
+    cells[at('이름')] = '회비';
+    cells[at('금액')] = 70000;
+    cells[at('결제일')] = 21;
+    cells[at('시작월')] = '2026-11';
+    cells[at('시작일')] = '2026-11-03';
+    cells[at('종료일')] = '없음';
+    cells[at('세부')] = '[{"이름":"목장","금액":40000},{"name":"초원","amount":30000,"startDate":"2026-12-01"},{"이름":""},3]';
+    const [row] = decodeTable('fixedExpenses', [header, cells]);
+    expect(row!.startDate).toBe('2026-11-03');
+    expect(row!.endDate).toBeUndefined();
+    expect(row!.subItems).toEqual([{ name: '목장', amount: 40000 }, { name: '초원', amount: 30000, startDate: '2026-12-01' }]);
+    const encoded = encodeRow('fixedExpenses', row!);
+    expect(encoded[at('세부')]).toBe('[{"이름":"목장","금액":40000},{"이름":"초원","금액":30000,"시작일":"2026-12-01"}]');
+    expect(decodeTable('fixedExpenses', [header, encoded])[0]).toEqual(row);
+    const bad = [...cells];
+    bad[at('세부')] = '{not json';
+    expect(decodeTable('fixedExpenses', [header, bad])[0]!.subItems).toBeUndefined();
+  });
+
+  it('rule kind 자동 reads and writes; blank stays fixed', () => {
+    const rh = canonicalHeaders('rules');
+    const cells: RawCell[] = ['r1', 'a', 'b', 0, 21, '2026-11', '', false, '자동'];
+    expect(decodeTable('rules', [rh, cells])[0]!.kind).toBe('auto');
+    expect(encodeRow('rules', decodeTable('rules', [rh, cells])[0]!)[rh.indexOf('방식')]).toBe('자동');
+    expect(decodeTable('rules', [rh, ['r2', 'a', 'b', 1, 1, '2026-11', '', false, '']])[0]!.kind).toBe('fixed');
+  });
+});

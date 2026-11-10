@@ -18,6 +18,10 @@ import {
   replanInstallment,
   revisedAmounts,
   autoTransferId,
+  endBillSeries,
+  isDatedBill,
+  normalizeBill,
+  splitBillAmount,
   canClaimOnAccount,
   claimAccountFor,
   linkAccountsToEmail,
@@ -1466,8 +1470,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   );
 
   const changeRuleAmount = useCallback<LedgerApi['changeRuleAmount']>(
-    async (ruleId, amount) => {
-      await changeRuleAmountFrom(ruleId, amount);
+    async (ruleId, amount, fromMonth) => {
+      await changeRuleAmountFrom(ruleId, amount, fromMonth);
       await syncAutoNow();
     },
     [changeRuleAmountFrom, syncAutoNow],
@@ -1746,15 +1750,59 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
 
   const saveFixed = useCallback(
     async (fixed: FixedExpense) => {
-      await upsertRow('fixedExpenses', fixed, '고정 지출을 저장하지 못했어요');
+      // 고정비 · 용돈: 시작일 · 해지일 · 세부 항목에 맞춰 시작월 · 종료월 · 합계를 맞춰요 (PLAN 4-15)
+      const row = !fixed.deleted && isDatedBill(fixed) ? normalizeBill(fixed, todayRef.current) : fixed;
+      await upsertRow('fixedExpenses', row, '고정 지출을 저장하지 못했어요');
       await syncAutoNow();
     },
     [upsertRow, syncAutoNow],
   );
+  /** 고정비 금액 변경 (언제부터): 행을 나눠 지난 자동 기록은 그대로 (PLAN 4-15) */
+  const changeFixedAmount = useCallback<LedgerApi['changeFixedAmount']>(
+    async (rowId, amount, from) => {
+      const { data: d } = requireData();
+      const recorded = new Set(d.expenses.map((e) => e.id));
+      const res = splitBillAmount(d.fixedExpenses, rowId, amount, from, recorded, todayRef.current);
+      if (!res.ok) throw new Error(res.error);
+      await mutate(
+        (x) => ({ ...x, fixedExpenses: res.rows.reduce((list, r) => upsertIn(list, r), x.fixedExpenses) }),
+        async (repo) => {
+          // 새 행을 먼저 (결정적 id), 앞 행 끝내기는 마지막에
+          for (const r of res.rows) await repo.upsert('fixedExpenses', r);
+        },
+        '금액을 바꾸지 못했어요',
+        { multiStep: res.rows.length > 1 },
+      );
+      await syncAutoNow();
+    },
+    [requireData, mutate, syncAutoNow],
+  );
+  /** 고정비 그만 내기 (해지일) · 지우기 (모든 행) */
+  const endFixedSeries = useCallback<LedgerApi['endFixedSeries']>(
+    async (seriesId, end) => {
+      const { data: d } = requireData();
+      const rows =
+        end === null
+          ? d.fixedExpenses.filter((f) => !f.deleted && isDatedBill(f) && (f.id === seriesId || f.id.startsWith(`${seriesId}@`))).map((f) => ({ ...f, deleted: true }))
+          : endBillSeries(d.fixedExpenses, seriesId, end, todayRef.current);
+      if (rows.length === 0) return;
+      await mutate(
+        (x) => ({ ...x, fixedExpenses: rows.reduce((list, r) => upsertIn(list, r), x.fixedExpenses) }),
+        async (repo) => {
+          for (const r of rows) await repo.upsert('fixedExpenses', r);
+        },
+        end === null ? '고정 지출을 지우지 못했어요' : '고정 지출을 끝내지 못했어요',
+        { multiStep: rows.length > 1 },
+      );
+      await syncAutoNow();
+    },
+    [requireData, mutate, syncAutoNow],
+  );
   const addFixed = useCallback(
     async (input: Omit<FixedExpense, 'id' | 'deleted'>): Promise<FixedExpense> => {
       if (!input.name.trim()) throw new Error('이름을 입력해 주세요');
-      const row: FixedExpense = { ...input, name: input.name.trim(), id: newId(), deleted: false };
+      const raw: FixedExpense = { ...input, name: input.name.trim(), id: newId(), deleted: false };
+      const row = isDatedBill(raw) ? normalizeBill(raw, todayRef.current) : raw;
       await insertRows('fixedExpenses', [row], '고정 지출을 추가하지 못했어요');
       await syncAutoNow();
       return row;
@@ -2066,6 +2114,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       saveRule,
       addRule,
       changeRuleAmount,
+      changeFixedAmount,
+      endFixedSeries,
       addIncomePlan,
       saveIncomePlan,
       saveFixed,
@@ -2096,7 +2146,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       restoreTrip, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
-      changeRuleAmount, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
+      changeRuleAmount, changeFixedAmount, endFixedSeries, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,
     ],
   );

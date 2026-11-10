@@ -260,8 +260,18 @@ export interface LedgerApi {
   // 설정
   saveRule(rule: AllocationRule): Promise<void>;
   addRule(input: Omit<AllocationRule, 'id' | 'deleted'>): Promise<AllocationRule>;
-  /** 적립액 변경: 기존 규칙을 지난달로 끝내고 이번 달부터 새 규칙 */
-  changeRuleAmount(ruleId: Id, amount: Won): Promise<void>;
+  /**
+   * 적립액 변경: 기존 규칙을 지난달로 끝내고 이번 달부터 새 규칙. fromMonth 를 주면 그 달부터
+   * ([배분 금액 맞추기]는 다음 배분의 달부터)
+   */
+  changeRuleAmount(ruleId: Id, amount: Won, fromMonth?: YearMonth): Promise<void>;
+  /**
+   * 고정비 금액 변경 (언제부터 from, PLAN 4-15): 앞 행을 from 전날로 끝내고 '<id>@<from>' 새 행. 그 행의 첫 결제 전이면 그 자리에서.
+   * from 뒤 결제가 이미 기록됐으면 오류 (지난 기록은 그대로)
+   */
+  changeFixedAmount(rowId: Id, amount: Won, from: ISODate): Promise<void>;
+  /** 고정비 끝내기: end = 해지일 (그 뒤 시작하는 행은 지움), null = 모든 행 지우기 */
+  endFixedSeries(seriesId: Id, end: ISODate | null): Promise<void>;
   /** 수입 계획 추가 (PLAN 4-13). 받는 날이 지난 이번 달 회차는 바로 기록해요 */
   addIncomePlan(input: Omit<IncomePlan, 'id' | 'deleted'>): Promise<IncomePlan>;
   /** 수입 계획 고치기 · 지우기 (deleted). 이미 생긴 수입 기록은 그대로 */

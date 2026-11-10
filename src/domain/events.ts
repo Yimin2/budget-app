@@ -8,7 +8,7 @@ import { ceilTo1000 } from './money';
 import { tripOutflows } from './trips';
 import { ruleOccurrenceDate } from './recurring';
 import { manWon, usualForMonth, usualHistory, usualSpread } from './usual';
-import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isRemainderRule, projectRemainders, ruleAmountFor } from './income';
+import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isComputedRule, projectRemainders, ruleAmountFor } from './income';
 import type {
   EventProjection, Id, ISODate, LedgerData, PlannedEvent, ProjectionMonth, ProjectionRange, Repeat, Shortage, ShortageFix, YearMonth, Won,
 } from './types';
@@ -117,19 +117,19 @@ function projectAccount(
   const sign = (r: (typeof rules)[number]) =>
     (r.toAccountId === accountId ? 1 : 0) - (r.fromAccountId === accountId ? 1 : 0);
   // 나머지 전부 보내기 규칙은 앞으로 남을 돈을 흘려 본 예상 금액으로 (PLAN 4-13)
-  const remainders = rules.some(isRemainderRule) ? projectRemainders(data, today, horizon) : new Map<string, Won>();
+  const remainders = rules.some(isComputedRule) ? projectRemainders(data, today, horizon) : new Map<string, Won>();
   const ruleNet = (month: YearMonth, isFirst: boolean) =>
     rules.reduce((s, r) => {
       // 시작일 전 회차는 기록되지 않으므로 넣지 않는다. 이번 달은 이미 기록된(잔액에 들어간) 회차도 뺀다
       if (ruleOccurrenceDate(data, r, month) === null) return s;
       if (isFirst && transferIds.has(autoTransferId(r.id, month))) return s;
-      return s + sign(r) * ruleAmountFor(r, month, remainders);
+      return s + sign(r) * ruleAmountFor(r, month, remainders, data);
     }, 0);
   const monthlyRate = (month: YearMonth) =>
     rules.reduce((s, r) => {
       if (!isMonthActive(month, r.startMonth, r.endMonth)) return s;
       // 나머지 규칙은 한 달을 온전히 흘려 본 다음 달 예상으로
-      const amount = isRemainderRule(r) ? ruleAmountFor(r, addMonths(month, 1), remainders) || ruleAmountFor(r, month, remainders) : r.amount;
+      const amount = isComputedRule(r) ? ruleAmountFor(r, addMonths(month, 1), remainders, data) || ruleAmountFor(r, month, remainders, data) : r.amount;
       return s + sign(r) * amount;
     }, 0);
   // 이 통장으로 들어올 수입 계획 중 아직 기록되지 않은 회차

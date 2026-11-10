@@ -14,6 +14,8 @@ export * from './categories';
 export * from './income';
 export * from './household';
 export * from './installments';
+export * from './bills';
+export * from './allocation';
 export * from './trips';
 export * from './verdict';
 export * from './recurring';

@@ -8,17 +8,22 @@
  * - 청구: pending 은 낸 사람 · 돌려받을 통장 · 정산일을 앱 규칙(4-9)으로 정하고, settled 는 돌려준 이체 claim:<지출id> 도 함께 만든다
  * - v2 (PLAN 4-13 · 4-14): 수입 계획(incomePlans), 매달 배분의 방식(rules[].kind = fixed · remainder). 사람별 생활비 · 용돈 통장은
  *   v1 처럼 통장의 ownerName · ownerEmail 로 적는다. v1 파일은 그대로 읽는다 (v2 칸을 쓰면 버전을 올리라고 알린다)
+ * - v2 (PLAN 4-15): 매달 배분 kind = 'auto'(필요한 만큼, 생활비 · 용돈 통장으로만), 고정비 fixedExpenses[].startDate · endDate
+ *   (시작일 · 해지일, 'YYYY-MM-DD') · subItems([{ name, amount, startDate?, endDate? }]). 모두 선택이고 비우면 예전과 같다.
+ *   startDate 가 있으면 startMonth · dayOfMonth 는 비워도 된다 (첫 결제 달 · 시작일의 날)
  * - v2 (PLAN 4-1): 생활비 항목의 쓰는 날 fixedExpenses[].useDays('every' · 'weekdays' · 'weekends' · ['mon', 'wed', …]),
  *   skipHolidays(true/false), perWeek(1~7). 모두 선택이고, 비우면 매일 (예전과 같다)
  */
 import { isClaimExpense } from './balances';
 import { canClaimOnAccount, claimAccountFor, claimTransferId, computeClaimDue, isReservoirEventExpense } from './claims';
 import { addMonths, dateInMonth, isValidDate, isValidMonth, monthOf } from './dates';
+import { canAutoFill } from './allocation';
+import { normalizeBill } from './bills';
 import { buildInstallmentRows, installmentPlanId, validateInstallment } from './installments';
 import { conflictingRemainderRule } from './income';
 import { cleanTripItems, TRIP_ITEMS, tripBudget, validateTrip } from './trips';
 import type {
-  Account, AccountRole, AllocationRule, Category, EventStatus, Expense, FixedExpense, Id, IncomePlan, ISODate, LedgerData,
+  Account, AccountRole, AllocationRule, Category, EventStatus, Expense, FixedExpense, FixedSubItem, Id, IncomePlan, ISODate, LedgerData,
   LivingSpread, PlannedEvent, Repeat, RuleKind, Transfer, Trip, TripItem, Won, YearMonth,
 } from './types';
 
@@ -57,7 +62,7 @@ export interface ImportRule {
   /** 통장 key */
   from: string;
   to: string;
-  /** 방식 (v2). fixed = 정한 금액, remainder = 그날 남은 돈 전부 (amount 는 0) */
+  /** 방식 (v2). fixed = 정한 금액, remainder = 그날 남은 돈 전부, auto = 필요한 만큼 (amount 는 0) */
   kind: RuleKind;
   amount: Won;
   dayOfMonth: number;
@@ -97,6 +102,11 @@ export interface ImportFixed {
   startMonth: YearMonth;
   endMonth: YearMonth | null;
   memo: string;
+  /** 고정비 시작일 · 해지일 (v2, PLAN 4-15) */
+  startDate: ISODate | null;
+  endDate: ISODate | null;
+  /** 고정비 세부 항목 (v2) */
+  subItems: FixedSubItem[];
 }
 export interface ImportInstallment {
   key: string;
@@ -375,9 +385,9 @@ export function parseImportFile(text: string): ParseResult {
   });
   const rules = readTable<ImportRule>(root, 'rules', '매달 배분', errors, (f, key, r, fail) => {
     if (version === 1 && !blank(r.kind)) fail(v2Only('kind'));
-    const kind = version === 1 ? 'fixed' : f.oneOf<RuleKind>('kind', ['fixed', 'remainder'], 'fixed');
-    // 나머지 전부 보내기는 금액을 쓰지 않는다 (비우거나 0. 적었으면 모양만 확인)
-    const amount = kind === 'remainder' ? (f.int('amount', { min: 0, optional: true }), 0) : (f.int('amount', { min: 1 }) ?? 0);
+    const kind = version === 1 ? 'fixed' : f.oneOf<RuleKind>('kind', ['fixed', 'remainder', 'auto'], 'fixed');
+    // 나머지 전부 보내기 · 필요한 만큼은 금액을 쓰지 않는다 (비우거나 0. 적었으면 모양만 확인)
+    const amount = kind !== 'fixed' ? (f.int('amount', { min: 0, optional: true }), 0) : (f.int('amount', { min: 1 }) ?? 0);
     return {
       key,
       from: f.ref('from', accountKeys, false) ?? '',
@@ -406,27 +416,58 @@ export function parseImportFile(text: string): ParseResult {
   const fixedExpenses = readTable<ImportFixed>(root, 'fixedExpenses', '고정 지출', errors, (f, key, r, fail) => {
     const kind = f.oneOf('kind', FIXED_KINDS);
     const day = f.int('dayOfMonth', { min: 1, max: 31, optional: true });
-    if (kind !== 'living' && day === null) fail("'dayOfMonth' 칸을 확인해 주세요");
+    if (kind !== 'living' && day === null && !(version !== 1 && isValidDate(r.startDate))) fail("'dayOfMonth' 칸을 확인해 주세요");
     for (const k of ['useDays', 'skipHolidays', 'perWeek']) if (version === 1 && !blank(r[k])) fail(v2Only(k));
     const useDays = version === 1 ? null : readUseDays(r.useDays, () => fail("'useDays' 칸을 확인해 주세요"));
     if (!blank(r.skipHolidays) && typeof r.skipHolidays !== 'boolean') fail("'skipHolidays' 칸을 확인해 주세요");
     const perWeek = version === 1 ? null : f.int('perWeek', { min: 1, max: 7, optional: true });
+    // 고정비 시작일 · 해지일 · 세부 항목 (v2, PLAN 4-15)
+    for (const k of ['startDate', 'endDate', 'subItems']) {
+      if (blank(r[k])) continue;
+      if (version === 1) fail(v2Only(k));
+      else if (kind === 'living') fail(`'${k}' 는 고정비 · 용돈에서만 써요`);
+    }
+    const dated = version !== 1 && kind !== 'living';
+    const startDate = dated ? f.date('startDate', true) : null;
+    const endDate = dated ? f.date('endDate', true) : null;
+    if (startDate && endDate && endDate < startDate) fail("'endDate' 가 'startDate' 보다 앞이에요");
+    const subItems: FixedSubItem[] = [];
+    if (dated && !blank(r.subItems)) {
+      if (!Array.isArray(r.subItems)) fail("'subItems' 는 목록이어야 해요");
+      else
+        r.subItems.forEach((x, i) => {
+          const o = isObj(x) ? x : null;
+          const name = o && typeof o.name === 'string' ? o.name.trim() : '';
+          const amount = o?.amount;
+          const sd = o?.startDate;
+          const ed = o?.endDate;
+          if (!o || !name || typeof amount !== 'number' || !Number.isInteger(amount) || amount < 0 || (!blank(sd) && !isValidDate(sd)) || (!blank(ed) && !isValidDate(ed))) {
+            fail(`'subItems' ${i + 1}번째 항목을 확인해 주세요 (name · amount · startDate · endDate)`);
+            return;
+          }
+          subItems.push({ name, amount, ...(isValidDate(sd) ? { startDate: sd } : {}), ...(isValidDate(ed) ? { endDate: ed } : {}) });
+        });
+    }
+    const dayRaw = kind === 'living' ? null : (day ?? (startDate ? Number(startDate.slice(8, 10)) : null));
     return {
       key,
       name: f.text('name'),
-      amount: f.int('amount', { min: 1 }) ?? 0,
+      amount: subItems.length > 0 ? (f.int('amount', { min: 0, optional: true }) ?? 0) : (f.int('amount', { min: 1 }) ?? 0),
       account: f.ref('account', accountKeys, false) ?? '',
       category: f.ref('category', categoryKeys),
       kind,
-      dayOfMonth: kind === 'living' ? null : day,
+      dayOfMonth: dayRaw,
       spread: f.oneOf<LivingSpread>('spread', ['daily', 'monthly'], 'daily'),
       useDays,
       skipHolidays: version !== 1 && r.skipHolidays === true,
       perWeek,
       targetEmail: kind === 'allowance' ? f.optText('targetEmail') || null : null,
-      startMonth: f.month('startMonth') ?? '',
+      startMonth: f.month('startMonth', !!startDate) ?? (startDate ? startDate.slice(0, 7) : ''),
       endMonth: f.month('endMonth', true),
       memo: f.text('memo', true),
+      startDate,
+      endDate,
+      subItems,
     };
   });
   const installments = readTable<ImportInstallment>(root, 'installments', '할부', errors, (f, key) => ({
@@ -786,8 +827,12 @@ export function planImport(
       errors.push(`매달 배분 '${r.key}' 의 보내는 통장과 받는 통장을 확인해 주세요`);
       continue;
     }
+    if (r.kind === 'auto' && !canAutoFill(accountRow(to))) {
+      errors.push(`매달 배분 '${r.key}': 필요한 만큼(auto)은 생활비 · 용돈 통장으로 보내는 배분에서만 써요`);
+      continue;
+    }
     const row: AllocationRule = {
-      id, fromAccountId: from, toAccountId: to, amount: r.kind === 'remainder' ? 0 : r.amount, dayOfMonth: r.dayOfMonth,
+      id, fromAccountId: from, toAccountId: to, amount: r.kind === 'fixed' ? r.amount : 0, dayOfMonth: r.dayOfMonth,
       startMonth: r.startMonth, endMonth: r.endMonth, kind: r.kind, deleted: false,
     };
     if (r.kind === 'remainder' && conflictingRemainderRule(work, row)) {
@@ -823,10 +868,14 @@ export function planImport(
     }
     const acc = accountOf(f.account);
     if (!acc) continue;
-    rows.fixedExpenses.push({
+    const base: FixedExpense = {
       id, name: f.name, amount: f.amount, accountId: acc, categoryId: categoryOf(f.category),
       dayOfMonth: f.dayOfMonth, kind: f.kind, targetEmail: f.targetEmail, spread: f.kind === 'living' ? f.spread : 'daily',
       startMonth: f.startMonth, endMonth: f.endMonth, memo: f.memo, deleted: false,
+      // 고정비 시작일 · 해지일 · 세부 항목 (v2, PLAN 4-15). 없으면 칸을 두지 않아 예전 행과 같다
+      ...(f.startDate ? { startDate: f.startDate } : {}),
+      ...(f.endDate ? { endDate: f.endDate } : {}),
+      ...(f.subItems.length > 0 ? { subItems: f.subItems } : {}),
       // 생활비 쓰는 날 (v2). 매일이면 칸을 두지 않아 예전 행과 같다
       ...(f.kind === 'living' && f.spread === 'daily'
         ? {
@@ -835,7 +884,9 @@ export function planImport(
             ...(f.perWeek === null && f.skipHolidays ? { skipHolidays: true } : {}),
           }
         : {}),
-    });
+    };
+    const dated = f.startDate || f.endDate || f.subItems.length > 0;
+    rows.fixedExpenses.push(dated ? normalizeBill(base, today) : base);
   }
 
   /* 할부 */
