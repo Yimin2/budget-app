@@ -118,16 +118,42 @@ describe('HomeView — 체험 가계부', () => {
     expect(within(recent).getAllByText(/민지|준호/).length).toBeGreaterThan(0);
   });
 
-  it('자주 쓰는 지출을 누르면 바로 기록하고, 되돌리기로 지워요', async () => {
+  it('자주 쓰는 지출: 최근에 자주 쓴 지출을 칩으로, 누르면 그 자리에서 금액만 고쳐 오늘 날짜로 기록하고 되돌리기로 지워요', async () => {
     const h = await renderHome();
     await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
+    const section = screen.getByRole('region', { name: '자주 쓰는 지출' });
+    const chips = within(section).getAllByRole('button');
+    expect(chips.length).toBeGreaterThan(0);
+    expect(chips.length).toBeLessThanOrEqual(6);
+    // 가장 많이 쓴 커피가 맨 앞
+    expect(chips[0]!.getAttribute('aria-label')).toBe('커피 4,500원 기록하기');
     const before = h.probe.ledger!.living!.spent;
+    const count = h.probe.ledger!.data!.expenses.length;
 
-    fireEvent.click(screen.getByRole('button', { name: '커피 4,500원 바로 기록하기' }));
-    await screen.findByText('커피 4,500원 기록했어요');
-    await waitFor(() => expect(h.probe.ledger!.living!.spent).toBe(before + 4_500));
-    const recorded = h.probe.ledger!.data!.expenses.find((e) => e.memo === '커피' && e.date === '2026-11-20' && e.id.startsWith('demo-') === false);
-    expect(recorded?.amount).toBe(4_500);
+    // 누르면 창 없이 금액 칸이 펼쳐지고 가장 최근 금액이 들어 있어요
+    fireEvent.click(chips[0]!);
+    expect(chips[0]!.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const form = within(section).getByRole('form', { name: '커피 기록' });
+    const input = within(form).getByLabelText('금액') as HTMLInputElement;
+    expect(input.value).toBe('4,500');
+    expect(document.activeElement).toBe(input);
+    expect(within(form).getByText(/카페 · .* · 오늘/)).toBeTruthy();
+    // 금액을 지우면 확인
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(within(form).getByRole('button', { name: '기록하기' }));
+    expect(within(form).getByText('금액을 입력해 주세요')).toBeTruthy();
+    expect(h.probe.ledger!.data!.expenses).toHaveLength(count);
+
+    fireEvent.change(input, { target: { value: '5200' } });
+    await act(async () => {
+      fireEvent.click(within(form).getByRole('button', { name: '기록하기' }));
+    });
+    await screen.findByText('커피 5,200원 기록했어요');
+    expect(within(section).queryByRole('form')).toBeNull();
+    await waitFor(() => expect(h.probe.ledger!.living!.spent).toBe(before + 5_200));
+    const recorded = h.probe.ledger!.data!.expenses.find((e) => !e.id.startsWith('demo-') && e.memo === '커피');
+    expect(recorded).toMatchObject({ date: '2026-11-20', amount: 5_200, categoryId: 'demo-cat-cafe', accountId: h.probe.ledger!.myLivingAccountId });
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
@@ -135,6 +161,24 @@ describe('HomeView — 체험 가계부', () => {
     await screen.findByText('기록을 되돌렸어요');
     await waitFor(() => expect(h.probe.ledger!.living!.spent).toBe(before));
     expect(h.probe.ledger!.data!.expenses.find((e) => e.id === recorded!.id)?.deleted).toBe(true);
+  });
+
+  it('자주 쓰는 지출: 다시 누르거나 취소 · Esc 로 접고, 아무것도 기록하지 않아요', async () => {
+    const h = await renderHome();
+    await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
+    const section = screen.getByRole('region', { name: '자주 쓰는 지출' });
+    const chip = within(section).getByRole('button', { name: '커피 4,500원 기록하기' });
+    const count = h.probe.ledger!.data!.expenses.length;
+    fireEvent.click(chip);
+    fireEvent.click(chip);
+    expect(within(section).queryByRole('form')).toBeNull();
+    fireEvent.click(chip);
+    fireEvent.click(within(section).getByRole('button', { name: '취소' }));
+    expect(within(section).queryByRole('form')).toBeNull();
+    fireEvent.click(chip);
+    fireEvent.keyDown(within(section).getByLabelText('금액'), { key: 'Escape' });
+    expect(within(section).queryByRole('form')).toBeNull();
+    expect(h.probe.ledger!.data!.expenses).toHaveLength(count);
   });
 });
 
@@ -150,7 +194,10 @@ describe('HomeView — 새 가계부', () => {
     expect(screen.queryByRole('region', { name: '항목별 생활비' })).toBeNull();
     expect(screen.getByText('다가오는 일정이 없어요.')).toBeTruthy();
     expect(screen.getByText(/아직 기록한 지출이 없어요/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: '자주 쓰는 지출 추가' }).textContent).toContain('추가하기');
+    // 기록이 없으면 자주 쓰는 지출은 짧은 안내만 (예전에 등록한 즐겨찾기는 쓰지 않아요)
+    const quick = screen.getByRole('region', { name: '자주 쓰는 지출' });
+    expect(within(quick).queryAllByRole('button')).toHaveLength(0);
+    expect(within(quick).getByText(/지출을 기록하면 자주 쓴 것을/)).toBeTruthy();
     expect(screen.queryByText(/이벤트통장이 .*모자라요/)).toBeNull();
   });
 

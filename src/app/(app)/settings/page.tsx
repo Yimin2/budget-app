@@ -7,13 +7,12 @@ import { PageSkeleton } from '../_components/PageSkeleton';
 import { RequireLedger } from '../_components/RequireLedger';
 import { AccountsCard } from './sections/AccountsCard';
 import { CategoriesCard } from './sections/CategoriesCard';
-import { FavoritesCard } from './sections/FavoritesCard';
 import { ImportCard } from './sections/ImportCard';
 import { AccountCard, DisplayCard, InfoCard, LedgerNameCard } from './sections/GeneralCards';
 import { MembersCards } from './sections/MembersCard';
 
 /**
- * 설정 (오른쪽 위 · 사이드바 아래 내 정보 버튼): 가계부 · 통장 · 멤버 · 공유 · 카테고리 · 자주 쓰는 지출 · 파일에서 가져오기 ·
+ * 설정 (오른쪽 위 · 사이드바 아래 내 정보 버튼): 가계부 · 통장 · 멤버 · 공유 · 카테고리 · 파일에서 가져오기 ·
  * 테마 · 계정(가계부 바꾸기 · 로그아웃). 돈을 나누는 설정(수입 · 배분 · 생활비 · 고정비 · 할부)은 예산 화면에 있어요
  */
 export default function SettingsPage() {
@@ -36,7 +35,6 @@ export default function SettingsPage() {
             <div className="st-col">
               <SettingsGroup id="sg-record" title="기록 도우미">
                 <CategoriesCard ledger={ledger} />
-                <FavoritesCard ledger={ledger} />
                 <ImportCard ledger={ledger} />
               </SettingsGroup>
               <SettingsGroup id="sg-app" title="화면과 계정">

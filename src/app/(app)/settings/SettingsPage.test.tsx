@@ -40,9 +40,11 @@ describe('설정 화면', () => {
     expect(screen.getByText('예산을 불러오는 중이에요')).toBeTruthy();
     await startDemo(h);
     // 설정: 가계부 · 통장 · 멤버 · 기록 도우미 · 테마 · 계정
-    for (const title of ['가계부와 통장', '가계부', '통장', '멤버 · 공유', '함께 쓰는 사람', '기록 도우미', '카테고리', '자주 쓰는 지출', '파일에서 가져오기', '테마', '계정 · 가계부 바꾸기', '정보']) {
+    for (const title of ['가계부와 통장', '가계부', '통장', '멤버 · 공유', '함께 쓰는 사람', '기록 도우미', '카테고리', '파일에서 가져오기', '테마', '계정 · 가계부 바꾸기', '정보']) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy();
     }
+    // 자주 쓰는 지출은 홈에서 저절로 추천해요 (설정의 등록 카드 없음)
+    expect(screen.queryByRole('heading', { level: 2, name: '자주 쓰는 지출' })).toBeNull();
     // 예산: 월급날 돈 흐름 → 통장별 들어오는 돈 · 나가는 돈 (차례 링크와 같은 순서, 8-3)
     const index = screen.getByRole('navigation', { name: '예산 차례' });
     expect(within(index).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['#bd-flow', '#bd-accounts']);
@@ -63,25 +65,14 @@ describe('설정 화면', () => {
     expect(screen.getByRole('button', { name: '체험 데이터 처음으로 되돌리기' })).toBeTruthy();
   });
 
-  it('자주 쓰는 지출 추가 · 매달 배분 금액 바꾸기 · 이름 바꾸기', async () => {
+  it('매달 배분 금액 바꾸기 · 이름 바꾸기', async () => {
     const h = renderApp(<Pages />);
     await startDemo(h);
-
-    // 자주 쓰는 지출 추가 (입력 확인 → 저장)
-    fireEvent.click(screen.getByRole('button', { name: '자주 쓰는 지출 추가' }));
-    let dialog = screen.getByRole('dialog', { name: '자주 쓰는 지출 추가' });
-    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    expect(within(dialog).getByText('이름을 입력해 주세요')).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText(/이름/), { target: { value: '택시' } });
-    fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '12000' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(current(h).ledger.data!.favorites.find((f) => f.name === '택시')).toMatchObject({ amount: 12_000, deleted: false });
 
     // 매달 배분: 이벤트 적립 30만 → 35만
     const rules = card('매달 배분');
     fireEvent.click(within(rules).getByRole('button', { name: /수입통장.* → 이벤트통장/ }));
-    dialog = screen.getByRole('dialog', { name: '매달 배분 고치기' });
+    const dialog = screen.getByRole('dialog', { name: '매달 배분 고치기' });
     fireEvent.change(within(dialog).getByLabelText('금액'), { target: { value: '350000' } });
     expect(within(dialog).getByText(/새 금액을 적용해요/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
