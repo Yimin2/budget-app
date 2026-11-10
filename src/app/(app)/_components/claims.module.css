@@ -185,3 +185,116 @@
   display: block;
   color: var(--text-muted);
 }
+
+/* 이번 달 정산 · 저수지에 갚을 돈 */
+.asideDate {
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.subLine {
+  display: block;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.note {
+  margin: var(--space-2) 0 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.borrow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+}
+.borrow p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.borrow strong {
+  color: var(--text);
+}
+.compactList {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.compactList div {
+  display: flex;
+  flex-direction: column;
+}
+.compactList dt {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.compactList dd {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.personList {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+.personList li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 24px;
+}
+.personList li:first-child {
+  border-top: none;
+}
+.personAmount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.suggest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.moreBtn {
+  flex: none;
+}

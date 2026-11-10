@@ -154,25 +154,28 @@ describe('HomeView — 새 가계부', () => {
     expect(screen.queryByText(/이벤트통장이 .*모자라요/)).toBeNull();
   });
 
-  it('돌려받을 돈: 사람별 합 · 다음 정산일 · [보냈어요]로 돌려준 기록', async () => {
+  it('이번 달 정산: 돌려줄 날이 된 청구가 있으면 홈에 사람별 지급, [모두 지급했어요] 뒤엔 사람별 돌려받을 돈', async () => {
     const h = await renderHome();
-    const card = await screen.findByRole('region', { name: '돌려받을 돈' });
-    expect(within(card).getByText('324,000원')).toBeTruthy();
-    expect(card.textContent).toContain('민지 300,000원 · 준호 24,000원');
-    expect(card.textContent).toContain('다음 정산일 12월 1일');
-    expect(within(card).getByText('민지에게 300,000원')).toBeTruthy();
-    expect(card.textContent).toContain('이벤트통장 → 민지 수입통장 · 제주 항공권');
-    expect(card.textContent).toContain('정산일을 기다리는 1건 보기');
+    const card = await screen.findByRole('region', { name: '이번 달 정산' });
+    expect(card.textContent).toContain('이번 달 지급민지 300,000원');
+    expect(screen.queryByRole('region', { name: '사람별 돌려받을 돈' })).toBeNull();
+    expect(within(card).getByRole('link', { name: '정산 자세히 보기' }).getAttribute('href')).toBe('/plan#settlement');
 
     const eventBefore = h.probe.ledger!.balances['demo-acc-event']!;
     await act(async () => {
-      fireEvent.click(within(card).getByRole('button', { name: '민지에게 300,000원 보냈어요' }));
+      fireEvent.click(within(card).getByRole('button', { name: '모두 지급했어요' }));
     });
-    await screen.findByText('민지에게 300,000원 돌려줬다고 기록했어요');
+    await screen.findByText('민지 300,000원 지급했다고 기록했어요');
     expect(h.probe.ledger!.balances['demo-acc-event']).toBe(eventBefore - 300_000);
     expect(h.probe.ledger!.balances['demo-acc-income']).toBe(0);
-    expect(within(card).queryByText('민지에게 300,000원')).toBeNull();
     expect(h.probe.ledger!.claims!.total).toBe(24_000);
+
+    // 남은 청구는 아직 정산일 전 → 사람별 돌려받을 돈 카드
+    const claims = await screen.findByRole('region', { name: '사람별 돌려받을 돈' });
+    expect(within(claims).getByText('준호')).toBeTruthy();
+    expect(within(claims).getByRole('list', { name: '함께 쓰는 통장에서 돌려받을 돈' }).textContent).toBe('준호24,000원');
+    expect(claims.textContent).toContain('다음 정산일 12월 1일');
+    expect(within(claims).getByRole('link', { name: '이번 달 정산 보기' }).getAttribute('href')).toBe('/plan#settlement');
 
     // 되돌리기 → 다시 돌려줄 돈
     await act(async () => {

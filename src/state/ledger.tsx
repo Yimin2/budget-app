@@ -28,6 +28,12 @@ import {
   type SharingList,
   claimPayers as claimPayersDomain,
   claimTransferId,
+  claimLoanTransferId,
+  computeSettlement,
+  expenseLoanTransferId,
+  followLoanTransfers,
+  loanCandidates as loanCandidatesDomain,
+  loanRepayId,
   compareMonth,
   computeClaimDue,
   computeLiving,
@@ -136,6 +142,12 @@ function insertIn<T extends Keyed>(list: T[], rows: T[]): T[] {
     out.push(r);
   }
   return out;
+}
+
+/** 이체 메모에 쓸 지출 이름: 메모 → 카테고리 → '지출' */
+function claimWhat(d: LedgerData, e: Expense): string {
+  const cat = e.categoryId ? d.categories.find((x) => x.id === e.categoryId)?.name : undefined;
+  return e.memo.trim() || cat || '지출';
 }
 
 function sortedActive<T extends { deleted: boolean; order: number }>(list: T[]): T[] {
@@ -542,6 +554,11 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const pendingMonthEnd = useMemo(() => (data ? pendingMonthEndDomain(data, today) : null), [data, today]);
   const claims = useMemo(() => (data ? summarizeClaims(data, today) : null), [data, today]);
   const claimPayers = useMemo(() => (data ? claimPayersDomain(data) : []), [data]);
+  const settlement = useMemo(
+    () => (data && eventProjection?.accountId ? computeSettlement(data, today, eventProjection) : null),
+    [data, today, eventProjection],
+  );
+  const loanCandidates = useMemo(() => (data ? loanCandidatesDomain(data) : []), [data]);
   const installments = useMemo(() => (data ? installmentPlans(data, today) : []), [data, today]);
   const trips = useMemo(() => (data ? tripStatuses(data, today) : []), [data, today]);
   const installmentHint = useCallback<LedgerApi['installmentHint']>(
@@ -642,24 +659,31 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [insertRows, stamp, requireData, tripFields],
   );
 
-  /** 지출과 그 청구의 돌려준 이체(claim:<지출id>)를 함께 쓴다. 이체 먼저: 끊기면 다시 읽어 맞춘다 */
-  const writeExpenseAndSettle = useCallback(
-    (expense: Expense, settle: Transfer, failMessage: string) =>
-      mutate(
-        (x) => ({ ...x, expenses: upsertIn(x.expenses, expense), transfers: upsertIn(x.transfers, settle) }),
-        async (repo) => {
-          await repo.upsert('transfers', settle);
-          await repo.upsert('expenses', expense);
-        },
-        failMessage,
-        { multiStep: true },
-      ),
-    [mutate],
+  /** 지출과 그 지출에 딸린 이체(돌려준 이체 claim:<지출id> · 빌린 이체 loan:…)를 함께 쓴다. 이체 먼저: 끊기면 다시 읽어 맞춘다 */
+  const writeExpenseWith = useCallback(
+    (expense: Expense, linked: Transfer[], failMessage: string) =>
+      linked.length === 0
+        ? upsertRow('expenses', expense, failMessage)
+        : mutate(
+            (x) => ({
+              ...x,
+              expenses: upsertIn(x.expenses, expense),
+              transfers: linked.reduce((list, t) => upsertIn(list, t), x.transfers),
+            }),
+            async (repo) => {
+              for (const t of linked) await repo.upsert('transfers', t);
+              await repo.upsert('expenses', expense);
+            },
+            failMessage,
+            { multiStep: true },
+          ),
+    [mutate, upsertRow],
   );
 
   /**
    * 고치기. 아직 돌려주지 않은 청구는 낸 사람 · 통장 · 금액이 바뀌면 돌려받을 통장과 정산일을 다시 정해요.
-   * 낸 사람을 비우면 보통 지출이 돼요. 이미 돌려준 청구는 청구 칸을 그대로 둬요
+   * 낸 사람을 비우면 보통 지출이 돼요. 이미 돌려준 청구는 청구 칸을 그대로 둬요.
+   * 저수지에서 빌린 이체(loan:<지출id> · loan:claim:<지출id>)는 금액 · 날짜를 따라 고치고, 지출을 지우거나 이벤트통장 밖으로 옮기면 지워요
    */
   const updateExpense = useCallback(
     async (expense: Expense) => {
@@ -672,14 +696,22 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       }
       // 일정과 여행은 하나만: 여행에 묶이면 일정 연결은 푼다 (예전 기록이 둘 다 가졌어도)
       if (next.tripId && next.eventId) next = { ...next, eventId: null };
-      // 지웠던 지출을 되살리면, 함께 지웠던 돌려준 이체도 되살린다 (deleteExpense 가 같은 시각으로 지운 것만)
-      const settle = prev ? d.transfers.find((t) => t.id === claimTransferId(prev.id)) : undefined;
-      if (prev && settle && prev.deleted && !next.deleted && settle.deleted && settle.updatedAt === prev.updatedAt && isClaimExpense(prev)) {
-        const revived: Transfer = { ...settle, deleted: false, updatedAt: next.updatedAt };
-        next = { ...next, paidBy: prev.paidBy, claimAccountId: prev.claimAccountId ?? null, claimDue: prev.claimDue ?? null };
-        await writeExpenseAndSettle(next, revived, '지출을 고치지 못했어요');
-        return;
+      // 지웠던 지출을 되살리면, 함께 지웠던 이체(돌려준 이체 · 빌린 이체)도 되살린다 (deleteExpense 가 같은 시각으로 지운 것만)
+      if (prev && prev.deleted && !next.deleted) {
+        const ids = new Set([claimTransferId(prev.id), claimLoanTransferId(prev.id), expenseLoanTransferId(prev.id)]);
+        const revived = d.transfers
+          .filter((t) => ids.has(t.id) && t.deleted && t.updatedAt === prev.updatedAt)
+          .map((t) => ({ ...t, deleted: false, updatedAt: next.updatedAt }));
+        if (revived.length > 0) {
+          if (isClaimExpense(prev)) {
+            next = { ...next, paidBy: prev.paidBy, claimAccountId: prev.claimAccountId ?? null, claimDue: prev.claimDue ?? null };
+          }
+          await writeExpenseWith(next, revived, '지출을 고치지 못했어요');
+          return;
+        }
       }
+      const linked: Transfer[] = [];
+      const settle = prev ? d.transfers.find((t) => t.id === claimTransferId(prev.id)) : undefined;
       if (prev && isClaimExpense(prev) && isClaimSettled(d, prev.id)) {
         next = { ...next, paidBy: prev.paidBy, claimAccountId: prev.claimAccountId ?? null, claimDue: prev.claimDue ?? null };
         // 이미 돌려준 청구의 금액 · 통장을 바꾸면 돌려준 이체도 같이 고친다 (낸 사람 통장 · 함께 쓰는 통장 잔액이 어긋나지 않게)
@@ -687,11 +719,11 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
           if (!next.deleted && !canClaimOnAccount(d, next.accountId)) {
             throw new Error('돌려준 청구는 이벤트통장 · 고정지출통장 · 저수지통장으로만 옮길 수 있어요');
           }
-          const fixed: Transfer = next.deleted
-            ? { ...settle, deleted: true, updatedAt: next.updatedAt }
-            : { ...settle, amount: next.amount, fromAccountId: next.accountId, updatedAt: next.updatedAt };
-          await writeExpenseAndSettle(next, fixed, '지출을 고치지 못했어요');
-          return;
+          linked.push(
+            next.deleted
+              ? { ...settle, deleted: true, updatedAt: next.updatedAt }
+              : { ...settle, amount: next.amount, fromAccountId: next.accountId, updatedAt: next.updatedAt },
+          );
         }
       } else if (isClaimExpense(next)) {
         const payer = next.paidBy!.trim();
@@ -711,9 +743,10 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       } else if (prev && isClaimExpense(prev)) {
         next = { ...next, paidBy: null, claimAccountId: null, claimDue: null };
       }
-      await upsertRow('expenses', next, '지출을 고치지 못했어요');
+      if (prev) linked.push(...followLoanTransfers(d, next));
+      await writeExpenseWith(next, linked, '지출을 고치지 못했어요');
     },
-    [requireData, upsertRow, nowIso, tripFields, writeExpenseAndSettle],
+    [requireData, nowIso, tripFields, writeExpenseWith],
   );
 
   /* ---------- 청구 ---------- */
@@ -727,8 +760,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       const s = stamp();
       const day = date ?? todayRef.current;
       const rows: Transfer[] = due.map((c) => {
-        const cat = c.expense.categoryId ? d.categories.find((x) => x.id === c.expense.categoryId)?.name : undefined;
-        const what = c.expense.memo.trim() || cat || '지출';
+        const what = claimWhat(d, c.expense);
         return {
           id: claimTransferId(c.expense.id),
           date: day,
@@ -759,7 +791,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   const unsettleClaims = useCallback<LedgerApi['unsettleClaims']>(
     async (expenseIds) => {
       const { data: d } = requireData();
-      const ids = new Set(expenseIds.map(claimTransferId));
+      // 저수지에서 빌려 지급한 청구는 빌린 이체(loan:claim:<지출id>)도 함께 지운다
+      const ids = new Set([...expenseIds.map(claimTransferId), ...expenseIds.map(claimLoanTransferId)]);
       const rows = d.transfers
         .filter((t) => ids.has(t.id) && !t.deleted)
         .map((t) => ({ ...t, deleted: true, updatedAt: nowIso() }));
@@ -774,6 +807,165 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       );
     },
     [requireData, mutate, nowIso],
+  );
+
+  /** 지운 행을 되살릴 수 있게 늘 키로 덮어쓰며 이체 여러 개를 쓴다 (순서대로) */
+  const upsertTransfers = useCallback(
+    (rows: Transfer[], failMessage: string) =>
+      mutate(
+        (x) => ({ ...x, transfers: rows.reduce((list, r) => upsertIn(list, r), x.transfers) }),
+        async (repo) => {
+          for (const r of rows) await repo.upsert('transfers', r);
+        },
+        failMessage,
+        { multiStep: rows.length > 1 },
+      ),
+    [mutate],
+  );
+
+  const borrowAndSettleClaims = useCallback<LedgerApi['borrowAndSettleClaims']>(
+    async (expenseIds) => {
+      const { data: d } = requireData();
+      const reservoir = d.accounts.find((a) => !a.deleted && a.role === 'reservoir');
+      if (!reservoir) throw new Error('저수지통장이 없어요');
+      const ids = new Set(expenseIds);
+      const due = pendingClaims(d, todayRef.current).filter((c) => ids.has(c.expense.id));
+      if (due.length === 0) return;
+      const s = stamp();
+      const day = todayRef.current;
+      const base = { date: day, kind: 'transfer' as const, status: 'done' as const, ruleId: null, ...s };
+      // 빌린 이체를 먼저: 끊겨도 이벤트통장이 모자라지 않고, 다시 누르면 같은 키라 하나씩만 남는다
+      const loans: Transfer[] = due.map((c) => ({
+        ...base,
+        id: claimLoanTransferId(c.expense.id),
+        fromAccountId: reservoir.id,
+        toAccountId: c.accountId,
+        amount: c.amount,
+        memo: `저수지에서 빌림 · ${c.payer}에게 돌려줌 · ${claimWhat(d, c.expense)}`,
+      }));
+      const settles: Transfer[] = due.map((c) => ({
+        ...base,
+        id: claimTransferId(c.expense.id),
+        fromAccountId: c.accountId,
+        toAccountId: c.claimAccountId,
+        amount: c.amount,
+        memo: `${c.payer}에게 돌려줌 · ${claimWhat(d, c.expense)}`,
+      }));
+      await upsertTransfers([...loans, ...settles], '저수지에서 빌린 기록을 저장하지 못했어요');
+    },
+    [requireData, stamp, upsertTransfers],
+  );
+
+  const repayLoan = useCallback<LedgerApi['repayLoan']>(
+    async (amount) => {
+      const { data: d } = requireData();
+      const value = Math.round(amount);
+      if (!(value > 0)) throw new Error('갚을 금액을 확인해 주세요');
+      const event = d.accounts.find((a) => !a.deleted && a.role === 'event');
+      const reservoir = d.accounts.find((a) => !a.deleted && a.role === 'reservoir');
+      if (!event || !reservoir) throw new Error('이벤트통장과 저수지통장이 있어야 해요');
+      const day = todayRef.current;
+      const row: Transfer = {
+        id: loanRepayId(monthOf(day)),
+        date: day,
+        kind: 'transfer',
+        fromAccountId: event.id,
+        toAccountId: reservoir.id,
+        amount: value,
+        status: 'done',
+        ruleId: null,
+        memo: '저수지에 갚음',
+        ...stamp(),
+      };
+      await upsertTransfers([row], '갚은 기록을 저장하지 못했어요');
+    },
+    [requireData, stamp, upsertTransfers],
+  );
+
+  const undoRepayLoan = useCallback<LedgerApi['undoRepayLoan']>(async () => {
+    const { data: d } = requireData();
+    const id = loanRepayId(monthOf(todayRef.current));
+    const row = d.transfers.find((t) => t.id === id && !t.deleted);
+    if (!row) return;
+    await upsertTransfers([{ ...row, deleted: true, updatedAt: nowIso() }], '되돌리지 못했어요');
+  }, [requireData, upsertTransfers, nowIso]);
+
+  /** 지출과 이체를 함께 쓴다 (expensesFirst: 지출 먼저). 끊기면 다시 읽어 맞춘다 */
+  const writeExpensesAndTransfers = useCallback(
+    (expenses: Expense[], transfers: Transfer[], failMessage: string, expensesFirst: boolean) =>
+      mutate(
+        (x) => ({
+          ...x,
+          expenses: expenses.reduce((list, r) => upsertIn(list, r), x.expenses),
+          transfers: transfers.reduce((list, r) => upsertIn(list, r), x.transfers),
+        }),
+        async (repo) => {
+          const writeE = async () => {
+            for (const e of expenses) await repo.upsert('expenses', e);
+          };
+          const writeT = async () => {
+            for (const t of transfers) await repo.upsert('transfers', t);
+          };
+          if (expensesFirst) {
+            await writeE();
+            await writeT();
+          } else {
+            await writeT();
+            await writeE();
+          }
+        },
+        failMessage,
+        { multiStep: true },
+      ),
+    [mutate],
+  );
+
+  const convertToLoan = useCallback<LedgerApi['convertToLoan']>(
+    async (expenseIds) => {
+      const { data: d } = requireData();
+      const event = d.accounts.find((a) => !a.deleted && a.role === 'event');
+      if (!event) throw new Error('이벤트통장이 없어요');
+      const ids = new Set(expenseIds);
+      const rows = loanCandidatesDomain(d).filter((e) => ids.has(e.id));
+      if (rows.length === 0) return;
+      const s = stamp();
+      const transfers: Transfer[] = rows.map((e) => ({
+        id: expenseLoanTransferId(e.id),
+        date: e.date,
+        kind: 'transfer',
+        fromAccountId: e.accountId,
+        toAccountId: event.id,
+        amount: e.amount,
+        status: 'done',
+        ruleId: null,
+        memo: `저수지에서 빌림 · ${claimWhat(d, e)}`,
+        ...s,
+      }));
+      const expenses: Expense[] = rows.map((e) => ({ ...e, accountId: event.id, updatedAt: s.updatedAt }));
+      // 빌린 이체 먼저, 그다음 지출의 통장을 옮긴다
+      await writeExpensesAndTransfers(expenses, transfers, '갚을 돈으로 바꾸지 못했어요', false);
+    },
+    [requireData, stamp, writeExpensesAndTransfers],
+  );
+
+  const unconvertLoan = useCallback<LedgerApi['unconvertLoan']>(
+    async (expenseIds) => {
+      const { data: d } = requireData();
+      const updatedAt = nowIso();
+      const transfers: Transfer[] = [];
+      const expenses: Expense[] = [];
+      for (const id of expenseIds) {
+        const t = d.transfers.find((x) => x.id === expenseLoanTransferId(id) && !x.deleted);
+        const e = d.expenses.find((x) => x.id === id);
+        if (!t || !e || !t.fromAccountId) continue;
+        transfers.push({ ...t, deleted: true, updatedAt });
+        expenses.push({ ...e, accountId: t.fromAccountId, updatedAt });
+      }
+      if (transfers.length === 0) return;
+      // 지출을 먼저 저수지로 되돌리고 빌린 이체를 지운다
+      await writeExpensesAndTransfers(expenses, transfers, '되돌리지 못했어요', true);
+    },
+    [requireData, nowIso, writeExpensesAndTransfers],
   );
 
   const saveSettleDay = useCallback<LedgerApi['saveSettleDay']>(
@@ -807,15 +999,12 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       if (!row) throw new Error('지출 기록을 찾을 수 없어요');
       const updatedAt = nowIso();
       const deleted: Expense = { ...row, deleted: true, updatedAt };
-      // 돌려준 청구를 지우면 돌려준 이체도 같은 시각으로 지운다 (되살리면 함께 되살아난다)
-      const settle = isClaimExpense(row) ? d.transfers.find((t) => t.id === claimTransferId(row.id) && !t.deleted) : undefined;
-      if (settle) {
-        await writeExpenseAndSettle(deleted, { ...settle, deleted: true, updatedAt }, '지출을 지우지 못했어요');
-        return;
-      }
-      await upsertRow('expenses', deleted, '지출을 지우지 못했어요');
+      // 지출을 지우면 딸린 이체(돌려준 이체 · 빌린 이체)도 같은 시각으로 지운다 (되살리면 함께 되살아난다)
+      const ids = new Set([claimTransferId(row.id), claimLoanTransferId(row.id), expenseLoanTransferId(row.id)]);
+      const linked = d.transfers.filter((t) => ids.has(t.id) && !t.deleted).map((t) => ({ ...t, deleted: true, updatedAt }));
+      await writeExpenseWith(deleted, linked, '지출을 지우지 못했어요');
     },
-    [requireData, upsertRow, nowIso, writeExpenseAndSettle],
+    [requireData, nowIso, writeExpenseWith],
   );
 
   /* ---------- 여행 ---------- */
@@ -1696,6 +1885,13 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       previewClaimDue,
       settleClaims,
       unsettleClaims,
+      settlement,
+      loanCandidates,
+      borrowAndSettleClaims,
+      repayLoan,
+      undoRepayLoan,
+      convertToLoan,
+      unconvertLoan,
       saveSettleDay,
       saveDaysOff,
       installments,
@@ -1751,7 +1947,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       status, error, needsReconnect, ref, data, today, savingCount, reload, living, livingViews, myLivingId, livingFor, spenders,
       mySpender, addIncomePlan, saveIncomePlan, balances, eventProjection, shortageFix,
       pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
-      previewClaimDue, settleClaims, unsettleClaims, saveSettleDay, saveDaysOff, installments, installmentHint, addInstallment,
+      previewClaimDue, settleClaims, unsettleClaims, settlement, loanCandidates, borrowAndSettleClaims, repayLoan,
+      undoRepayLoan, convertToLoan, unconvertLoan, saveSettleDay, saveDaysOff, installments, installmentHint, addInstallment,
       reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,
       restoreTrip, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,

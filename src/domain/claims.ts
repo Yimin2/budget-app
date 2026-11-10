@@ -22,6 +22,24 @@ export function claimTransferId(expenseId: Id): string {
   return `claim:${expenseId}`;
 }
 
+/** [저수지에서 빌려 지급]한 청구의 빌린 이체 id (저수지 → 이벤트통장, settlement.ts) */
+export function claimLoanTransferId(expenseId: Id): string {
+  return `loan:claim:${expenseId}`;
+}
+
+/** 이 청구를 저수지 돈으로 돌려줬는지: 저수지에서 빌려 지급했거나, 돌려준 이체가 저수지에서 나갔으면 */
+export function isClaimPaidFromReservoir(data: LedgerData, expenseId: Id): boolean {
+  const reservoirIds = new Set(data.accounts.filter((a) => a.role === 'reservoir').map((a) => a.id));
+  const loanId = claimLoanTransferId(expenseId);
+  const settleId = claimTransferId(expenseId);
+  return data.transfers.some(
+    (t) =>
+      !t.deleted &&
+      t.status === 'done' &&
+      (t.id === loanId || (t.id === settleId && t.fromAccountId !== null && reservoirIds.has(t.fromAccountId))),
+  );
+}
+
 /** 이 청구를 돌려줬는지 (이체 claim:<지출id> 가 지워지지 않은 완료 기록으로 있으면) */
 export function isClaimSettled(data: LedgerData, expenseId: Id): boolean {
   const id = claimTransferId(expenseId);
@@ -201,6 +219,8 @@ export function claimMessage(claim: { payer: string; amount: Won; due: ISODate }
 /** 지출 하나의 청구 안내 (청구가 아니면 null) */
 export function claimMessageFor(data: LedgerData, e: Expense, today: ISODate): string | null {
   if (!isClaimExpense(e)) return null;
-  if (isClaimSettled(data, e.id)) return `${payerOf(e)}에게 돌려줬어요`;
+  if (isClaimSettled(data, e.id)) {
+    return isClaimPaidFromReservoir(data, e.id) ? `${payerOf(e)}에게 저수지에서 돌려줬어요` : `${payerOf(e)}에게 돌려줬어요`;
+  }
   return claimMessage({ payer: payerOf(e), amount: e.amount, due: claimDueOf(data, e) }, today);
 }

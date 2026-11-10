@@ -33,12 +33,45 @@ describe('EventsView — 체험 가계부', () => {
     expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
   });
 
-  it('돌려받을 돈 카드: 이벤트 화면에도 보이고, 이번 달 예측에 돌려줄 돈이 들어가요', async () => {
+  it('이번 달 정산 카드: 지급할 수 있는 돈 · 사람별 지급 · 정산일이 안 된 돈, 이번 달 예측에 돌려줄 돈이 들어가요', async () => {
     const h = await renderEvents();
-    const card = screen.getByRole('region', { name: '돌려받을 돈' });
-    expect(card.textContent).toContain('민지 300,000원 · 준호 24,000원');
+    const card = screen.getByRole('region', { name: '이번 달 정산' });
+    expect(card.id).toBe('settlement');
+    expect(card.textContent).toContain('지급할 수 있는 돈 750,000원');
+    expect(within(card).getByRole('button', { name: '민지에게 300,000원 지급했어요' })).toBeTruthy();
+    expect(card.textContent).toContain('정산일이 아직 안 된 돈: 준호 24,000원 (12월 1일)');
     const thisMonth = h.probe.ledger!.eventProjection!.months[0]!;
     expect(thisMonth.claims).toBe(300_000);
+
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '민지에게 300,000원 지급했어요' }));
+    });
+    await screen.findByText('민지에게 300,000원 지급했다고 기록했어요');
+    expect(h.probe.ledger!.settlement!.pay).toEqual([]);
+    expect(card.textContent).toContain('지급할 수 있는 돈 450,000원');
+  });
+
+  it('저수지에 갚을 돈 카드: 빌려 지급하면 갚을 돈과 기록, 저수지에서 쓴 이벤트 지출은 갚을 돈으로 바꿀 수 있어요', async () => {
+    const h = await renderEvents();
+    expect(screen.queryByRole('region', { name: '저수지에 갚을 돈' })).toBeNull();
+    await act(async () => {
+      await h.probe.ledger!.borrowAndSettleClaims(['demo-claim-jeju']);
+    });
+    const card = await screen.findByRole('region', { name: '저수지에 갚을 돈' });
+    expect(h.probe.ledger!.settlement!.loan.balance).toBe(300_000);
+    expect(within(card).getAllByText('300,000원').length).toBeGreaterThan(0);
+    expect(card.textContent).toContain('민지에게 지급 · 제주 항공권');
+    expect(card.textContent).toContain('저수지에서 지급');
+
+    const cat = h.probe.ledger!.data!.categories.find((c) => !c.deleted && c.defaultAccountRole === 'event')!;
+    await act(async () => {
+      await h.probe.ledger!.addExpense({ date: '2026-10-05', amount: 200_000, accountId: 'demo-acc-reservoir', categoryId: cat.id, memo: '돌잔치' });
+    });
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '돌잔치 200,000원 이벤트통장이 갚을 돈으로 바꾸기' }));
+    });
+    await screen.findByText('200,000원을 이벤트통장이 갚을 돈으로 바꿨어요');
+    expect(h.probe.ledger!.settlement!.loan.balance).toBe(500_000);
   });
 
   it('불러오는 동안 뼈대, 다 불러오면 잔액 · 매달 적립 · 12개월 막대 · 부족 알림', async () => {

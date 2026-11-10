@@ -8,6 +8,7 @@ import type {
 import type { TripInput } from '@/domain/trips';
 import type { InstallmentInput, InstallmentPatch } from '@/domain/installments';
 import type { ImportFile, ImportPlan } from '@/domain/importFile';
+import type { Settlement } from '@/domain/settlement';
 import type { LedgerRef } from '@/storage/types';
 import type { InviteOpenResult } from './invite';
 
@@ -153,8 +154,25 @@ export interface LedgerApi {
    * 이미 돌려준 청구는 건너뛰어 다시 눌러도 한 번만 기록돼요
    */
   settleClaims(expenseIds: Id[], date?: ISODate): Promise<void>;
-  /** 돌려준 기록 되돌리기 (이체를 지워요) */
+  /** 돌려준 기록 되돌리기 (이체를 지워요. 저수지에서 빌려 지급했으면 빌린 이체도) */
   unsettleClaims(expenseIds: Id[]): Promise<void>;
+  /** 이번 달 정산 (이벤트통장이 있을 때) — 지급할 수 있는 돈 · 사람별 지급 · 넘어가는 돈 · 저수지 몫 · 갚을 돈 */
+  settlement: Settlement | null;
+  /** 이벤트통장이 갚을 돈으로 바꿀 수 있는 저수지 지출 (이벤트 카테고리 · 일정 · 여행) */
+  loanCandidates: Expense[];
+  /**
+   * 저수지에서 빌려 지급: 청구마다 빌린 이체 loan:claim:<지출id>(저수지 → 이벤트통장)와 돌려준 이체 claim:<지출id>를 남겨요.
+   * 다시 눌러도 같은 키라 하나씩만 남아요
+   */
+  borrowAndSettleClaims(expenseIds: Id[]): Promise<void>;
+  /** 저수지에 갚았어요: 이번 달 이체 loanpay:<월> (이벤트통장 → 저수지) */
+  repayLoan(amount: Won): Promise<void>;
+  /** 이번 달 갚은 기록 되돌리기 */
+  undoRepayLoan(): Promise<void>;
+  /** 저수지에서 쓴 이벤트 지출을 이벤트통장이 갚을 돈으로 바꾸기 (지출 통장 → 이벤트통장, 이체 loan:<지출id>) */
+  convertToLoan(expenseIds: Id[]): Promise<void>;
+  /** 갚을 돈으로 바꾼 것 되돌리기 */
+  unconvertLoan(expenseIds: Id[]): Promise<void>;
   /** 정산일(매달 며칠). null = 자동 (수입통장 → 이벤트통장 배분 이체일, 없으면 21일) */
   saveSettleDay(day: number | null): Promise<void>;
   /** 쉬는 날 목록 (회사 휴무 등). '공휴일 빼기' 생활비 항목은 이 날도 빼요 (PLAN 4-1) */

@@ -170,6 +170,7 @@ describe('planImport', () => {
     expect(plan.claims).toEqual({
       pending: [{ payer: '나래', count: 1, amount: 70_000 }, { payer: '가람', count: 1, amount: 9_000 }],
       pendingTotal: 79_000,
+      reservoirPending: [],
       nextDue: '2026-11-25',
       settledCount: 1,
       settledAmount: 15_000,

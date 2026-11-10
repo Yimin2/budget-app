@@ -593,6 +593,8 @@ export interface ImportPlan {
   claims: {
     pending: { payer: string; count: number; amount: Won }[];
     pendingTotal: Won;
+    /** 그중 저수지통장 청구 (정산 화면의 '저수지에서 돌려받을 돈'). 저수지에서 돌려주면 빌린 돈이 되지 않는다 */
+    reservoirPending: { payer: string; count: number; amount: Won }[];
     nextDue: ISODate | null;
     settledCount: number;
     settledAmount: Won;
@@ -858,6 +860,7 @@ export function planImport(
   let beforeOpening = 0;
   let droppedEvent = 0;
   const pendingByPayer = new Map<string, { count: number; amount: Won }>();
+  const reservoirByPayer = new Map<string, { count: number; amount: Won }>();
   let settledCount = 0;
   let settledAmount = 0;
   let nextDue: ISODate | null = null;
@@ -892,6 +895,10 @@ export function planImport(
         row = { ...row, paidBy: payer, claimAccountId, claimDue: due };
         const p = pendingByPayer.get(payer) ?? { count: 0, amount: 0 };
         pendingByPayer.set(payer, { count: p.count + 1, amount: p.amount + e.amount });
+        if (accountRow(acc)?.role === 'reservoir') {
+          const q = reservoirByPayer.get(payer) ?? { count: 0, amount: 0 };
+          reservoirByPayer.set(payer, { count: q.count + 1, amount: q.amount + e.amount });
+        }
         if (nextDue === null || due < nextDue) nextDue = due;
       } else {
         const settledOn = e.claim.settledDate ?? e.date;
@@ -1003,7 +1010,14 @@ export function planImport(
     merges,
     summary,
     expensesByAccount,
-    claims: { pending, pendingTotal: sum(pending), nextDue, settledCount, settledAmount },
+    claims: {
+      pending,
+      pendingTotal: sum(pending),
+      reservoirPending: [...reservoirByPayer.entries()].map(([payer, v]) => ({ payer, ...v })).sort((a, b) => b.amount - a.amount),
+      nextDue,
+      settledCount,
+      settledAmount,
+    },
     notes,
     rows,
     accountUpdates,

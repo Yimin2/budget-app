@@ -18,10 +18,12 @@ import {
   isIconName,
   useToast,
 } from '@/ui';
-import { ClaimsCard, RequireLedger, type ReadyLedger } from '../_components';
+import { RequireLedger, SettlementCard, type ReadyLedger } from '../_components';
+import { HashTarget } from '../_components/HashTarget';
 import { CompleteDialog } from './CompleteDialog';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
+import { LoanCard } from './LoanCard';
 import { ProjectionCard } from './ProjectionCard';
 import {
   errorText,
@@ -203,7 +205,9 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
       {projection && hasEventAccount ? (
         <>
           <SummaryCard projection={projection} />
-          <ClaimsCard />
+          <SettlementCard />
+          <LoanCard />
+          <HashTarget />
           <ProjectionCard projection={projection} today={today} />
           {insight ? <UsualInsightCard insight={insight} today={today} /> : null}
           {projection.shortages.length > 0 ? (
