@@ -216,3 +216,15 @@ describe('groupByMonth · monthTitle', () => {
     expect(monthTitle('2027-01', 2026)).toBe('2027년 1월');
   });
 });
+
+describe('flowSummary — 월급통장 하나 · 수입 계획 · 나머지 배분', () => {
+  it('수입은 계획 합, 나머지는 월급날마다 남는 돈을 받는 통장(저수지)에 더해 남는 돈이 없어요', () => {
+    const d = createDemoLedger('2026-11-10', '2026-11-10T01:00:00.000Z', { couple: true });
+    const flow = flowSummary(d, '2026-11');
+    expect(flow.income).toEqual({ month: '2026-11', amount: 6_000_000 });
+    expect(flow.items.find((i) => i.accountId === 'demo-acc-reservoir')?.amount).toBe(1_950_000);
+    expect(flow.total).toBe(6_000_000);
+    expect(flow.left).toBe(0);
+    expect(flow.over).toBe(0);
+  });
+});

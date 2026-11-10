@@ -11,6 +11,8 @@ import {
   Badge, Banner, Button, Chip, ChipGroup, DateInput, Dialog, Field, Icon, isIconName, MoneyInput, Select, TextInput, useToast, focusFirstInvalid,
 } from '@/ui';
 import { ClaimFields, claimToastSuffix } from '../_components/ClaimFields';
+import { SpenderField } from '../_components/SpenderField';
+import { spenderKeyForAccount } from '@/domain';
 import { accountForCategory, errorText, expenseTitle, isISODate, linkableEvents } from './selectors';
 import styles from './expenses.module.css';
 
@@ -45,7 +47,21 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
   const formId = `expense-${uid}`;
   const data = ledger.data;
   const editing = !!expense;
-  const livingId = ledger.living?.livingAccountId ?? null;
+  // 누가 썼나요? (PLAN 4-14): 새 기록은 나, 고치는 지출은 그 통장 주인 → 기록한 사람
+  const [pickedSpender, setSpender] = useState<string | null>(null);
+  const defaultSpender = expense
+    ? (spenderKeyForAccount(ledger.spenders, expense.accountId) ??
+      ledger.spenders.find((s) => s.email && s.email.toLowerCase() === expense.author.toLowerCase())?.key ??
+      ledger.mySpenderKey ??
+      null)
+    : (spenderKeyForAccount(ledger.spenders, initial?.accountId) ?? ledger.mySpenderKey ?? null);
+  const spender = pickedSpender ?? defaultSpender;
+  const spenderLiving = (key: string | null) =>
+    (key ? ledger.spenders.find((s) => s.key === key)?.livingAccountId : null) ??
+    ledger.myLivingAccountId ??
+    ledger.living?.livingAccountId ??
+    null;
+  const livingId = spenderLiving(spender);
 
   // 지운 카테고리 · 통장이라도 지금 지출이 쓰고 있으면 고를 수 있게 보여 줘요
   const categories = useMemo(() => {
@@ -110,6 +126,16 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     if (tripId && !tripItemTouched) setTripItem(tripItemForCategory(categories.find((c) => c.id === id)?.name));
     if (accountTouched) return;
     const next = accountForCategory(categories.find((c) => c.id === id), ledger.activeAccounts, livingId);
+    if (next) setAccountId(next);
+  }
+
+  /** 사람을 바꾸면 (통장을 직접 고르지 않았으면) 그 사람의 생활비 통장으로. 이벤트통장 카테고리는 그대로 */
+  function pickSpender(key: string) {
+    setSpender(key);
+    // 직접 고른 통장이라도 누군가의 생활비 통장이면 고른 사람의 생활비 통장으로 옮겨요
+    const onLivingAccount = !!spenderKeyForAccount(ledger.spenders, accountId);
+    if ((accountTouched && !onLivingAccount) || tripId) return;
+    const next = accountForCategory(categories.find((c) => c.id === categoryId), ledger.activeAccounts, spenderLiving(key));
     if (next) setAccountId(next);
   }
 
@@ -340,6 +366,12 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
             ))}
           </ChipGroup>
         </fieldset>
+
+        <SpenderField
+          value={spender}
+          onChange={(key) => pickSpender(key)}
+          disabled={!!saving}
+        />
 
         <div className={styles.formGrid}>
           <Field

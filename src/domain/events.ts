@@ -7,6 +7,7 @@ import { firstAccountByRole } from './internal';
 import { ceilTo1000 } from './money';
 import { tripOutflows } from './trips';
 import { ruleOccurrenceDate } from './recurring';
+import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isRemainderRule, projectRemainders, ruleAmountFor } from './income';
 import type {
   EventProjection, Id, ISODate, LedgerData, PlannedEvent, ProjectionMonth, Repeat, ShortageFix, YearMonth, Won,
 } from './types';
@@ -113,15 +114,28 @@ function projectAccount(
   );
   const sign = (r: (typeof rules)[number]) =>
     (r.toAccountId === accountId ? 1 : 0) - (r.fromAccountId === accountId ? 1 : 0);
+  // 나머지 전부 보내기 규칙은 앞으로 남을 돈을 흘려 본 예상 금액으로 (PLAN 4-13)
+  const remainders = rules.some(isRemainderRule) ? projectRemainders(data, today, horizon) : new Map<string, Won>();
   const ruleNet = (month: YearMonth, isFirst: boolean) =>
     rules.reduce((s, r) => {
       // 시작일 전 회차는 기록되지 않으므로 넣지 않는다. 이번 달은 이미 기록된(잔액에 들어간) 회차도 뺀다
       if (ruleOccurrenceDate(data, r, month) === null) return s;
       if (isFirst && transferIds.has(autoTransferId(r.id, month))) return s;
-      return s + sign(r) * r.amount;
+      return s + sign(r) * ruleAmountFor(r, month, remainders);
     }, 0);
   const monthlyRate = (month: YearMonth) =>
-    rules.reduce((s, r) => (isMonthActive(month, r.startMonth, r.endMonth) ? s + sign(r) * r.amount : s), 0);
+    rules.reduce((s, r) => {
+      if (!isMonthActive(month, r.startMonth, r.endMonth)) return s;
+      // 나머지 규칙은 한 달을 온전히 흘려 본 다음 달 예상으로
+      const amount = isRemainderRule(r) ? ruleAmountFor(r, addMonths(month, 1), remainders) || ruleAmountFor(r, month, remainders) : r.amount;
+      return s + sign(r) * amount;
+    }, 0);
+  // 이 통장으로 들어올 수입 계획 중 아직 기록되지 않은 회차
+  const incomeIn = (month: YearMonth) =>
+    activeIncomePlans(data, month, accountId).reduce((s, p) => {
+      if (incomePlanOccurrenceDate(data, p, month) === null || transferIds.has(incomeRecordId(p.id, month))) return s;
+      return s + p.amount;
+    }, 0);
 
   const plannedTransfers = data.transfers.filter((t) => !t.deleted && t.status === 'planned');
   // 오늘 뒤 날짜로 이미 기록한(done) 이체·지출
@@ -150,6 +164,7 @@ function projectAccount(
   for (const month of monthRange(thisMonth, lastMonth)) {
     const isFirst = month === thisMonth;
     const contributions = ruleNet(month, isFirst);
+    const income = incomeIn(month);
     let transfersIn = 0;
     let transfersOut = 0;
     for (const t of plannedTransfers) {
@@ -199,7 +214,7 @@ function projectAccount(
     const tripsOut = tripList.reduce((s, t) => s + t.amount, 0);
     const startBalance = balance;
     const endBalance =
-      startBalance + contributions + transfersIn - transfersOut - planned - scheduledSpending - claimsOut - installments - tripsOut -
+      startBalance + income + contributions + transfersIn - transfersOut - planned - scheduledSpending - claimsOut - installments - tripsOut -
       extraAmount;
     months.push({
       month,
@@ -213,6 +228,7 @@ function projectAccount(
       ...(claimsOut > 0 ? { claims: claimsOut } : {}),
       ...(installments > 0 ? { installments } : {}),
       ...(tripsOut > 0 ? { trips: tripsOut, tripList } : {}),
+      ...(income > 0 ? { income } : {}),
       endBalance,
       events,
     });

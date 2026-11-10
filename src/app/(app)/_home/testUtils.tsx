@@ -23,7 +23,7 @@ export interface Probe {
   session: SessionApi | null;
 }
 
-export function makeHarness(opts: { autoStart?: boolean } = {}) {
+export function makeHarness(opts: { autoStart?: boolean; couple?: boolean } = {}) {
   const probe: Probe = { ledger: null, session: null };
   const autoStart = opts.autoStart ?? true;
 
@@ -47,6 +47,8 @@ export function makeHarness(opts: { autoStart?: boolean } = {}) {
     now: () => TEST_NOW,
     storage: createMemoryStorage(),
     restoreTimeoutMs: 20,
+    // 기본은 예전 체험 예시(사람별 수입통장), couple 이면 부부 예시(월급통장 하나 · 사람별 생활비)
+    demoCouple: opts.couple ?? false,
   };
   function Wrapper({ children }: { children: ReactNode }) {
     return (

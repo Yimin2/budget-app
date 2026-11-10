@@ -113,7 +113,7 @@ function OverviewBody({ ledger }: { ledger: ReadyLedger }) {
                     account={a}
                     balance={balances[a.id] ?? 0}
                     flow={flows[a.id] ?? { in: 0, out: 0 }}
-                    living={a.id === livingId}
+                    living={a.id === livingId || ledger.livingViews.some((v) => v.accountId === a.id)}
                     owed={owed[a.id] ?? 0}
                   />
                 </li>

@@ -52,6 +52,7 @@ function setup() {
     now: () => new Date(2026, 10, 20, 10, 0, 0),
     storage: createMemoryStorage(),
     restoreTimeoutMs: 50,
+    demoCouple: false,
   };
   const wrapper = ({ children }: { children: ReactNode }) => <AppProviders deps={deps}>{children}</AppProviders>;
   const hook = renderHook(() => ({ session: useSession(), ledger: useLedger() }), { wrapper });

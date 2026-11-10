@@ -54,6 +54,7 @@ export function makeHarness() {
     now: () => TEST_NOW,
     storage: createMemoryStorage(),
     restoreTimeoutMs: 20,
+    demoCouple: false,
   };
   function Wrapper({ children }: { children: ReactNode }) {
     return (

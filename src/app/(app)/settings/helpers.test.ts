@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createDemoLedger } from '@/domain';
 import type { AllocationRule } from '@/domain/types';
 import {
-  allocationTotal, categoryRoleOptions, incomeSummaries, ownerLabel, periodLabel, referenceIncome, spreadsheetUrl, visibleFixed,
-  visibleRules,
+  allocationTotal, categoryRoleOptions, incomeSummaries, ownerLabel, paydayPreviewLines, periodLabel, referenceIncome, spreadsheetUrl,
+  visibleFixed, visibleRules,
 } from './helpers';
 
 const demo = createDemoLedger('2026-11-20', '2026-11-20T01:00:00.000Z');
@@ -84,5 +84,41 @@ describe('settings helpers', () => {
     expect(opts.map((o) => o.value)).toEqual(['income', 'fixed', 'event', 'reservoir', 'savings']);
     expect(opts[1]!.label).toBe('고정지출통장');
     expect(categoryRoleOptions(demo.accounts, 'allowance').map((o) => o.value)).toContain('allowance');
+  });
+});
+
+describe('수입 계획 · 나머지 배분 (PLAN 4-13)', () => {
+  const couple = createDemoLedger('2026-11-10', '2026-11-10T01:00:00.000Z', { couple: true });
+
+  it('월급날마다 한 줄: 받는 돈 → 정한 금액 · 나머지 → 저수지', () => {
+    expect(paydayPreviewLines(couple, '2026-11', 'demo-acc-income').map((l) => l.text)).toEqual([
+      '21일: 320만 → 생활비(민지) 90만 · 생활비(준호) 110만 · 이벤트 30만 · 나머지 90만 → 저수지',
+      '25일: 280만 → 용돈(민지) 40만 · 용돈(준호) 35만 · 저축투자 100만 · 나머지 105만 → 저수지',
+    ]);
+  });
+
+  it('예시 금액도 원 단위까지 맞게 보여요 (297만 → 82.8만 · 127.26만 · 50만 · 나머지 36.94만)', () => {
+    const d = {
+      ...couple,
+      incomePlans: [{ ...couple.incomePlans[0]!, amount: 2_970_000 }],
+      rules: [
+        rule({ id: 'a', fromAccountId: 'demo-acc-income', toAccountId: 'demo-acc-living-minji', amount: 828_000, dayOfMonth: 21 }),
+        rule({ id: 'b', fromAccountId: 'demo-acc-income', toAccountId: 'demo-acc-living-junho', amount: 1_272_600, dayOfMonth: 21 }),
+        rule({ id: 'c', fromAccountId: 'demo-acc-income', toAccountId: 'demo-acc-event', amount: 500_000, dayOfMonth: 21 }),
+        rule({ id: 'd', fromAccountId: 'demo-acc-income', toAccountId: 'demo-acc-reservoir', amount: 0, dayOfMonth: 21, kind: 'remainder' }),
+      ],
+    };
+    expect(paydayPreviewLines(d, '2026-11', 'demo-acc-income')[0]!.text).toBe(
+      '21일: 297만 → 생활비(민지) 82.8만 · 생활비(준호) 127.26만 · 이벤트 50만 · 나머지 36.94만 → 저수지',
+    );
+  });
+
+  it('수입은 수입 계획으로 비교하고, 나머지 규칙이 있으면 남는 돈은 그 규칙이 보내요 (경고 없음)', () => {
+    const [s] = incomeSummaries(couple, '2026-11');
+    expect(s).toMatchObject({ total: 4_050_000, income: { amount: 6_000_000, planned: true }, over: 0, left: 1_950_000 });
+    expect(s!.remainder?.toAccountId).toBe('demo-acc-reservoir');
+    // 정한 금액이 수입보다 많으면 그대로 경고
+    const over = { ...couple, incomePlans: couple.incomePlans.map((p) => ({ ...p, amount: 1_000_000 })) };
+    expect(incomeSummaries(over, '2026-11')[0]!.over).toBe(2_050_000);
   });
 });

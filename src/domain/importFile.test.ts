@@ -76,9 +76,9 @@ describe('parseImportFile', () => {
   it('JSON 이 아니거나 형식 · 버전이 다르면 알려요', () => {
     expect(parseImportFile('{')).toEqual({ ok: false, errors: [expect.stringContaining('JSON')] });
     expect(parseImportFile(JSON.stringify({ format: 'other' }))).toMatchObject({ ok: false });
-    const v2 = parseImportFile(JSON.stringify({ ...sample(), version: 2 }));
-    expect(v2.ok).toBe(false);
-    if (!v2.ok) expect(v2.errors[0]).toContain('버전 1');
+    const v9 = parseImportFile(JSON.stringify({ ...sample(), version: 9 }));
+    expect(v9.ok).toBe(false);
+    if (!v9.ok) expect(v9.errors[0]).toContain('버전 1 · 2');
   });
 
   it('틀린 칸 · 겹친 key · 없는 통장 · 틀린 날짜를 한꺼번에 알려요', () => {
@@ -252,5 +252,111 @@ describe('planImport', () => {
     expect(plan.warnings).toContain('일정과 여행에 함께 묶인 지출 1건은 여행에만 묶어요');
     // 통장을 안 적은 일정은 이벤트통장으로
     expect(plan.rows.events[0]!.accountId).toBe(data.accounts.find((a) => a.role === 'event')!.id);
+  });
+});
+
+/** v2: 월급통장 하나 · 수입 계획 · 나머지 전부 보내기 · 사람별 생활비 · 용돈 통장 (이름은 지어낸 것) */
+function sampleV2(): Record<string, unknown> {
+  return {
+    format: 'budget-import',
+    version: 2,
+    source: 'couple-1',
+    accounts: [
+      { key: 'salary', name: '월급 모으는 통장', role: 'income', openingDate: '2026-11-01' },
+      { key: 'liv-a', name: '생활비(가람)', role: 'fixed', openingDate: '2026-11-01', ownerName: '가람' },
+      { key: 'liv-b', name: '생활비(나래)', role: 'fixed', openingDate: '2026-11-01', ownerName: '나래', ownerEmail: 'narae@example.test' },
+      { key: 'pocket-a', name: '용돈(가람)', role: 'allowance', openingDate: '2026-11-01', ownerName: '가람' },
+      { key: 'event', name: '이벤트통장', role: 'event', openingDate: '2026-11-01' },
+      { key: 'res', name: '저수지통장', role: 'reservoir', openingDate: '2026-11-01' },
+    ],
+    incomePlans: [
+      { key: 'garam', person: '가람', amount: 2_970_000, dayOfMonth: 21, account: 'salary', startMonth: '2026-11' },
+      { key: 'narae', person: '나래', email: 'narae@example.test', amount: 3_000_000, dayOfMonth: 25, account: 'salary', startMonth: '2026-11' },
+    ],
+    rules: [
+      { key: 'a', from: 'salary', to: 'liv-a', amount: 828_000, dayOfMonth: 21, startMonth: '2026-11' },
+      { key: 'b', from: 'salary', to: 'liv-b', kind: 'fixed', amount: 1_272_600, dayOfMonth: 21, startMonth: '2026-11' },
+      { key: 'rest21', from: 'salary', to: 'res', kind: 'remainder', dayOfMonth: 21, startMonth: '2026-11' },
+      { key: 'pocket', from: 'salary', to: 'pocket-a', amount: 400_000, dayOfMonth: 25, startMonth: '2026-11' },
+      { key: 'rest25', from: 'salary', to: 'res', kind: 'remainder', amount: 0, dayOfMonth: 25, startMonth: '2026-11' },
+    ],
+    fixedExpenses: [
+      { key: 'dues-a', name: '회비', amount: 30_000, account: 'liv-a', kind: 'bill', dayOfMonth: 5, startMonth: '2026-11' },
+      { key: 'dues-b', name: '회비', amount: 30_000, account: 'liv-b', kind: 'bill', dayOfMonth: 5, startMonth: '2026-11' },
+      { key: 'food-a', name: '식비', amount: 300_000, account: 'liv-a', kind: 'living', spread: 'daily', startMonth: '2026-11' },
+      { key: 'food-b', name: '식비', amount: 200_000, account: 'liv-b', kind: 'living', spread: 'daily', startMonth: '2026-11' },
+    ],
+  };
+}
+
+describe('budget-import v2', () => {
+  it('수입 계획 · 나머지 배분 · 사람별 통장을 읽어요', () => {
+    const f = parsed(sampleV2());
+    expect(f.version).toBe(2);
+    expect(f.incomePlans.map((p) => [p.key, p.person, p.email, p.amount, p.dayOfMonth])).toEqual([
+      ['garam', '가람', null, 2_970_000, 21],
+      ['narae', '나래', 'narae@example.test', 3_000_000, 25],
+    ]);
+    expect(f.rules.map((r) => [r.key, r.kind, r.amount])).toEqual([
+      ['a', 'fixed', 828_000],
+      ['b', 'fixed', 1_272_600],
+      ['rest21', 'remainder', 0],
+      ['pocket', 'fixed', 400_000],
+      ['rest25', 'remainder', 0],
+    ]);
+  });
+
+  it('v1 파일은 예전처럼 읽고, v2 칸을 쓰면 버전을 올리라고 알려요', () => {
+    const v1 = parsed();
+    expect(v1.version).toBe(1);
+    expect(v1.incomePlans).toEqual([]);
+    expect(v1.rules.every((r) => r.kind === 'fixed')).toBe(true);
+    const withPlans = parseImportFile(JSON.stringify({ ...sampleV2(), version: 1 }));
+    expect(withPlans.ok).toBe(false);
+    if (!withPlans.ok) {
+      expect(withPlans.errors.some((e) => e.includes("'incomePlans' 는 버전 2"))).toBe(true);
+      expect(withPlans.errors.some((e) => e.includes("'kind' 는 버전 2"))).toBe(true);
+    }
+  });
+
+  it('정한 금액 배분에 금액이 없으면 막고, 나머지 배분은 금액 없이 돼요', () => {
+    const raw = sampleV2();
+    (raw.rules as Record<string, unknown>[]).push({ key: 'bad', from: 'salary', to: 'event', dayOfMonth: 21, startMonth: '2026-11' });
+    const r = parseImportFile(JSON.stringify(raw));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors).toEqual([expect.stringContaining("(bad): 'amount' 칸을 확인해 주세요")]);
+  });
+
+  it('계획: 수입 계획 행 · 나머지 규칙(금액 0) · 사람별 통장의 고정비와 생활비, 다시 가져와도 늘지 않아요', () => {
+    const data = base();
+    const plan = planImport(data, parsed(sampleV2()), CTX);
+    expect(plan.errors).toEqual([]);
+    const accId = (key: string) => importRowId('couple-1', 'acc', key);
+    expect(plan.rows.incomePlans.map((p) => [p.id, p.personName, p.personEmail, p.amount, p.dayOfMonth, p.accountId])).toEqual([
+      [importRowId('couple-1', 'inc', 'garam'), '가람', null, 2_970_000, 21, accId('salary')],
+      [importRowId('couple-1', 'inc', 'narae'), '나래', 'narae@example.test', 3_000_000, 25, accId('salary')],
+    ]);
+    const res = data.accounts.find((a) => a.role === 'reservoir')!.id;
+    expect(plan.rows.rules.filter((r) => r.kind === 'remainder').map((r) => [r.toAccountId, r.amount, r.dayOfMonth])).toEqual([
+      [res, 0, 21],
+      [res, 0, 25],
+    ]);
+    // 가계부에 있던 '저수지통장' · '이벤트통장' 은 합치고 그 id 를 써요
+    expect(plan.merges.map((m) => m.name)).toEqual(['이벤트통장', '저수지통장']);
+    expect(plan.summary.find((l) => l.key === 'incomePlans')).toMatchObject({ added: 2, amount: 5_970_000, amountLabel: '매달' });
+    expect(plan.warnings.some((w) => w.includes('나머지 전부 보내기 2개'))).toBe(true);
+    expect(plan.rows.fixedExpenses.filter((f) => f.kind === 'bill').map((f) => f.accountId)).toEqual([accId('liv-a'), accId('liv-b')]);
+
+    const after = applyImportPlan(data, plan);
+    const again = planImport(after, parsed(sampleV2()), CTX);
+    expect(again.total).toBe(0);
+    expect(again.summary.find((l) => l.key === 'incomePlans')).toMatchObject({ added: 0, existing: 2 });
+  });
+
+  it('같은 통장 · 같은 날의 나머지 배분이 둘이면 막아요', () => {
+    const raw = sampleV2();
+    (raw.rules as Record<string, unknown>[]).push({ key: 'rest21b', from: 'salary', to: 'event', kind: 'remainder', dayOfMonth: 21, startMonth: '2026-11' });
+    const plan = planImport(base(), parsed(raw), CTX);
+    expect(plan.errors).toEqual([expect.stringContaining("'rest21b'")]);
   });
 });

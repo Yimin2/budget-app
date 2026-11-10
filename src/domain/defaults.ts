@@ -4,7 +4,7 @@ import { newId } from './ids';
 import { buildInstallmentRows } from './installments';
 import { pendingAutoRecords } from './recurring';
 import type {
-  Account, AccountRole, AllocationRule, Category, Expense, Favorite, FixedExpense, LedgerData, LedgerKind,
+  Account, AccountRole, AllocationRule, Category, Expense, Favorite, FixedExpense, IncomePlan, LedgerData, LedgerKind,
   PlannedEvent, Transfer,
 } from './types';
 
@@ -89,6 +89,7 @@ export function createDefaultLedger(
     favorites: [],
     members: [{ email: authorEmail, displayName }],
     trips: [],
+    incomePlans: [],
   };
 }
 
@@ -148,10 +149,71 @@ export const DEMO_LIVING_ITEMS: [string, number, 'daily' | 'monthly'][] = [
 /** 체험 모드 여행 id (opts.trips) */
 export const DEMO_TRIP_ID = 'demo-trip-jeju';
 
+/**
+ * 부부 체험 예시 (opts.couple, 체험 모드에서 켬) — PLAN 4-13 · 4-14 의 돈 흐름.
+ * - 함께 쓰는 월급통장 하나: 민지 월급 3,200,000 (21일) · 준호 월급 2,800,000 (25일) 수입 계획
+ * - 21일: 월급통장 → 생활비(민지) 900,000 · 생활비(준호) 1,100,000 · 이벤트 300,000, 나머지 전부 → 저수지 (900,000)
+ * - 25일: 월급통장 → 용돈(민지) 400,000 · 용돈(준호) 350,000 · 저축투자 1,000,000, 나머지 전부 → 저수지 (1,050,000)
+ * - 사람마다 생활비 통장(고정비 · 생활비 항목)과 용돈 통장. 회비 · 보험 · 통신비는 사람마다 따로 한 줄
+ * - 하루 지출은 기록한 사람의 생활비 통장에서 나간다
+ */
+export const DEMO_COUPLE = {
+  income: [
+    { key: 'minji', member: 0, amount: 3_200_000, day: 21 },
+    { key: 'junho', member: 1, amount: 2_800_000, day: 25 },
+  ],
+  /** [받는 통장 key, 금액, 날짜] (금액 null = 나머지 전부) */
+  rules: [
+    ['living-minji', 900_000, 21],
+    ['living-junho', 1_100_000, 21],
+    ['event', 300_000, 21],
+    ['reservoir', null, 21],
+    ['allowance-minji', 400_000, 25],
+    ['allowance-junho', 350_000, 25],
+    ['savings', 1_000_000, 25],
+    ['reservoir', null, 25],
+  ] as [string, number | null, number][],
+  /** 사람마다 고정비 [key, 이름, 금액, 결제일, 카테고리] */
+  bills: [
+    [
+      ['dues', '회비', 30_000, 5, 'culture'],
+      ['insurance', '보험', 120_000, 20, 'medical'],
+      ['phone', '통신비', 60_000, 15, 'living'],
+    ],
+    [
+      ['rent', '월세', 500_000, 10, 'living'],
+      ['dues', '회비', 30_000, 5, 'culture'],
+      ['insurance', '보험', 150_000, 20, 'medical'],
+      ['phone', '통신비', 55_000, 15, 'living'],
+    ],
+  ] as [string, string, number, number, string][][],
+  /** 사람마다 생활비 항목 [카테고리 key, 금액, 쓰는 방식] */
+  living: [
+    [
+      ['food', 300_000, 'daily'],
+      ['cafe', 60_000, 'daily'],
+      ['transport', 50_000, 'daily'],
+      ['living', 80_000, 'monthly'],
+      ['shopping', 100_000, 'monthly'],
+      ['medical', 30_000, 'monthly'],
+      ['culture', 50_000, 'monthly'],
+    ],
+    [
+      ['food', 200_000, 'daily'],
+      ['cafe', 40_000, 'daily'],
+      ['transport', 60_000, 'daily'],
+      ['living', 30_000, 'monthly'],
+      ['shopping', 30_000, 'monthly'],
+      ['medical', 20_000, 'monthly'],
+      ['culture', 30_000, 'monthly'],
+    ],
+  ] as [string, number, 'daily' | 'monthly'][][],
+};
+
 export function createDemoLedger(
   today: string,
   now: string,
-  opts: { claims?: boolean; installments?: boolean; trips?: boolean } = {},
+  opts: { claims?: boolean; installments?: boolean; trips?: boolean; couple?: boolean } = {},
 ): LedgerData {
   const M = monthOf(today);
   const first = `${M}-01`;
@@ -178,17 +240,37 @@ export function createDemoLedger(
     ownerEmail: owner?.email ?? null,
     deleted: false,
   });
-  const accounts: Account[] = [
-    acc('income', '민지 수입통장', 'income', 0, 0, DEMO_MEMBERS[0]),
-    acc('income-junho', '준호 수입통장', 'income', 0, 1, DEMO_MEMBERS[1]),
-    acc('fixed', '고정지출통장', 'fixed', 1_350_000, 2),
-    acc('event', '이벤트통장', 'event', 600_000, 3),
-    acc('reservoir', '저수지통장', 'reservoir', 5_200_000, 4),
-    acc('savings', '저축투자통장', 'savings', 12_400_000, 5),
-  ];
-  const [incomeMinji, incomeJunho, fixed, event, reservoir, savings] = accounts as [
-    Account, Account, Account, Account, Account, Account,
-  ];
+  const couple = !!opts.couple;
+  const accounts: Account[] = couple
+    ? [
+        acc('income', '월급통장', 'income', 0, 0),
+        acc('living-minji', '생활비(민지)', 'fixed', 1_100_000, 1, DEMO_MEMBERS[0]),
+        acc('living-junho', '생활비(준호)', 'fixed', 1_300_000, 2, DEMO_MEMBERS[1]),
+        acc('allowance-minji', '용돈(민지)', 'allowance', 300_000, 3, DEMO_MEMBERS[0]),
+        acc('allowance-junho', '용돈(준호)', 'allowance', 250_000, 4, DEMO_MEMBERS[1]),
+        acc('event', '이벤트통장', 'event', 600_000, 5),
+        acc('reservoir', '저수지통장', 'reservoir', 5_200_000, 6),
+        acc('savings', '저축투자통장', 'savings', 12_400_000, 7),
+      ]
+    : [
+        acc('income', '민지 수입통장', 'income', 0, 0, DEMO_MEMBERS[0]),
+        acc('income-junho', '준호 수입통장', 'income', 0, 1, DEMO_MEMBERS[1]),
+        acc('fixed', '고정지출통장', 'fixed', 1_350_000, 2),
+        acc('event', '이벤트통장', 'event', 600_000, 3),
+        acc('reservoir', '저수지통장', 'reservoir', 5_200_000, 4),
+        acc('savings', '저축투자통장', 'savings', 12_400_000, 5),
+      ];
+  const byKey = (key: string) => accounts.find((a) => a.id === `demo-acc-${key}`)!;
+  const incomeMinji = byKey('income');
+  const incomeJunho = couple ? byKey('income') : byKey('income-junho');
+  const event = byKey('event');
+  const reservoir = byKey('reservoir');
+  const savings = byKey('savings');
+  /** 사람(0 민지 · 1 준호)의 생활비 통장 (예전 예시는 함께 쓰는 고정지출통장) */
+  const livingOf = (w: 0 | 1) => (couple ? byKey(w === 0 ? 'living-minji' : 'living-junho') : byKey('fixed'));
+  /** 청구를 돌려받을 통장 (예전 예시는 그 사람 수입통장, 부부 예시는 용돈 통장) */
+  const payerAccountOf = (w: 0 | 1) => (couple ? byKey(w === 0 ? 'allowance-minji' : 'allowance-junho') : w === 0 ? incomeMinji : incomeJunho);
+  const fixed = livingOf(0);
 
   const rule = (key: string, from: Account, to: Account, amount: number): AllocationRule => ({
     id: `demo-rule-${key}`,
@@ -200,15 +282,35 @@ export function createDemoLedger(
     endMonth: null,
     deleted: false,
   });
-  const rules: AllocationRule[] = [
-    rule('fixed', incomeMinji, fixed, 1_200_000),
-    rule('event', incomeMinji, event, 300_000),
-    rule('savings', incomeMinji, savings, 900_000),
-    rule('reservoir', incomeMinji, reservoir, 600_000),
-    rule('junho-fixed', incomeJunho, fixed, 800_000),
-    rule('junho-savings', incomeJunho, savings, 600_000),
-    rule('junho-reservoir', incomeJunho, reservoir, 600_000),
-  ];
+  const rules: AllocationRule[] = couple
+    ? DEMO_COUPLE.rules.map(([to, amount, day]) => ({
+        ...rule(`${day}-${to}`, incomeMinji, byKey(to), amount ?? 0),
+        dayOfMonth: day,
+        kind: amount === null ? ('remainder' as const) : ('fixed' as const),
+      }))
+    : [
+        rule('fixed', incomeMinji, fixed, 1_200_000),
+        rule('event', incomeMinji, event, 300_000),
+        rule('savings', incomeMinji, savings, 900_000),
+        rule('reservoir', incomeMinji, reservoir, 600_000),
+        rule('junho-fixed', incomeJunho, fixed, 800_000),
+        rule('junho-savings', incomeJunho, savings, 600_000),
+        rule('junho-reservoir', incomeJunho, reservoir, 600_000),
+      ];
+  const incomePlans: IncomePlan[] = couple
+    ? DEMO_COUPLE.income.map((x) => ({
+        id: `demo-income-${x.key}`,
+        personName: DEMO_MEMBERS[x.member as 0 | 1].displayName,
+        personEmail: DEMO_MEMBERS[x.member as 0 | 1].email,
+        amount: x.amount,
+        dayOfMonth: x.day,
+        accountId: incomeMinji.id,
+        startMonth: M,
+        endMonth: null,
+        memo: '',
+        deleted: false,
+      }))
+    : [];
 
   const salary = (id: string, to: Account, amount: number, author: string): Transfer => ({
     id,
@@ -225,10 +327,10 @@ export function createDemoLedger(
     updatedAt: now,
     deleted: false,
   });
-  const transfers: Transfer[] = [
-    salary('demo-salary', incomeMinji, 3_000_000, minji),
-    salary('demo-salary-junho', incomeJunho, 2_000_000, junho),
-  ];
+  // 부부 예시는 수입 계획이 월급날에 수입을 기록한다
+  const transfers: Transfer[] = couple
+    ? []
+    : [salary('demo-salary', incomeMinji, 3_000_000, minji), salary('demo-salary-junho', incomeJunho, 2_000_000, junho)];
 
   const fx = (
     key: string,
@@ -253,7 +355,22 @@ export function createDemoLedger(
     endMonth: null,
     deleted: false,
   });
-  const fixedExpenses: FixedExpense[] = [
+  const fixedExpenses: FixedExpense[] = couple
+    ? ([0, 1] as const).flatMap((w) => {
+        const owner = w === 0 ? 'minji' : 'junho';
+        const account = livingOf(w).id;
+        return [
+          ...DEMO_COUPLE.bills[w]!.map(([key, name, amount, day, catKey]) => ({
+            ...fx(`${owner}-${key}`, name, amount, 'bill', day, catKey),
+            accountId: account,
+          })),
+          ...DEMO_COUPLE.living[w]!.map(([key, amount, spread]) => ({
+            ...fx(`${owner}-living-${key}`, DEFAULT_CATEGORIES.find((c) => c.key === key)!.name, amount, 'living', null, key, null, spread),
+            accountId: account,
+          })),
+        ];
+      })
+    : [
     fx('rent', '월세', 800_000, 'bill', 10, 'living'),
     fx('phone', '통신비', 120_000, 'bill', 15, 'living'),
     fx('insurance', '보험', 180_000, 'bill', 20, 'medical'),
@@ -274,7 +391,7 @@ export function createDemoLedger(
           months: 24,
           firstMonth: addMonths(M, -15),
           dayOfMonth: 5,
-          accountId: fixed.id,
+          accountId: couple ? livingOf(1).id : fixed.id,
           categoryId: cat('big'),
         },
         'demo-installment-tv',
@@ -293,7 +410,7 @@ export function createDemoLedger(
         id: `demo-exp-${date}-${i}`,
         date,
         amount,
-        accountId: fixed.id,
+        accountId: livingOf(w).id,
         categoryId: cat(key),
         memo,
         eventId: null,
@@ -342,14 +459,17 @@ export function createDemoLedger(
     ev('anniversary', 9, 12, '결혼기념일', 100_000, 'gift', junho, 'yearly'),
   ];
 
+  // 부부 예시의 즐겨찾기는 통장을 비워 두어 누른 사람의 생활비 통장에서 나가요
+  const favAccount = couple ? null : fixed.id;
   const favorites: Favorite[] = [
-    { id: 'demo-fav-coffee', name: '커피', amount: 4_500, categoryId: cat('cafe'), accountId: fixed.id, order: 0, deleted: false },
-    { id: 'demo-fav-lunch', name: '점심', amount: 9_000, categoryId: cat('food'), accountId: fixed.id, order: 1, deleted: false },
-    { id: 'demo-fav-bus', name: '버스', amount: 1_500, categoryId: cat('transport'), accountId: fixed.id, order: 2, deleted: false },
+    { id: 'demo-fav-coffee', name: '커피', amount: 4_500, categoryId: cat('cafe'), accountId: favAccount, order: 0, deleted: false },
+    { id: 'demo-fav-lunch', name: '점심', amount: 9_000, categoryId: cat('food'), accountId: favAccount, order: 1, deleted: false },
+    { id: 'demo-fav-bus', name: '버스', amount: 1_500, categoryId: cat('transport'), accountId: favAccount, order: 2, deleted: false },
   ];
 
   const data: LedgerData = {
     settings: { name: '민지·준호 가계부', kind: 'shared', sharedLedgerId: null, schemaVersion: SCHEMA_VERSION, createdAt: now },
+    incomePlans,
     accounts,
     rules,
     transfers,
@@ -439,26 +559,26 @@ export function createDemoLedger(
   data.expenses.push(
     opts.trips
       ? {
-          ...claim('jeju', atFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], incomeMinji),
+          ...claim('jeju', atFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], payerAccountOf(0)),
           tripId: DEMO_TRIP_ID,
           tripItem: 'flight',
         }
-      : claim('jeju', atFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], incomeMinji, 'demo-event-jeju'),
+      : claim('jeju', atFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], payerAccountOf(0), 'demo-event-jeju'),
   );
   // 1일에는 어제가 지난달이라 오늘 날짜가 돼요. 오늘 써도 되는 돈이 0원 아래로 가지 않게 한 달 한도 항목(쇼핑)으로
   const martDate = atFirst(addDays(today, -1));
   data.expenses.push(
-    claim('mart', martDate, 24_000, fixed, martDate === today ? 'shopping' : 'food', '마트 장보기', DEMO_MEMBERS[1], incomeJunho),
+    claim('mart', martDate, 24_000, livingOf(1), martDate === today ? 'shopping' : 'food', '마트 장보기', DEMO_MEMBERS[1], payerAccountOf(1)),
   );
   // 이미 돌려준 청구 (1일에 준호가 낸 생활용품, 같은 날 돌려줌)
-  const done: Expense = { ...claim('done', first, 8_000, fixed, 'living', '세제·휴지', DEMO_MEMBERS[1], incomeJunho), claimDue: first };
+  const done: Expense = { ...claim('done', first, 8_000, livingOf(1), 'living', '세제·휴지', DEMO_MEMBERS[1], payerAccountOf(1)), claimDue: first };
   data.expenses.push(done);
   data.transfers.push({
     id: claimTransferId(done.id),
     date: first,
     kind: 'transfer',
-    fromAccountId: fixed.id,
-    toAccountId: incomeJunho.id,
+    fromAccountId: livingOf(1).id,
+    toAccountId: payerAccountOf(1).id,
     amount: done.amount,
     status: 'done',
     ruleId: null,

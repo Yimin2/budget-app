@@ -13,8 +13,9 @@ import { InstallmentCard } from './sections/InstallmentCard';
 import { LivingCard } from './sections/LivingCard';
 import { AccountCard, DisplayCard, InfoCard, LedgerNameCard, QuickLinks } from './sections/GeneralCards';
 import { RulesCard } from './sections/RulesCard';
+import { IncomePlansCard } from './sections/IncomePlansCard';
 
-/** 설정: 가계부 · 통장 · 매달 배분 · 생활비 예산 · 고정 지출 · 할부 · 카테고리 · 자주 쓰는 지출 · 파일에서 가져오기 · 화면 · 정보 (모바일 '더보기') */
+/** 설정: 가계부 · 통장 · 수입 계획 · 매달 배분 · 생활비 예산 · 고정 지출 · 할부 · 카테고리 · 자주 쓰는 지출 · 파일에서 가져오기 · 화면 · 정보 (모바일 '더보기') */
 export default function SettingsPage() {
   return (
     <>
@@ -27,6 +28,7 @@ export default function SettingsPage() {
             <div className="st-col">
               <LedgerNameCard key={`name-${ledger.ref.id}`} ledger={ledger} />
               <AccountsCard ledger={ledger} />
+              <IncomePlansCard ledger={ledger} />
               <RulesCard ledger={ledger} />
               <LivingCard ledger={ledger} />
               <FixedCard ledger={ledger} />

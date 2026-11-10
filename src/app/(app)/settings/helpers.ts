@@ -1,5 +1,5 @@
 /* 설정 화면의 순수 도우미 */
-import { addMonths, compareMonth, dateInMonth, formatMonthKo, isMonthActive, monthOf } from '@/domain';
+import { addMonths, compareMonth, dateInMonth, formatMan, formatMonthKo, isMonthActive, isRemainderRule, monthOf, paydayPlans, plannedIncome } from '@/domain';
 import type { Account, AccountRole, AllocationRule, FixedExpense, ISODate, LedgerData, Won, YearMonth } from '@/domain/types';
 
 export const ROLE_TEXT: Record<AccountRole, string> = {
@@ -86,24 +86,57 @@ export function referenceIncome(
 
 export interface IncomeSummary {
   account: Account;
-  /** 이번 달 이 통장에서 나가는 배분 합 */
+  /** 이번 달 이 통장에서 나가는 정한 금액 배분 합 */
   total: Won;
-  /** 이 통장의 이번 달(없으면 지난달) 수입 */
-  income: { month: YearMonth; amount: Won } | null;
+  /**
+   * 비교할 수입: 이번 달 수입 계획 합(planned=true), 계획이 없으면 이번 달(없으면 지난달) 수입 기록
+   */
+  income: { month: YearMonth; amount: Won; planned?: boolean } | null;
   /** 배분이 수입보다 많은 금액 (아니면 0) */
   over: Won;
+  /** 이 통장에서 나가는 '나머지 전부 보내기' 규칙 (있으면 남는 돈을 경고하지 않아요) */
+  remainder: AllocationRule | null;
+  /** 정한 금액을 보내고 남는 돈 (수입을 알 때만, 나머지 규칙이 있으면 그 규칙이 보낼 돈) */
+  left: Won | null;
 }
 
-/** 사람별 수입통장마다 배분 합 · 수입 · 넘침 (통장 순서) */
+/** 수입통장마다 배분 합 · 수입 · 넘침 · 나머지 규칙 (통장 순서) */
 export function incomeSummaries(data: LedgerData, month: YearMonth): IncomeSummary[] {
   return data.accounts
     .filter((a) => !a.deleted && a.role === 'income')
     .sort((a, b) => a.order - b.order)
     .map((account) => {
       const total = allocationTotal(data, month, account.id);
-      const income = referenceIncome(data, month, account.id);
-      return { account, total, income, over: income && total > income.amount ? total - income.amount : 0 };
+      const planned = plannedIncome(data, month, account.id);
+      const income = planned > 0 ? { month, amount: planned, planned: true } : referenceIncome(data, month, account.id);
+      const remainder =
+        data.rules.find(
+          (r) => !r.deleted && isRemainderRule(r) && r.fromAccountId === account.id && isMonthActive(month, r.startMonth, r.endMonth),
+        ) ?? null;
+      return {
+        account,
+        total,
+        income,
+        over: income && total > income.amount ? total - income.amount : 0,
+        remainder,
+        left: income ? Math.max(0, income.amount - total) : null,
+      };
     });
+}
+
+/**
+ * 월급날 배분 미리보기 한 줄: '21일: 297만 → 생활비(가람) 82.8만 · 이벤트 50만 · 나머지 36.94만 → 저수지'.
+ * 받는 통장 이름은 짧게 (통장 이름 끝의 '통장'을 뺀다)
+ */
+export function paydayPreviewLines(data: LedgerData, month: YearMonth, sourceAccountId: string): { day: number; text: string; short: Won }[] {
+  const short = (id: string) => accountName(data.accounts, id).replace(/통장$/, '') || '통장';
+  return paydayPlans(data, month, sourceAccountId).map((p) => {
+    const parts = p.fixed.map((l) => `${short(l.rule.toAccountId)} ${formatMan(l.amount)}`);
+    if (p.remainder) parts.push(`나머지 ${formatMan(p.remainder.amount)} → ${short(p.remainder.rule.toAccountId)}`);
+    else if (p.left > 0 && p.income > 0) parts.push(`남는 돈 ${formatMan(p.left)}`);
+    const head = p.income > 0 ? `${p.day}일: ${formatMan(p.income)}` : `${p.day}일`;
+    return { day: p.day, text: parts.length > 0 ? `${head} → ${parts.join(' · ')}` : head, short: p.short };
+  });
 }
 
 /** 통장 이름 옆에 붙일 주인 표시 ('민지'). 주인이 없거나 이름에 이미 들어 있으면 null */

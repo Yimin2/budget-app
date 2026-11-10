@@ -55,7 +55,8 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   const editing = draft?.id ? ledger.data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
 
   function defaultAccountId(): string {
-    return (ledger.accountByRole('fixed') ?? ledger.accountByRole('allowance') ?? accounts[0])?.id ?? '';
+    // 사람별 생활비 통장이 있으면 내 생활비 통장 (고정비도 통장 주인의 것이에요)
+    return ledger.myLivingAccountId ?? (ledger.accountByRole('fixed') ?? ledger.accountByRole('allowance') ?? accounts[0])?.id ?? '';
   }
 
   function openNew(kind: BillKind = 'bill') {

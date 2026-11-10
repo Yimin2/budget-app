@@ -8,3 +8,4 @@ export { PageSkeleton, SwitcherSkeleton, type PageSkeletonProps } from './PageSk
 export { SidebarFooter } from './SidebarFooter';
 export { ClaimsCard } from './ClaimsCard';
 export { ClaimFields, claimToastSuffix, type ClaimFieldsProps } from './ClaimFields';
+export { SpenderField, type SpenderFieldProps } from './SpenderField';

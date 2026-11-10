@@ -53,6 +53,12 @@ import {
   planImport,
   applyImportPlan,
   IMPORT_TABLES,
+  livingByAccount,
+  myLivingAccountId,
+  spenderOptions,
+  mySpenderKey,
+  conflictingRemainderRule,
+  isRemainderRule,
 } from '@/domain';
 import type {
   Account,
@@ -62,8 +68,10 @@ import type {
   Favorite,
   FixedExpense,
   Id,
+  IncomePlan,
   ISODate,
   LedgerData,
+  LivingStatus,
   Member,
   PlannedEvent,
   Transfer,
@@ -452,6 +460,23 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
   );
   const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income'), [activeAccounts]);
   const living = useMemo(() => (data ? computeLiving(data, today) : null), [data, today]);
+  // 사람별 생활비 (PLAN 4-14): 생활비 통장마다, 로그인한 사람의 통장, '누가 썼나요?'에서 고를 사람
+  const livingViews = useMemo(() => (data ? livingByAccount(data, today) : []), [data, today]);
+  const myLivingId = useMemo(() => (data ? myLivingAccountId(data, monthOf(today), author) : null), [data, today, author]);
+  const spenders = useMemo(() => (data ? spenderOptions(data, monthOf(today)) : []), [data, today]);
+  const mySpender = useMemo(() => mySpenderKey(spenders, author, myLivingId), [spenders, author, myLivingId]);
+  const livingFor = useCallback<LedgerApi['livingFor']>(
+    (accountId) => {
+      if (!data) return null;
+      // 통장이 하나면(예전 가계부) 합친 계산과 같다
+      if (livingViews.length <= 1) return living;
+      const id = accountId ?? myLivingId;
+      const hit = livingViews.find((v) => v.accountId === id);
+      if (hit) return hit.status;
+      return id ? computeLiving(data, today, id) : living;
+    },
+    [data, today, living, livingViews, myLivingId],
+  );
   const balances = useMemo(() => (data ? allBalances(data, today) : {}), [data, today]);
   const eventProjection = useMemo(() => (data ? projectEventAccount(data, today) : null), [data, today]);
   const shortageFix = useMemo(
@@ -470,6 +495,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     (amount, source, categoryId, opts) => {
       if (!data) return null;
       if (source === 'event') return judgeInstallment({ source: 'event', data, today, tripId: opts?.tripId ?? null }, amount);
+      const living: LivingStatus | null = livingFor(opts?.livingAccountId);
       if (!living) return null;
       let cat: Id | null;
       if (categoryId === undefined) {
@@ -479,7 +505,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       } else cat = categoryId;
       return judgeInstallment({ source: 'living', living, categoryId: cat }, amount);
     },
-    [data, living, today],
+    [data, livingFor, today],
   );
   const previewClaimDue = useCallback<LedgerApi['previewClaimDue']>(
     (accountId, amount, expenseId) => {
@@ -493,6 +519,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     (amount, source, categoryId, opts) => {
       if (!data) return null;
       if (source === 'living') {
+        // 고른 사람의 생활비 예산으로 (기본: 나)
+        const living = livingFor(opts?.livingAccountId);
         if (!living) return null;
         if (categoryId === undefined) {
           const budgeted = living.items.filter((i) => !i.unbudgeted);
@@ -503,7 +531,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       }
       return judgeEvent(data, today, amount, { tripId: opts?.tripId ?? null });
     },
-    [data, living, today],
+    [data, livingFor, today],
   );
 
   const displayName = useCallback(
@@ -940,21 +968,64 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
 
   const saveRule = useCallback(
     async (rule: AllocationRule) => {
+      if (!rule.deleted && isRemainderRule(rule) && conflictingRemainderRule(requireData().data, rule)) {
+        throw new Error('같은 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요');
+      }
       await upsertRow('rules', rule, '매달 배분을 저장하지 못했어요');
       await syncAutoNow();
     },
-    [upsertRow, syncAutoNow],
+    [upsertRow, syncAutoNow, requireData],
   );
 
   const addRule = useCallback(
     async (input: Omit<AllocationRule, 'id' | 'deleted'>): Promise<AllocationRule> => {
       if (input.fromAccountId === input.toAccountId) throw new Error('보내는 통장과 받는 통장이 같아요');
-      const row: AllocationRule = { ...input, id: newId(), deleted: false };
+      if (isRemainderRule(input) && conflictingRemainderRule(requireData().data, input)) {
+        throw new Error('같은 통장에서 같은 날 나머지를 보내는 배분이 이미 있어요');
+      }
+      const row: AllocationRule = isRemainderRule(input) ? { ...input, amount: 0, id: newId(), deleted: false } : { ...input, id: newId(), deleted: false };
       await insertRows('rules', [row], '매달 배분을 추가하지 못했어요');
       await syncAutoNow();
       return row;
     },
-    [insertRows, syncAutoNow],
+    [insertRows, syncAutoNow, requireData],
+  );
+
+  /* ---------- 설정: 수입 계획 ---------- */
+
+  const cleanIncomePlan = useCallback((plan: Omit<IncomePlan, 'id' | 'deleted'>): Omit<IncomePlan, 'id' | 'deleted'> => {
+    if (!plan.personName.trim()) throw new Error('누구 수입인지 이름을 입력해 주세요');
+    if (!(plan.amount > 0)) throw new Error('금액을 입력해 주세요');
+    if (!plan.accountId) throw new Error('받는 통장을 골라 주세요');
+    const day = Math.min(31, Math.max(1, Math.round(plan.dayOfMonth || 1)));
+    return {
+      ...plan,
+      personName: plan.personName.trim(),
+      personEmail: plan.personEmail?.trim() || null,
+      amount: Math.round(plan.amount),
+      dayOfMonth: day,
+      memo: plan.memo?.trim() ?? '',
+    };
+  }, []);
+
+  const addIncomePlan = useCallback<LedgerApi['addIncomePlan']>(
+    async (input) => {
+      const row: IncomePlan = { ...cleanIncomePlan(input), id: newId(), deleted: false };
+      await insertRows('incomePlans', [row], '수입 계획을 추가하지 못했어요');
+      await syncAutoNow();
+      return row;
+    },
+    [cleanIncomePlan, insertRows, syncAutoNow],
+  );
+
+  /** 수입 계획 고치기 · 지우기 (그 자리에서 고쳐요. 이미 생긴 수입 기록은 그대로) */
+  const saveIncomePlan = useCallback<LedgerApi['saveIncomePlan']>(
+    async (plan) => {
+      const row: IncomePlan = plan.deleted ? plan : { ...plan, ...cleanIncomePlan(plan) };
+      await upsertRow('incomePlans', row, '수입 계획을 저장하지 못했어요');
+      await syncAutoNow();
+    },
+    [cleanIncomePlan, upsertRow, syncAutoNow],
   );
 
   /**
@@ -1353,10 +1424,13 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       const fav = d.favorites.find((f) => f.id === id && !f.deleted);
       if (!fav) throw new Error('자주 쓰는 지출을 찾을 수 없어요');
       const category = fav.categoryId ? d.categories.find((c) => c.id === fav.categoryId) : undefined;
+      // 통장을 비워 둔 즐겨찾기: 생활비 카테고리는 누른 사람(나)의 생활비 통장에서 (PLAN 4-14)
+      const mine = myLivingId ?? living?.livingAccountId ?? null;
       const accountId =
         fav.accountId ??
+        (category ? (category.defaultAccountRole === 'fixed' ? (mine ?? undefined) : undefined) : undefined) ??
         (category ? accountByRole(category.defaultAccountRole)?.id : undefined) ??
-        living?.livingAccountId ??
+        mine ??
         activeAccounts[0]?.id;
       if (!accountId) throw new Error('지출을 기록할 통장이 없어요');
       return addExpense({
@@ -1367,7 +1441,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         memo: fav.name,
       });
     },
-    [requireData, accountByRole, living, activeAccounts, addExpense],
+    [requireData, accountByRole, living, myLivingId, activeAccounts, addExpense],
   );
 
   /* ---------- 월말 ---------- */
@@ -1388,24 +1462,24 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       if (latest !== d) setDataBoth(latest);
       const pending = pendingMonthEndDomain(latest, day);
       if (!pending) return;
-      const { monthEnd, transfer } = decideMonthEndDomain(
+      const { monthEnd, transfers: endTransfers } = decideMonthEndDomain(
         latest,
         pending.month,
         pending.leftover,
         choice,
         authorRef.current,
         nowIso(),
-        pending.items.map((i) => ({ categoryId: i.categoryId, leftover: i.leftover })),
+        pending.items.map((i) => ({ categoryId: i.categoryId, leftover: i.leftover, ...(i.accountId ? { accountId: i.accountId } : {}) })),
       );
       await mutate(
         (x) => ({
           ...x,
           monthEnds: upsertIn(x.monthEnds, monthEnd),
-          transfers: insertIn(x.transfers, transfer ? [transfer] : []),
+          transfers: insertIn(x.transfers, endTransfers),
         }),
         async (r) => {
           // 이체(결정적 id)를 먼저, 월말 행은 마지막에. 이체는 월말 행이 '저수지'일 때만 잔액에 들어간다
-          if (transfer) await r.insert('transfers', [transfer]);
+          if (endTransfers.length) await r.insert('transfers', endTransfers);
           await r.upsert('monthEnds', monthEnd);
         },
         '월말 처리를 저장하지 못했어요',
@@ -1517,6 +1591,11 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       saving: savingCount > 0,
       reload,
       living,
+      livingViews,
+      myLivingAccountId: myLivingId,
+      livingFor,
+      spenders,
+      mySpenderKey: mySpender,
       balances,
       eventProjection,
       shortageFix,
@@ -1562,6 +1641,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       saveRule,
       addRule,
       changeRuleAmount,
+      addIncomePlan,
+      saveIncomePlan,
       saveFixed,
       addFixed,
       saveCategory,
@@ -1578,7 +1659,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       displayName,
     }),
     [
-      status, error, needsReconnect, ref, data, today, savingCount, reload, living, balances, eventProjection, shortageFix,
+      status, error, needsReconnect, ref, data, today, savingCount, reload, living, livingViews, myLivingId, livingFor, spenders,
+      mySpender, addIncomePlan, saveIncomePlan, balances, eventProjection, shortageFix,
       pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
       previewClaimDue, settleClaims, unsettleClaims, saveSettleDay, installments, installmentHint, addInstallment,
       reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,

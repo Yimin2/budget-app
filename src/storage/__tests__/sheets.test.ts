@@ -128,7 +128,7 @@ describe('SheetsBackend.create', () => {
     expect(create!.auth).toBe('Bearer token');
     expect(values!.url.pathname).toBe('/v4/spreadsheets/sheet-1/values:batchUpdate');
     expect(values!.body.valueInputOption).toBe('RAW');
-    expect(values!.body.data).toHaveLength(12);
+    expect(values!.body.data).toHaveLength(13);
     expect(g.tabs.get('통장')![0]).toEqual(canonicalHeaders('accounts'));
     expect(g.tabs.get('설정')![0]).toEqual(['키', '값']);
   });

@@ -1,24 +1,30 @@
 /**
- * 파일에서 가져오기 (PLAN 4-12) — 버전 있는 JSON 가져오기 파일(budget-import v1)을 읽고, 확인하고,
+ * 파일에서 가져오기 (PLAN 4-12) — 버전 있는 JSON 가져오기 파일(budget-import v1 · v2)을 읽고, 확인하고,
  * 지금 가계부에 무엇이 더해질지 미리 보여 줄 계획을 만든다. 쓰기는 계획(rows)을 그대로 insert 한다.
  *
  * - 행 id 는 파일의 source 와 각 행의 key 로 정한다: `imp:<source>:<표>:<key>` → 같은 파일을 다시 가져와도 행이 늘지 않는다
  * - 통장 · 카테고리는 이름이 같은 것이 이미 있으면 새로 만들지 않고 그것을 쓴다 (합치기). 합친 통장은 비어 있는 주인 칸만 채운다
  * - 할부는 InstallmentInput 그대로 받아 buildInstallmentRows 로 행을 만든다 (결제일이 지난 회차는 이미 낸 것으로 본다)
  * - 청구: pending 은 낸 사람 · 돌려받을 통장 · 정산일을 앱 규칙(4-9)으로 정하고, settled 는 돌려준 이체 claim:<지출id> 도 함께 만든다
+ * - v2 (PLAN 4-13 · 4-14): 수입 계획(incomePlans), 매달 배분의 방식(rules[].kind = fixed · remainder). 사람별 생활비 · 용돈 통장은
+ *   v1 처럼 통장의 ownerName · ownerEmail 로 적는다. v1 파일은 그대로 읽는다 (v2 칸을 쓰면 버전을 올리라고 알린다)
  */
 import { isClaimExpense } from './balances';
 import { canClaimOnAccount, claimAccountFor, claimTransferId, computeClaimDue } from './claims';
 import { addMonths, dateInMonth, isValidDate, isValidMonth, monthOf } from './dates';
 import { buildInstallmentRows, installmentPlanId, validateInstallment } from './installments';
+import { conflictingRemainderRule } from './income';
 import { cleanTripItems, TRIP_ITEMS, tripBudget, validateTrip } from './trips';
 import type {
-  Account, AccountRole, AllocationRule, Category, EventStatus, Expense, FixedExpense, Id, ISODate, LedgerData,
-  LivingSpread, PlannedEvent, Repeat, Transfer, Trip, TripItem, Won, YearMonth,
+  Account, AccountRole, AllocationRule, Category, EventStatus, Expense, FixedExpense, Id, IncomePlan, ISODate, LedgerData,
+  LivingSpread, PlannedEvent, Repeat, RuleKind, Transfer, Trip, TripItem, Won, YearMonth,
 } from './types';
 
 export const IMPORT_FORMAT = 'budget-import';
-export const IMPORT_VERSION = 1;
+/** 지금 버전 (새로 만드는 파일). 읽기는 IMPORT_VERSIONS 모두 */
+export const IMPORT_VERSION = 2;
+export const IMPORT_VERSIONS = [1, 2] as const;
+export type ImportVersion = (typeof IMPORT_VERSIONS)[number];
 
 /* ---------- 파일 모양 (v1) ---------- */
 
@@ -49,10 +55,26 @@ export interface ImportRule {
   /** 통장 key */
   from: string;
   to: string;
+  /** 방식 (v2). fixed = 정한 금액, remainder = 그날 남은 돈 전부 (amount 는 0) */
+  kind: RuleKind;
   amount: Won;
   dayOfMonth: number;
   startMonth: YearMonth;
   endMonth: YearMonth | null;
+}
+/** 수입 계획 (v2): 누가 · 얼마를 · 매달 며칠에 · 어느 통장으로 받는지 */
+export interface ImportIncomePlan {
+  key: string;
+  /** 버는 사람 이름 */
+  person: string;
+  email: string | null;
+  amount: Won;
+  dayOfMonth: number;
+  /** 받는 통장 key */
+  account: string;
+  startMonth: YearMonth;
+  endMonth: YearMonth | null;
+  memo: string;
 }
 export interface ImportFixed {
   key: string;
@@ -134,13 +156,15 @@ export interface ImportTransfer {
 /** 읽고 확인한 가져오기 파일 (빈 표는 빈 배열) */
 export interface ImportFile {
   format: typeof IMPORT_FORMAT;
-  version: typeof IMPORT_VERSION;
+  version: ImportVersion;
   /** 이 파일의 출처 이름. 행 id 의 앞부분이 된다 (같은 출처 = 같은 행) */
   source: string;
   name: string;
   accounts: ImportAccount[];
   categories: ImportCategory[];
   rules: ImportRule[];
+  /** 수입 계획 (v2, v1 은 빈 배열) */
+  incomePlans: ImportIncomePlan[];
   fixedExpenses: ImportFixed[];
   installments: ImportInstallment[];
   events: ImportEvent[];
@@ -286,10 +310,13 @@ export function parseImportFile(text: string): ParseResult {
   if (!isObj(root) || root.format !== IMPORT_FORMAT) {
     return { ok: false, errors: [`가져오기 파일이 아니에요. format 이 '${IMPORT_FORMAT}' 인 파일을 골라 주세요`] };
   }
-  if (root.version !== IMPORT_VERSION) {
-    return { ok: false, errors: [`이 앱은 버전 ${IMPORT_VERSION} 파일만 읽어요 (파일 버전: ${String(root.version)})`] };
+  if (!(IMPORT_VERSIONS as readonly unknown[]).includes(root.version)) {
+    return { ok: false, errors: [`이 앱은 버전 ${IMPORT_VERSIONS.join(' · ')} 파일만 읽어요 (파일 버전: ${String(root.version)})`] };
   }
+  const version = root.version as ImportVersion;
   const errors: string[] = [];
+  const v2Only = (what: string) => `'${what}' 는 버전 2 파일에서 써요. version 을 2 로 바꿔 주세요`;
+  if (version === 1 && root.incomePlans !== undefined && root.incomePlans !== null) errors.push(v2Only('incomePlans'));
   const source = typeof root.source === 'string' ? root.source.trim() : '';
   if (!SOURCE_RE.test(source)) errors.push("'source' 는 영문 · 숫자 · _ . - 로 40자까지 써 주세요 (같은 파일을 다시 가져올 때 알아보는 이름)");
 
@@ -323,15 +350,36 @@ export function parseImportFile(text: string): ParseResult {
       note: typeof r.note === 'string' ? r.note.trim() : '',
     };
   });
-  const rules = readTable<ImportRule>(root, 'rules', '매달 배분', errors, (f, key) => ({
-    key,
-    from: f.ref('from', accountKeys, false) ?? '',
-    to: f.ref('to', accountKeys, false) ?? '',
-    amount: f.int('amount', { min: 1 }) ?? 0,
-    dayOfMonth: f.int('dayOfMonth', { min: 1, max: 31 }) ?? 1,
-    startMonth: f.month('startMonth') ?? '',
-    endMonth: f.month('endMonth', true),
-  }));
+  const rules = readTable<ImportRule>(root, 'rules', '매달 배분', errors, (f, key, r, fail) => {
+    if (version === 1 && !blank(r.kind)) fail(v2Only('kind'));
+    const kind = version === 1 ? 'fixed' : f.oneOf<RuleKind>('kind', ['fixed', 'remainder'], 'fixed');
+    // 나머지 전부 보내기는 금액을 쓰지 않는다 (비우거나 0. 적었으면 모양만 확인)
+    const amount = kind === 'remainder' ? (f.int('amount', { min: 0, optional: true }), 0) : (f.int('amount', { min: 1 }) ?? 0);
+    return {
+      key,
+      from: f.ref('from', accountKeys, false) ?? '',
+      to: f.ref('to', accountKeys, false) ?? '',
+      kind,
+      amount,
+      dayOfMonth: f.int('dayOfMonth', { min: 1, max: 31 }) ?? 1,
+      startMonth: f.month('startMonth') ?? '',
+      endMonth: f.month('endMonth', true),
+    };
+  });
+  const incomePlans =
+    version === 1
+      ? []
+      : readTable<ImportIncomePlan>(root, 'incomePlans', '수입 계획', errors, (f, key) => ({
+          key,
+          person: f.text('person'),
+          email: f.optText('email') || null,
+          amount: f.int('amount', { min: 1 }) ?? 0,
+          dayOfMonth: f.int('dayOfMonth', { min: 1, max: 31 }) ?? 1,
+          account: f.ref('account', accountKeys, false) ?? '',
+          startMonth: f.month('startMonth') ?? '',
+          endMonth: f.month('endMonth', true),
+          memo: f.text('memo', true),
+        }));
   const fixedExpenses = readTable<ImportFixed>(root, 'fixedExpenses', '고정 지출', errors, (f, key, _r, fail) => {
     const kind = f.oneOf('kind', FIXED_KINDS);
     const day = f.int('dayOfMonth', { min: 1, max: 31, optional: true });
@@ -456,10 +504,10 @@ export function parseImportFile(text: string): ParseResult {
     ok: true,
     file: {
       format: IMPORT_FORMAT,
-      version: IMPORT_VERSION,
+      version,
       source,
       name: typeof root.name === 'string' ? root.name.trim() : '',
-      accounts, categories, rules, fixedExpenses, installments, events, trips, expenses, transfers,
+      accounts, categories, rules, incomePlans, fixedExpenses, installments, events, trips, expenses, transfers,
     },
   };
 }
@@ -467,7 +515,9 @@ export function parseImportFile(text: string): ParseResult {
 /* ---------- 계획 (미리보기) ---------- */
 
 /** 가져오기가 쓰는 표 (쓰는 순서) */
-export const IMPORT_TABLES = ['accounts', 'categories', 'trips', 'events', 'rules', 'fixedExpenses', 'expenses', 'transfers'] as const;
+export const IMPORT_TABLES = [
+  'accounts', 'categories', 'trips', 'events', 'rules', 'incomePlans', 'fixedExpenses', 'expenses', 'transfers',
+] as const;
 export type ImportTable = (typeof IMPORT_TABLES)[number];
 
 export interface ImportRows {
@@ -476,6 +526,7 @@ export interface ImportRows {
   trips: Trip[];
   events: PlannedEvent[];
   rules: AllocationRule[];
+  incomePlans: IncomePlan[];
   fixedExpenses: FixedExpense[];
   expenses: Expense[];
   transfers: Transfer[];
@@ -483,7 +534,7 @@ export interface ImportRows {
 
 /** 미리보기 표 한 줄 */
 export interface ImportSummaryLine {
-  key: 'accounts' | 'categories' | 'rules' | 'bills' | 'living' | 'installments' | 'events' | 'trips' | 'expenses' | 'transfers';
+  key: 'accounts' | 'categories' | 'rules' | 'incomePlans' | 'bills' | 'living' | 'installments' | 'events' | 'trips' | 'expenses' | 'transfers';
   label: string;
   /** 새로 더할 행 */
   added: number;
@@ -533,7 +584,7 @@ export function importRowId(source: string, table: string, key: string): Id {
 const normName = (s: string) => s.replace(/\s/g, '').toLowerCase();
 
 function emptyRows(): ImportRows {
-  return { accounts: [], categories: [], trips: [], events: [], rules: [], fixedExpenses: [], expenses: [], transfers: [] };
+  return { accounts: [], categories: [], trips: [], events: [], rules: [], incomePlans: [], fixedExpenses: [], expenses: [], transfers: [] };
 }
 
 const ROLE_KO: Record<AccountRole, string> = {
@@ -694,11 +745,30 @@ export function planImport(
       continue;
     }
     const row: AllocationRule = {
-      id, fromAccountId: from, toAccountId: to, amount: r.amount, dayOfMonth: r.dayOfMonth,
-      startMonth: r.startMonth, endMonth: r.endMonth, deleted: false,
+      id, fromAccountId: from, toAccountId: to, amount: r.kind === 'remainder' ? 0 : r.amount, dayOfMonth: r.dayOfMonth,
+      startMonth: r.startMonth, endMonth: r.endMonth, kind: r.kind, deleted: false,
     };
+    if (r.kind === 'remainder' && conflictingRemainderRule(work, row)) {
+      errors.push(`매달 배분 '${r.key}': 같은 통장 · 같은 날에 나머지 전부 보내기가 이미 있어요. 하나만 둘 수 있어요`);
+      continue;
+    }
     rows.rules.push(row);
     work.rules.push(row);
+  }
+
+  /* 수입 계획 (v2) */
+  for (const p of file.incomePlans) {
+    const id = rid('inc', p.key);
+    if (has(data.incomePlans ?? [], id)) {
+      bump('incomePlans', 'existing');
+      continue;
+    }
+    const acc = accountOf(p.account);
+    if (!acc) continue;
+    rows.incomePlans.push({
+      id, personName: p.person, personEmail: p.email, amount: p.amount, dayOfMonth: p.dayOfMonth, accountId: acc,
+      startMonth: p.startMonth, endMonth: p.endMonth, memo: p.memo, deleted: false,
+    });
   }
 
   /* 고정 지출 · 생활비 예산 */
@@ -847,6 +917,11 @@ export function planImport(
   if (droppedEvent > 0) warnings.push(`일정과 여행에 함께 묶인 지출 ${droppedEvent}건은 여행에만 묶어요`);
   const activeRules = data.rules.filter((r) => !r.deleted).length;
   if (rows.rules.length > 0 && activeRules > 0) warnings.push(`가계부에 매달 배분이 이미 ${activeRules}개 있어요. 가져오면 함께 더해져요`);
+  const remainderCount = rows.rules.filter((r) => r.kind === 'remainder').length;
+  if (remainderCount > 0) warnings.push(`나머지 전부 보내기 ${remainderCount}개는 그날 남은 돈을 모두 보내요. 금액은 그날 기록될 때 정해져요`);
+  const activePlans = (data.incomePlans ?? []).filter((p) => !p.deleted).length;
+  if (rows.incomePlans.length > 0 && activePlans > 0) warnings.push(`가계부에 수입 계획이 이미 ${activePlans}개 있어요. 가져오면 함께 더해져요`);
+  if (rows.incomePlans.length > 0) warnings.push('수입 계획은 받는 날마다 수입을 자동으로 기록해요. 같은 월급을 손으로 또 기록하지 마세요');
   const activeFixed = data.fixedExpenses.filter((f) => !f.deleted).length;
   if (rows.fixedExpenses.length > 0 && activeFixed > 0) warnings.push(`가계부에 고정 지출 · 생활비 예산이 이미 ${activeFixed}개 있어요. 가져오면 함께 더해져요`);
 
@@ -861,6 +936,7 @@ export function planImport(
     line('accounts', '통장', rows.accounts.length, sum(rows.accounts.map((a) => ({ amount: a.openingBalance }))), '시작 잔액'),
     line('categories', '카테고리', rows.categories.length, null, null),
     line('rules', '매달 배분', rows.rules.length, sum(rows.rules), '매달'),
+    line('incomePlans', '수입 계획', rows.incomePlans.length, sum(rows.incomePlans), '매달'),
     line('bills', '고정 지출', bills.length, sum(bills), '매달'),
     line('living', '생활비 예산', living.length, sum(living), '매달'),
     line('installments', '할부', installmentLines.length, sum(installmentLines), '매달'),

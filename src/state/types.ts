@@ -1,5 +1,7 @@
+import type { LivingView } from '@/domain/living';
+import type { Spender } from '@/domain/household';
 import type {
-  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id,
+  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id, IncomePlan,
   InstallmentHint, InstallmentPlan, ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer,
   Trip, TripItem, TripStatus, Verdict, Won, YearMonth,
 } from '@/domain/types';
@@ -99,7 +101,18 @@ export interface LedgerApi {
   reload(): Promise<void>;
 
   // 계산값 (data 가 있을 때)
+  /** 생활비 (사람별 생활비 통장이 여럿이면 모두 합친 것) */
   living: LivingStatus | null;
+  /** 생활비 통장마다의 생활비 (PLAN 4-14, 통장 순서). 통장이 하나면 한 줄 */
+  livingViews: LivingView[];
+  /** 로그인한 사람의 생활비 통장 (멤버와 이어진 통장 → 첫 생활비 통장) */
+  myLivingAccountId: Id | null;
+  /** 이 생활비 통장의 생활비 (안 주면 나). 통장이 하나뿐이면 living 과 같다 */
+  livingFor(accountId?: Id | null): LivingStatus | null;
+  /** '누가 썼나요?'에서 고를 사람 (가계부의 사람, 그 사람의 생활비 통장과 함께) */
+  spenders: Spender[];
+  /** 로그인한 사람의 spenders 키 */
+  mySpenderKey: string | null;
   balances: Record<Id, Won>;
   eventProjection: EventProjection | null;
   shortageFix: ShortageFix | null;
@@ -114,7 +127,12 @@ export interface LedgerApi {
    * "사도 돼?" 판단. living 은 생활비 항목(categoryId, null = 카테고리 없는 묶음)으로 판단해요.
    * categoryId 를 안 주면(undefined) 항목이 하나뿐일 때만 그 항목으로, 여럿이면 null
    */
-  judge(amount: Won, source: 'living' | 'event', categoryId?: Id | null, opts?: { tripId?: Id | null }): Verdict | null;
+  judge(
+    amount: Won,
+    source: 'living' | 'event',
+    categoryId?: Id | null,
+    opts?: { tripId?: Id | null; livingAccountId?: Id | null },
+  ): Verdict | null;
 
   // 청구 (개인 돈으로 내고 돌려받기)
   /** 돌려받을 돈 요약 (data 가 있을 때) */
@@ -142,7 +160,7 @@ export interface LedgerApi {
     amount: Won,
     source: 'living' | 'event',
     categoryId?: Id | null,
-    opts?: { tripId?: Id | null },
+    opts?: { tripId?: Id | null; livingAccountId?: Id | null },
   ): InstallmentHint | null;
   /** 할부 추가. 결제일이 지난 회차는 이미 낸 것으로 보고 기록하지 않아요. 할부 id 를 돌려줘요 */
   addInstallment(input: NewInstallment): Promise<Id>;
@@ -206,6 +224,10 @@ export interface LedgerApi {
   addRule(input: Omit<AllocationRule, 'id' | 'deleted'>): Promise<AllocationRule>;
   /** 적립액 변경: 기존 규칙을 지난달로 끝내고 이번 달부터 새 규칙 */
   changeRuleAmount(ruleId: Id, amount: Won): Promise<void>;
+  /** 수입 계획 추가 (PLAN 4-13). 받는 날이 지난 이번 달 회차는 바로 기록해요 */
+  addIncomePlan(input: Omit<IncomePlan, 'id' | 'deleted'>): Promise<IncomePlan>;
+  /** 수입 계획 고치기 · 지우기 (deleted). 이미 생긴 수입 기록은 그대로 */
+  saveIncomePlan(plan: IncomePlan): Promise<void>;
   saveFixed(fixed: FixedExpense): Promise<void>;
   addFixed(input: Omit<FixedExpense, 'id' | 'deleted'>): Promise<FixedExpense>;
   saveCategory(category: Category): Promise<void>;

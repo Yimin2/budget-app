@@ -1,6 +1,6 @@
 import type {
   Account, AllocationRule, Category, Expense, Favorite, FixedExpense, LedgerData, LedgerKind,
-  LedgerSettings, Member, MonthEnd, PlannedEvent, Transfer, Trip,
+  IncomePlan, LedgerSettings, Member, MonthEnd, PlannedEvent, Transfer, Trip,
 } from '@/domain/types';
 
 export interface TableRows {
@@ -15,6 +15,7 @@ export interface TableRows {
   favorites: Favorite;
   members: Member; // 키 = email
   trips: Trip;
+  incomePlans: IncomePlan;
 }
 export type TableName = keyof TableRows;
 

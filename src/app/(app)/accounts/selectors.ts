@@ -1,5 +1,8 @@
 /* 통장 화면의 순수 함수. 화면과 떼어 테스트해요. */
-import { expenseBalanceAccountId, isClaimExpense, isAutoFixedRecord, isCountedTransfer, isMonthActive, monthOf } from '@/domain';
+import {
+  expenseBalanceAccountId, isClaimExpense, isAutoFixedRecord, isCountedTransfer, isMonthActive, isRemainderRule, monthOf, paydayPlans,
+  plannedIncome,
+} from '@/domain';
 import type { Account, AccountRole, Expense, Id, ISODate, LedgerData, Transfer, Won, YearMonth } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON } from '@/ui';
 import { incomeSummaries, referenceIncome, type IncomeSummary } from '../settings/helpers';
@@ -137,9 +140,27 @@ export function flowSummary(data: LedgerData, month: YearMonth): FlowSummary {
     byTo.set(r.toAccountId, (byTo.get(r.toAccountId) ?? 0) + r.amount);
   }
   const order = (id: Id) => data.accounts.find((a) => a.id === id)?.order ?? Number.MAX_SAFE_INTEGER;
-  const total = [...byTo.values()].reduce((s, v) => s + v, 0);
-  const income = referenceIncome(data, month);
+  const fixedTotal = [...byTo.values()].reduce((s, v) => s + v, 0);
+  // 수입: 수입 계획이 있으면 계획 합, 없으면 기록 (PLAN 4-13)
+  const planned = incomeAccounts.reduce((s, a) => s + plannedIncome(data, month, a.id), 0);
+  const income = planned > 0 ? { month, amount: planned } : referenceIncome(data, month);
   const incomeAmount = income?.amount ?? 0;
+  // 나머지 전부 보내기: 월급날마다 남는 돈 예상을 받는 통장에 더해요 (계획이 없으면 수입 − 정한 금액을 첫 나머지 규칙에)
+  let restTotal = 0;
+  for (const a of incomeAccounts) {
+    for (const p of paydayPlans(data, month, a.id)) {
+      if (!p.remainder || p.remainder.amount <= 0) continue;
+      byTo.set(p.remainder.rule.toAccountId, (byTo.get(p.remainder.rule.toAccountId) ?? 0) + p.remainder.amount);
+      restTotal += p.remainder.amount;
+    }
+  }
+  if (restTotal === 0 && income && incomeAmount > fixedTotal) {
+    const rest = data.rules.find(
+      (r) => !r.deleted && isRemainderRule(r) && incomeIds.has(r.fromAccountId) && isMonthActive(month, r.startMonth, r.endMonth),
+    );
+    if (rest) byTo.set(rest.toAccountId, (byTo.get(rest.toAccountId) ?? 0) + incomeAmount - fixedTotal);
+  }
+  const total = [...byTo.values()].reduce((s, v) => s + v, 0);
   const base = Math.max(total, incomeAmount) || 1;
   const items: FlowItem[] = [...byTo.entries()]
     .sort((a, b) => order(a[0]) - order(b[0]))

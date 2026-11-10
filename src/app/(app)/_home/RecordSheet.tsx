@@ -6,6 +6,7 @@ import type { Expense, Id } from '@/domain';
 import { useLedger } from '@/state';
 import { Badge, Button, DateInput, Dialog, Field, Select, TextInput, useToast, focusFirstInvalid } from '@/ui';
 import { ClaimFields } from '../_components/ClaimFields';
+import { SpenderField } from '../_components/SpenderField';
 import { accountIdForCategory, accountIdForSource, errorMessage, expenseTitle, type Source } from './selectors';
 import styles from './home.module.css';
 
@@ -15,6 +16,8 @@ export interface RecordSheetProps {
   categoryId: Id | null;
   /** 사도 돼?에서 고른 여행 (여행에 묶어 기록해요) */
   tripId?: Id | null;
+  /** 사도 돼?에서 고른 사람 (누가 썼나요? 기본값, spenders 키). 없으면 나 */
+  spenderKey?: string | null;
   onClose: () => void;
   /** 기록이 끝나면 (label: 알림에 쓸 이름) */
   onRecorded: (expense: Expense, label: string) => void;
@@ -26,11 +29,19 @@ const SOURCE_LABEL: Record<Source, string> = { living: '생활비로', event: '�
  * [샀어요] 확인 시트. 날짜(기본 오늘) · 카테고리 · 내용 · 통장(어느 돈인지에 따라 자동, 바꿀 수 있음).
  * 열 때마다 새로 그려서 값이 초기화되도록 {open ? <RecordSheet/> : null} 로 쓰세요.
  */
-export function RecordSheet({ amount, source, categoryId, tripId = null, onClose, onRecorded }: RecordSheetProps) {
+export function RecordSheet({ amount, source, categoryId, tripId = null, spenderKey = null, onClose, onRecorded }: RecordSheetProps) {
   const ledger = useLedger();
   const toast = useToast();
   const formId = `record-${useId().replace(/:/g, '')}`;
-  const livingAccountId = ledger.living?.livingAccountId ?? null;
+  // 누가 썼나요? (기본: 사도 돼?에서 고른 사람 → 나). 고른 사람의 생활비 통장으로 기록해요
+  const [pickedSpender, setSpender] = useState<string | null>(null);
+  const spender = pickedSpender ?? spenderKey ?? ledger.mySpenderKey ?? null;
+  const spenderLiving = (key: string | null) =>
+    (key ? ledger.spenders.find((s) => s.key === key)?.livingAccountId : null) ??
+    ledger.myLivingAccountId ??
+    ledger.living?.livingAccountId ??
+    null;
+  const livingAccountId = spenderLiving(spender);
 
   const [date, setDate] = useState(ledger.today);
   const [category, setCategory] = useState<string>(categoryId ?? '');
@@ -53,6 +64,15 @@ export function RecordSheet({ amount, source, categoryId, tripId = null, onClose
     if (accountTouched) return;
     const cat = categories.find((c) => c.id === id);
     const next = cat ? accountIdForCategory(cat, livingAccountId, ledger.accountByRole) : null;
+    if (next) setAccountId(next);
+  }
+
+  function changeSpender(key: string) {
+    setSpender(key);
+    if (accountTouched) return;
+    const living = spenderLiving(key);
+    const cat = categories.find((c) => c.id === category);
+    const next = cat ? accountIdForCategory(cat, living, ledger.accountByRole) : accountIdForSource(source, living, ledger.accountByRole);
     if (next) setAccountId(next);
   }
 
@@ -125,6 +145,7 @@ export function RecordSheet({ amount, source, categoryId, tripId = null, onClose
           </span>
           <strong>{formatWon(amount)}</strong>
         </div>
+        <SpenderField value={spender} onChange={(key) => changeSpender(key)} disabled={saving} />
         <Field label="날짜" error={dateError} required>
           <DateInput value={date} onChange={setDate} />
         </Field>

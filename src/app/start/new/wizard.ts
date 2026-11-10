@@ -1,6 +1,6 @@
 /* 새 가계부 만들기 마법사의 순수 도우미 (화면과 분리해서 테스트해요) */
 import { DEFAULT_CATEGORIES, defaultSpreadFor } from '@/domain';
-import type { Account, AccountRole, AllocationRule, Category, FixedExpense, LivingSpread, Won, YearMonth } from '@/domain/types';
+import type { Account, AccountRole, AllocationRule, Category, FixedExpense, IncomePlan, LivingSpread, Won, YearMonth } from '@/domain/types';
 
 export type AllocRole = Extract<AccountRole, 'fixed' | 'event' | 'savings' | 'reservoir'>;
 
@@ -31,7 +31,10 @@ export interface AllowanceDraft {
   day: number;
 }
 
-/** 공용 가계부의 버는 사람 한 명: 그 사람 수입통장과 거기서 보내는 매달 배분 */
+/**
+ * 공용 가계부의 버는 사람 한 명 (PLAN 4-13): 월급 · 월급날은 수입 계획이 되고, 월급은 함께 쓰는 월급통장 하나로 들어와요.
+ * 월급날에 월급통장에서 각 통장으로 보낼 금액(alloc)을 정하고, 남은 돈은 저수지로 모두 보낼 수 있어요(rest)
+ */
 export interface EarnerDraft {
   key: string;
   name: string;
@@ -40,7 +43,12 @@ export interface EarnerDraft {
   /** 월급날 = 배분하는 날 */
   day: number;
   alloc: Record<AllocRole, Won | null>;
+  /** 남은 돈은 모두 저수지통장으로 (나머지 전부 보내기). true 면 alloc.reservoir 는 쓰지 않아요 */
+  rest: boolean;
 }
+
+/** 함께 쓰는 월급통장 이름 */
+export const SALARY_ACCOUNT_NAME = '월급통장';
 
 /** 생활비 항목 예산 한 줄 */
 export interface LivingDraft {
@@ -73,7 +81,12 @@ export function emptyAlloc(): Record<AllocRole, Won | null> {
 }
 
 export function newEarner(name = '', email = ''): EarnerDraft {
-  return { key: draftKey('earner'), name, email, salary: null, day: 1, alloc: emptyAlloc() };
+  return { key: draftKey('earner'), name, email, salary: null, day: 25, alloc: emptyAlloc(), rest: true };
+}
+
+/** 정한 금액으로 보내는 통장 (남은 돈을 저수지로 모두 보내면 저수지는 빼요) */
+export function fixedTargets(e: Pick<EarnerDraft, 'rest'>): typeof ALLOC_TARGETS {
+  return e.rest ? ALLOC_TARGETS.filter((t) => t.role !== 'reservoir') : ALLOC_TARGETS;
 }
 
 /** 사람별 수입통장 이름: '민지 수입통장' (이름이 없으면 '수입통장') */
@@ -82,7 +95,7 @@ export function incomeAccountName(name: string): string {
   return n ? `${n} 수입통장` : '수입통장';
 }
 
-function hasAnyAmount(e: EarnerDraft): boolean {
+function hasAnyAmount(e: Pick<EarnerDraft, 'salary' | 'alloc'>): boolean {
   return (e.salary !== null && e.salary > 0) || ALLOC_TARGETS.some((t) => (e.alloc[t.role] ?? 0) > 0);
 }
 
@@ -235,6 +248,64 @@ export function wantedLiving(ctx: FixedContext, rows: LivingDraft[]): { key: str
 }
 
 export type RuleInput = Omit<AllocationRule, 'id' | 'deleted'>;
+export type IncomePlanInput = Omit<IncomePlan, 'id' | 'deleted'>;
+
+/** 버는 사람 → 수입 계획 (키 = 사람 키). 월급이 없는 사람은 빼요. 이름이 없으면 이메일 앞부분 → '나' */
+export function wantedIncomePlans(
+  ctx: { accountId: string | null; month: YearMonth },
+  earners: EarnerDraft[],
+): { key: string; input: IncomePlanInput }[] {
+  if (!ctx.accountId) return [];
+  const out: { key: string; input: IncomePlanInput }[] = [];
+  for (const e of earners) {
+    if (e.salary === null || e.salary <= 0) continue;
+    const email = e.email.trim();
+    out.push({
+      key: e.key,
+      input: {
+        personName: e.name.trim() || email.split('@')[0] || '나',
+        personEmail: email || null,
+        amount: e.salary,
+        dayOfMonth: e.day,
+        accountId: ctx.accountId,
+        startMonth: ctx.month,
+        endMonth: null,
+        memo: '',
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * 버는 사람마다 월급날의 '남은 돈은 모두 저수지로' 규칙 (키 = <사람 키>:rest).
+ * 같은 날 월급이 둘이면 나머지 규칙은 하나만 (먼저 적은 사람). 월급도 배분도 없는 사람은 빼요
+ */
+export function wantedRestRules(
+  ctx: { incomeAccountId: string | null; reservoirAccountId: string | null; month: YearMonth },
+  earners: EarnerDraft[],
+): { key: string; input: RuleInput }[] {
+  if (!ctx.incomeAccountId || !ctx.reservoirAccountId) return [];
+  const days = new Set<number>();
+  const out: { key: string; input: RuleInput }[] = [];
+  for (const e of earners) {
+    if (!e.rest || !hasAnyAmount(e) || days.has(e.day)) continue;
+    days.add(e.day);
+    out.push({
+      key: `${e.key}:rest`,
+      input: {
+        fromAccountId: ctx.incomeAccountId,
+        toAccountId: ctx.reservoirAccountId,
+        amount: 0,
+        kind: 'remainder',
+        dayOfMonth: e.day,
+        startMonth: ctx.month,
+        endMonth: null,
+      },
+    });
+  }
+  return out;
+}
 
 /** 매달 배분 입력 → 규칙 행 (키 = [keyPrefix:]받는 통장 역할. 사람마다 keyPrefix 를 달리 줘요) */
 export function wantedRules(

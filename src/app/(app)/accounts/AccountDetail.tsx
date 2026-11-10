@@ -47,7 +47,7 @@ export function AccountDetail({ ledger, accountId }: { ledger: ReadyLedger; acco
 
   const balance = ledger.balances[account.id] ?? accountBalance(data, account.id, today);
   const flow = monthFlows(data, today)[account.id] ?? { in: 0, out: 0 };
-  const living = ledger.living?.livingAccountId === account.id;
+  const living = ledger.living?.livingAccountId === account.id || ledger.livingViews.some((v) => v.accountId === account.id);
   const thisYear = Number(today.slice(0, 4));
   const visible = history.slice(0, shown);
   const rest = history.length - visible.length;

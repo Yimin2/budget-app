@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { monthOf } from '@/domain';
-import type { Account, AllocationRule, FixedExpense, LedgerKind } from '@/domain/types';
+import type { AllocationRule, FixedExpense, IncomePlan, LedgerKind } from '@/domain/types';
 import { useLedger, useSession } from '@/state';
 import type { LedgerRef } from '@/storage/types';
 import { Button, LoadingBlock, cx, useToast } from '@/ui';
@@ -11,8 +11,8 @@ import { LedgerLoadError } from '@/app/(app)/_components/RequireLedger';
 import { Stepper } from '../_components/Stepper';
 import { StepAllocation, StepBalances, StepBasics, StepFixed, StepLiving, StepNote } from './Steps';
 import {
-  ALLOC_TARGETS, DEFAULT_NAMES, activeEarners, defaultLivingDrafts, diffByKey, draftKey, earnerAccountFields, newEarner,
-  validateAllowances, validateBills, validateEarners, wantedFixed, wantedLiving, wantedRules,
+  DEFAULT_NAMES, SALARY_ACCOUNT_NAME, activeEarners, defaultLivingDrafts, diffByKey, draftKey, fixedTargets, newEarner,
+  validateAllowances, validateBills, validateEarners, wantedFixed, wantedIncomePlans, wantedLiving, wantedRestRules, wantedRules,
   type AllowanceDraft, type BillDraft, type DraftErrors, type EarnerDraft, type LivingDraft,
 } from './wizard';
 
@@ -29,7 +29,7 @@ const HEADS: Record<string, { title: string; desc: string }> = {
   },
   '매달 배분': {
     title: '매달 배분',
-    desc: '버는 사람마다 수입통장을 하나씩 만들어요. 월급이 들어오면 각자 수입통장에서 보낼 금액을 정해 주세요.',
+    desc: '버는 사람마다 월급과 월급날을 적어 주세요. 월급은 모두 월급통장 하나로 들어와요. 월급날마다 각 통장으로 보낼 금액을 정해요.',
   },
   '고정 지출': { title: '고정 지출과 용돈', desc: '매달 나가는 돈과 멤버 용돈을 정해 주세요.' },
   '생활비': {
@@ -68,11 +68,11 @@ export function Wizard() {
   const [balances, setBalances] = useState<Record<string, number | null>>({});
   const [openingDate, setOpeningDate] = useState('');
 
-  // ③ 매달 배분 (버는 사람마다 수입통장 하나)
+  // ③ 매달 배분 (버는 사람마다 수입 계획, 월급은 모두 월급통장 하나로)
   const [earners, setEarners] = useState<EarnerDraft[]>(() => [newEarner(user?.name ?? '', user?.email ?? '')]);
   const [earnerErrors, setEarnerErrors] = useState<DraftErrors>({});
-  /** 사람 키 → 저장한 수입통장 */
-  const [savedIncome, setSavedIncome] = useState<Record<string, Account>>({});
+  /** 사람 키 → 저장한 수입 계획 */
+  const [savedPlans, setSavedPlans] = useState<Record<string, IncomePlan>>({});
   const [savedRules, setSavedRules] = useState<Record<string, AllocationRule>>({});
 
   // ④ 고정 지출
@@ -145,37 +145,16 @@ export function Wizard() {
     }
   }
 
-  /** 사람마다 수입통장을 맞춰요: 첫 사람은 처음 만든 수입통장을 고쳐 쓰고, 나머지는 새로 만들어요 */
-  async function saveIncomeAccounts(list: EarnerDraft[]): Promise<Record<string, Account>> {
-    const next = { ...savedIncome };
-    try {
-      const keep = new Set(list.map((e) => e.key));
-      for (const [i, e] of list.entries()) {
-        const fields = earnerAccountFields(e);
-        const prev = next[e.key] ?? (i === 0 ? ledger.accountByRole('income') : null);
-        if (prev) {
-          if (prev.name !== fields.name || prev.ownerName !== fields.ownerName || prev.ownerEmail !== fields.ownerEmail) {
-            const row = { ...prev, ...fields };
-            await ledger.saveAccount(row);
-            next[e.key] = row;
-          } else {
-            next[e.key] = prev;
-          }
-        } else {
-          next[e.key] = await ledger.addAccount({ ...fields, role: 'income', openingBalance: 0 });
-        }
-      }
-      // 빠진 사람의 수입통장은 지워요 (처음 만든 수입통장은 두고요)
-      const first = list[0] ? next[list[0].key]?.id : undefined;
-      for (const [key, acc] of Object.entries(next)) {
-        if (keep.has(key)) continue;
-        if (acc.id !== first) await ledger.saveAccount({ ...acc, deleted: true });
-        delete next[key];
-      }
-    } finally {
-      setSavedIncome(next);
+  /** 함께 쓰는 월급통장: 처음 만든 수입통장 이름을 '월급통장'으로 (주인 없음) */
+  async function saveSalaryAccount() {
+    const acc = ledger.accountByRole('income');
+    if (!acc) return null;
+    if (acc.name !== SALARY_ACCOUNT_NAME || acc.ownerName !== null || acc.ownerEmail !== null) {
+      const row = { ...acc, name: SALARY_ACCOUNT_NAME, ownerName: null, ownerEmail: null };
+      await ledger.saveAccount(row);
+      return row;
     }
-    return next;
+    return acc;
   }
 
   /** false 면 입력 오류가 있어 멈춰요 */
@@ -187,24 +166,48 @@ export function Wizard() {
       return false;
     }
     const list = activeEarners(earners);
-    const incomeByEarner = await saveIncomeAccounts(list);
-    const wanted = list.flatMap((e) =>
-      wantedRules(
-        { incomeAccountId: incomeByEarner[e.key]?.id ?? null, month, day: e.day, keyPrefix: e.key },
-        ALLOC_TARGETS.map((t) => ({ role: t.role, accountId: ledger.accountByRole(t.role)?.id ?? null, amount: e.alloc[t.role] })),
+    const salary = await saveSalaryAccount();
+    const incomeAccountId = salary?.id ?? null;
+
+    // 수입 계획 (사람마다)
+    const plans = diffByKey(savedPlans, wantedIncomePlans({ accountId: incomeAccountId, month }, list));
+    const nextPlans = { ...savedPlans };
+    try {
+      for (const a of plans.add) nextPlans[a.key] = await ledger.addIncomePlan(a.input);
+      for (const u of plans.update) {
+        await ledger.saveIncomePlan(u.row);
+        nextPlans[u.key] = u.row;
+      }
+      for (const r of plans.remove) {
+        await ledger.saveIncomePlan(r.row);
+        delete nextPlans[r.key];
+      }
+    } finally {
+      setSavedPlans(nextPlans);
+    }
+
+    // 월급날마다 정한 금액 + 남은 돈은 저수지로
+    const wanted = [
+      ...list.flatMap((e) =>
+        wantedRules(
+          { incomeAccountId, month, day: e.day, keyPrefix: e.key },
+          fixedTargets(e).map((t) => ({ role: t.role, accountId: ledger.accountByRole(t.role)?.id ?? null, amount: e.alloc[t.role] })),
+        ),
       ),
-    );
+      ...wantedRestRules({ incomeAccountId, reservoirAccountId: ledger.accountByRole('reservoir')?.id ?? null, month }, list),
+    ];
     const { add, update, remove } = diffByKey(savedRules, wanted);
     const next = { ...savedRules };
     try {
+      // 지우기를 먼저 (같은 날 나머지 규칙을 다른 사람에게 옮길 때 겹치지 않게)
+      for (const r of remove) {
+        await ledger.saveRule(r.row);
+        delete next[r.key];
+      }
       for (const a of add) next[a.key] = await ledger.addRule(a.input);
       for (const u of update) {
         await ledger.saveRule(u.row);
         next[u.key] = u.row;
-      }
-      for (const r of remove) {
-        await ledger.saveRule(r.row);
-        delete next[r.key];
       }
     } finally {
       setSavedRules(next);
@@ -330,6 +333,7 @@ export function Wizard() {
         setEarners={setEarners}
         errors={earnerErrors}
         accountName={(role) => ledger.accountByRole(role)?.name ?? null}
+        salaryAccountName={SALARY_ACCOUNT_NAME}
       />
     );
   } else if (stepName === '생활비') {

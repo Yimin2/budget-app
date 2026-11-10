@@ -8,7 +8,7 @@ import {
   Banner, Button, Chip, ChipGroup, DateInput, Field, Icon, MoneyInput, SegmentedControl, Select, TextInput, isIconName,
 } from '@/ui';
 import {
-  ALLOC_TARGETS, BILL_SUGGESTIONS, DAY_OPTIONS, allocationSummary, draftKey, incomeAccountName, livingDraftFor, livingTotal,
+  BILL_SUGGESTIONS, DAY_OPTIONS, allocationSummary, draftKey, fixedTargets, livingDraftFor, livingTotal,
   newEarner,
   type AllocRole, type AllocationSummary, type AllowanceDraft, type BillDraft, type DraftErrors, type EarnerDraft,
   type LivingDraft,
@@ -86,7 +86,7 @@ export function StepBasics(props: {
 /* ───────── ② 통장 시작 잔액 ───────── */
 
 const ROLE_HINT: Partial<Record<Account['role'], string>> = {
-  income: '월급이 처음 들어오는 통장. 버는 사람이 여럿이면 다음 단계에서 사람마다 만들어요',
+  income: '월급이 처음 들어오는 통장. 두 사람 월급이 모두 이 통장으로 들어와요 (다음 단계에서 이름이 월급통장이 돼요)',
   fixed: '월세·통신비 같은 고정비와 생활비가 나가는 통장',
   event: '경조사·여행·명절·큰 구매에 쓰는 통장',
   reservoir: '목돈·비상금',
@@ -119,35 +119,45 @@ export function StepBalances(props: {
   );
 }
 
-/* ───────── ③ 매달 배분 (버는 사람마다 수입통장) ───────── */
+/* ───────── ③ 매달 배분 (버는 사람마다 수입 계획 · 월급통장 하나) ───────── */
 
 export function StepAllocation(props: {
   earners: EarnerDraft[];
   setEarners: Dispatch<SetStateAction<EarnerDraft[]>>;
   errors: DraftErrors;
   accountName: (role: AllocRole) => string | null;
+  /** 월급이 모두 들어오는 통장 이름 */
+  salaryAccountName: string;
 }) {
-  const { earners, setEarners, errors, accountName } = props;
+  const { earners, setEarners, errors, accountName, salaryAccountName } = props;
   const patch = (key: string, p: Partial<EarnerDraft>) =>
     setEarners((list) => list.map((e) => (e.key === key ? { ...e, ...p } : e)));
+  const reservoirName = accountName('reservoir');
   const grand = allocationSummary(
     earners.reduce<number | null>((s, e) => (e.salary && e.salary > 0 ? (s ?? 0) + e.salary : s), null),
-    earners.flatMap((e) => ALLOC_TARGETS.map((t) => e.alloc[t.role])),
+    earners.flatMap((e) => fixedTargets(e).map((t) => e.alloc[t.role])),
   );
 
   return (
     <>
+      <p className="sp-note">
+        <Icon name="info" size={16} />
+        <span>
+          월급은 모두 {salaryAccountName}으로 들어와요. 월급날이 되면 월급이 수입으로 기록되고, 아래 금액이 각 통장으로 보내져요.
+        </span>
+      </p>
       <ul className="wz-items">
         {earners.map((e, i) => {
           const err = errors[e.key];
-          const summary = allocationSummary(e.salary, ALLOC_TARGETS.map((t) => e.alloc[t.role]));
-          const accName = incomeAccountName(e.name);
-          const groupName = e.name.trim() ? accName : `${i + 1}번째 사람`;
+          const targets = fixedTargets(e);
+          const summary = allocationSummary(e.salary, targets.map((t) => e.alloc[t.role]));
+          const groupName = e.name.trim() || `${i + 1}번째 사람`;
+          const restOn = e.rest && !!reservoirName;
           return (
             <li key={e.key}>
               <div className="wz-item" role="group" aria-label={groupName}>
                 <div className="top">
-                  <Field label="이름" error={err?.name} hint={i === 0 ? '통장 이름이 \'이름 수입통장\'이 돼요' : undefined}>
+                  <Field label="이름" error={err?.name}>
                     <TextInput value={e.name} onChange={(ev) => patch(e.key, { name: ev.target.value })} maxLength={20} autoComplete="off" />
                   </Field>
                   {i > 0 ? (
@@ -171,16 +181,16 @@ export function StepAllocation(props: {
                   />
                 </Field>
                 <div className="pair">
-                  <Field label="한 달 월급" hint="합계를 확인하는 데만 써요">
+                  <Field label="한 달 월급" hint={`월급날 ${salaryAccountName} 수입으로 기록해요`}>
                     <MoneyInput value={e.salary} onChange={(v) => patch(e.key, { salary: v })} />
                   </Field>
-                  <Field label="월급날" hint="이날 배분 기록이 자동으로 생겨요">
+                  <Field label="월급날" hint="이날 아래 금액을 보내요">
                     <Select value={String(e.day)} onChange={(v) => patch(e.key, { day: Number(v) })} options={DAY_OPTIONS} />
                   </Field>
                 </div>
-                <h3 className="wz-sub">{accName}에서 보낼 금액</h3>
+                <h3 className="wz-sub">월급날 {salaryAccountName}에서 보낼 금액</h3>
                 <div className="wz-rows">
-                  {ALLOC_TARGETS.map((t) => {
+                  {targets.map((t) => {
                     const name = accountName(t.role);
                     return (
                       <Field key={t.role} label={name ?? t.label} hint={name ? t.hint : `${t.label}이 없어서 건너뛰어요`}>
@@ -193,7 +203,17 @@ export function StepAllocation(props: {
                     );
                   })}
                 </div>
-                <AllocationTotal summary={summary} accountName={accName} />
+                {reservoirName ? (
+                  <label className="wz-check">
+                    <input type="checkbox" checked={e.rest} onChange={(ev) => patch(e.key, { rest: ev.target.checked })} />
+                    <span>남은 돈은 모두 {reservoirName}으로 보내기</span>
+                  </label>
+                ) : null}
+                <AllocationTotal
+                  summary={summary}
+                  accountName={salaryAccountName}
+                  restTo={restOn ? reservoirName : null}
+                />
               </div>
             </li>
           );
@@ -222,8 +242,8 @@ export function StepAllocation(props: {
   );
 }
 
-/** 한 사람의 배분 합계 · 월급 비교 */
-function AllocationTotal({ summary, accountName }: { summary: AllocationSummary; accountName: string }) {
+/** 한 사람의 배분 합계 · 월급 비교. restTo 가 있으면 남은 돈은 그 통장으로 모두 가요 */
+function AllocationTotal({ summary, accountName, restTo }: { summary: AllocationSummary; accountName: string; restTo: string | null }) {
   return (
     <>
       <div className="wz-total" aria-live="polite">
@@ -239,7 +259,7 @@ function AllocationTotal({ summary, accountName }: { summary: AllocationSummary;
         ) : null}
         {summary.state === 'under' && summary.left !== null ? (
           <div className="line">
-            <span>{accountName}에 남는 돈</span>
+            <span>{restTo ? `나머지 → ${restTo}` : `${accountName}에 남는 돈`}</span>
             <strong>{formatWon(summary.left)}</strong>
           </div>
         ) : null}

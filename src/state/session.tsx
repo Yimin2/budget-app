@@ -36,6 +36,11 @@ export interface StateDeps {
   storage: SessionStorageLike | null;
   /** google 모드 조용한 복구를 기다리는 최대 시간(ms) */
   restoreTimeoutMs: number;
+  /**
+   * 체험 가계부를 부부 예시(월급통장 하나 · 수입 계획 · 나머지 배분 · 사람별 생활비, PLAN 4-13 · 4-14)로 만들지.
+   * 기본 true. 예전 예시(사람별 수입통장)의 숫자에 기대는 테스트는 false
+   */
+  demoCouple: boolean;
 }
 
 const defaultGoogle: GoogleDeps = {
@@ -57,6 +62,7 @@ function buildDeps(partial?: Partial<StateDeps>): StateDeps {
     now: partial?.now ?? (() => new Date()),
     storage: partial && 'storage' in partial ? (partial.storage ?? null) : browserStorage(),
     restoreTimeoutMs: partial?.restoreTimeoutMs ?? 3000,
+    demoCouple: partial?.demoCouple ?? true,
   };
 }
 
@@ -195,10 +201,10 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       try {
         ref = await deps.local.describe(DEMO_LEDGER_ID);
       } catch {
-        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
+        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple }), DEMO_LEDGER_ID);
       }
     } else {
-      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
+      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple }), DEMO_LEDGER_ID);
     }
     update((s) => ({
       status: 'signedIn',

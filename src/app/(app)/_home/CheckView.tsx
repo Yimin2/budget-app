@@ -62,9 +62,16 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
   /** 이벤트통장으로 살 때 고른 여행 (PLAN 4-11: 여행 남은 예산으로 판단) */
   const [tripId, setTripId] = useState<string | null>(null);
 
+  /** 누구 생활비 예산으로 볼지 (사람별 생활비 통장, PLAN 4-14). 기본은 나 */
+  const [personId, setPersonId] = useState<string | null>(null);
+  const views = ledger.livingViews;
+  const multiPerson = views.length > 1;
+  const livingAccountId = multiPerson
+    ? (views.find((v) => v.accountId === (personId ?? ledger.myLivingAccountId)) ?? views[0]!).accountId
+    : null;
   const hasEventAccount = ledger.accountByRole('event') !== null;
   const source: Source = pickedSource === 'event' && !hasEventAccount ? 'living' : pickedSource;
-  const living = ledger.living;
+  const living = multiPerson ? ledger.livingFor(livingAccountId) : ledger.living;
   const livingMissing = source === 'living' && living !== null && !hasLivingBudget(living);
   // 고를 수 있는 생활비 항목 (예산 없는 '기타' 묶음은 빼요). 하나뿐이면 저절로 골라요
   const livingItems: LivingItem[] = useMemo(() => living?.items.filter((i) => !i.unbudgeted) ?? [], [living]);
@@ -90,8 +97,8 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
     if (deferredAmount === null || deferredAmount <= 0) return null;
     if (source === 'event') return judge(deferredAmount, 'event', undefined, { tripId: judgedTripId });
     if (livingMissing || itemCategory === undefined) return null;
-    return judge(deferredAmount, 'living', itemCategory);
-  }, [deferredAmount, source, judge, livingMissing, itemCategory, judgedTripId]);
+    return judge(deferredAmount, 'living', itemCategory, { livingAccountId });
+  }, [deferredAmount, source, judge, livingMissing, itemCategory, judgedTripId, livingAccountId]);
   const ready = amount !== null && amount > 0 && verdict !== null;
   // 큰 금액이면 '12개월 할부면 매달 ○원'과 그 금액이 맞는지 (PLAN 4-4 · 4-10)
   const { installmentHint } = ledger;
@@ -100,8 +107,8 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
     // 여행을 골랐으면 판단과 같은 여행으로 (같은 돈을 두 번 세지 않게)
     return source === 'event'
       ? installmentHint(deferredAmount, 'event', undefined, { tripId: judgedTripId })
-      : installmentHint(deferredAmount, 'living', itemCategory);
-  }, [verdict, deferredAmount, source, installmentHint, itemCategory, judgedTripId]);
+      : installmentHint(deferredAmount, 'living', itemCategory, { livingAccountId });
+  }, [verdict, deferredAmount, source, installmentHint, itemCategory, judgedTripId, livingAccountId]);
 
   // 데스크톱(마우스)에서는 금액 칸에 바로 커서를 둬요. 휴대폰은 키보드가 결과를 가리지 않게 그대로 둬요
   useEffect(() => {
@@ -241,6 +248,24 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
           {!hasEventAccount ? <p className={styles.hintText}>이벤트통장이 없어서 생활비 기준으로만 볼 수 있어요.</p> : null}
         </div>
 
+        {multiPerson && source === 'living' ? (
+          <div className={styles.section}>
+            <h2 className={styles.groupLabel} id="check-person-title">
+              누구 생활비로 볼까요?
+            </h2>
+            <SegmentedControl<string>
+              ariaLabel="누구 생활비로 볼까요"
+              block
+              value={livingAccountId ?? ''}
+              onChange={(id) => {
+                setPersonId(id);
+                setItemKey(null);
+              }}
+              options={views.map((v) => ({ value: v.accountId, label: v.accountId === ledger.myLivingAccountId ? `${v.name} (나)` : v.name }))}
+            />
+          </div>
+        ) : null}
+
         {livingMissing ? (
           <Banner tone="info" title="생활비를 아직 정하지 않았어요" action={{ label: '정하기', href: '/settings#st-living' }} className={styles.cNotice}>
             항목마다 생활비 예산을 정하면 오늘 써도 되는 돈 기준으로 알려 드려요.
@@ -314,6 +339,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
           source={source}
           categoryId={source === 'living' ? (selectedItem?.categoryId ?? null) : categoryId}
           tripId={pickedTripId}
+          spenderKey={livingAccountId ? (ledger.spenders.find((x) => x.livingAccountId === livingAccountId)?.key ?? null) : null}
           onClose={() => setSheetOpen(false)}
           onRecorded={onRecorded}
         />

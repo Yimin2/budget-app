@@ -111,6 +111,7 @@ function normalize(d: Partial<LedgerData>): LedgerData {
     favorites: d.favorites ?? [],
     members: d.members ?? [],
     trips: (d.trips ?? []).map((t) => ({ ...t, items: t.items ?? {} })),
+    incomePlans: d.incomePlans ?? [],
   };
 }
 
