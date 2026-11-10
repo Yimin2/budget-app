@@ -1,0 +1,299 @@
+/* 평소 쓰는 돈과 적립 카드의 그림 — 도넛 · 적립 대비 막대 · 항목별 평균 표.
+   색은 디자인 토큰만 써요 (차트 --chart-1~6, 상태 --danger · --success). 글자는 --text · --text-muted · *-text 로 4.5:1 이상 */
+
+/* 접힌 줄: 한 줄 요약 + 작은 도넛 + [자세히] */
+.summaryRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.summaryRow > :last-child {
+  margin-left: auto;
+}
+
+/* ───────── 도넛 ───────── */
+.donut {
+  position: relative;
+  flex: none;
+}
+.donut svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.donutSm {
+  width: 48px;
+  height: 48px;
+}
+.donutLg {
+  width: min(200px, 60vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+.donutTrack {
+  stroke: var(--surface-subtle);
+}
+.donutCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+.donutCenterLabel {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.donutCenterValue {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.legend {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.legend > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  line-height: 22px;
+}
+.swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.legendName {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.legendAmt {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ───────── 펼친 내용 ───────── */
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.details[hidden] {
+  display: none;
+}
+.who {
+  align-self: flex-start;
+  flex-wrap: wrap;
+}
+.split {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.donutCol,
+.tableCol {
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .split {
+    display: grid;
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-6);
+  }
+}
+
+/* ───────── 막대 ───────── */
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.barLegend {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.barLegend strong {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.barTrack {
+  display: flex;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+.barBase {
+  background: var(--chart-1);
+}
+.barRest {
+  border-left: 2px solid var(--surface);
+}
+.barOver {
+  background: var(--danger);
+}
+.barLeft {
+  background: var(--success);
+}
+.barStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.barStatus > svg {
+  flex: none;
+}
+.bad {
+  color: var(--danger-text);
+}
+.good {
+  color: var(--success-text);
+}
+
+.note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ───────── 표 ───────── */
+.tableWrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.table thead th {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
+  white-space: normal;
+}
+.table tbody th {
+  font-weight: 400;
+  padding: 0;
+}
+.rowBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+.rowBtn > span {
+  overflow-wrap: anywhere;
+}
+.rowBtn:hover {
+  background: var(--surface-subtle);
+}
+.rowBtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.rowOpen > th,
+.rowOpen > td {
+  border-bottom-color: transparent;
+}
+.trend {
+  color: var(--text-muted);
+}
+.up {
+  color: var(--danger-text);
+}
+.down {
+  color: var(--success-text);
+}
+
+.itemsRow > td {
+  padding: 0 0 var(--space-2);
+  text-align: left;
+  white-space: normal;
+}
+.items {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.items > li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.itemMain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+.itemDate,
+.itemWho {
+  color: var(--text-muted);
+}
+.itemMemo {
+  overflow-wrap: anywhere;
+}
+.itemAmt {
+  white-space: nowrap;
+  font-weight: 500;
+}
