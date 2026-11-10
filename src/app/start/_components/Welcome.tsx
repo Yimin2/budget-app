@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { isGoogleError } from '@/google';
 import { useSession } from '@/state';
-import { Button, Icon, type IconName, useToast } from '@/ui';
+import { Banner, Button, Icon, type IconName, useToast } from '@/ui';
 
 const FEATURES: { icon: IconName; title: string; desc: string }[] = [
   { icon: 'cart', title: '사도 돼? 를 신호등으로', desc: '오늘 생활비와 앞으로의 일정을 보고 바로 알려 드려요' },
@@ -26,7 +26,8 @@ export function Welcome({ onGoogleStart, onGoogleFail }: { onGoogleStart?: () =>
     setBusy('google');
     onGoogleStart?.();
     try {
-      await session.signInWithGoogle();
+      // 로그인 서버가 있으면 구글 로그인 화면으로 이동했다가 홈으로 돌아와요 (고른 가계부가 없으면 다시 이 화면)
+      await session.signInWithGoogle({ returnTo: '/' });
     } catch (e) {
       onGoogleFail?.();
       if (!(isGoogleError(e) && e.code === 'popup_closed')) {
@@ -69,6 +70,12 @@ export function Welcome({ onGoogleStart, onGoogleFail }: { onGoogleStart?: () =>
           </li>
         ))}
       </ul>
+
+      {session.notice ? (
+        <Banner tone="warning" title={session.notice}>
+          구글로 시작하기를 누르면 같은 계정으로 이어서 쓸 수 있어요.
+        </Banner>
+      ) : null}
 
       <div className="sp-cta">
         <Button

@@ -58,11 +58,11 @@ describe('signIn', () => {
 });
 
 describe('getAccessToken', () => {
-  it('60초 넘게 남으면 재사용, 그 이하면 새로 받는다', async () => {
+  it('5분 넘게 남으면 재사용, 그 이하면 새로 받는다', async () => {
     const { s, deps, requests, advance } = setup();
     await s.signIn();
     expect(await s.getAccessToken()).toBe('tok1');
-    advance((3600 - 61) * 1000);
+    advance((3600 - 301) * 1000);
     expect(await s.getAccessToken()).toBe('tok1');
     expect(deps.requestToken).toHaveBeenCalledTimes(1);
     advance(2000);

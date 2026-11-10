@@ -150,7 +150,7 @@ describe('judgeLiving per item', () => {
     const v = judgeLiving(status, 'gift', 1_000);
     expect(v.signal).toBe('bad');
     expect(v.message).toBe('이 항목은 이번 달 예산이 없어요');
-    expect(v.when).toContain('예산을 정하면');
+    expect(v.when).toContain('생활비 항목을 정하면');
   });
 });
 

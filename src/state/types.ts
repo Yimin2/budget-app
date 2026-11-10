@@ -24,11 +24,18 @@ export interface SessionApi {
   status: 'loading' | 'signedOut' | 'signedIn';
   mode: SessionMode | null;
   user: SessionUser | null;
+  /** 로그인 화면에 보여 줄 안내 (예: '로그인이 만료됐어요. 다시 로그인해 주세요'). 없으면 null */
+  notice: string | null;
   /** 구글 로그인 가능 여부 (환경 변수 설정됨) */
   googleAvailable: boolean;
-  signInWithGoogle(): Promise<void>;
+  /**
+   * 구글로 시작하기. 로그인 서버가 있으면 구글 로그인 화면으로 이동하고(돌아오면 returnTo, 기본은 지금 주소) 끝나지 않아요.
+   * 없으면 팝업 동의 창
+   */
+  signInWithGoogle(opts?: { returnTo?: string }): Promise<void>;
   startDemo(): Promise<void>;
-  signOut(): void;
+  /** everywhere: 구글에 앱 권한 철회까지 (모든 기기에서 로그아웃) */
+  signOut(opts?: { everywhere?: boolean }): void;
   /** 최근 연 가계부 목록 (브라우저 저장) */
   recentLedgers: LedgerRef[];
   activeLedger: LedgerRef | null;

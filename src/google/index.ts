@@ -6,7 +6,8 @@
 import { isGoogleConfigured as configured } from './config';
 import { createGisTokenRequester, fetchUserInfo, revokeToken } from './gis';
 import { pickSpreadsheetWith, type PickOptions } from './picker';
-import { createGoogleSession, type GoogleSession, type KeyValueStore } from './session';
+import { createServerAuthClient } from './server';
+import { createGoogleSession, STORAGE_KEY, type EndReason, type GoogleSession, type KeyValueStore, type LoginFlow } from './session';
 
 export interface GoogleUser {
   email: string;
@@ -18,6 +19,7 @@ export interface GoogleUser {
 export const GOOGLE_SCOPES = ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/drive.file'];
 
 export { GoogleError, isGoogleError, GOOGLE_ERROR_MESSAGES, type GoogleErrorCode } from './errors';
+export type { EndReason, LoginFlow } from './session';
 
 function browserStore(kind: 'sessionStorage' | 'localStorage'): KeyValueStore | null {
   try {
@@ -41,15 +43,33 @@ function getRequester(): ReturnType<typeof createGisTokenRequester> {
   return requester;
 }
 
+/** 전체 페이지로 이동 (구글 로그인 화면). 뒤로 가기로 캐시된 페이지가 다시 보이면 새로 읽어 멈춘 버튼을 풀어요 */
+function navigate(url: string): void {
+  window.addEventListener(
+    'pageshow',
+    (e) => {
+      if (e.persisted) window.location.reload();
+    },
+    { once: true },
+  );
+  window.location.assign(url);
+}
+
 function getSession(): GoogleSession {
-  session ??= createGoogleSession({
-    now: () => Date.now(),
-    requestToken: (req) => getRequester().requestToken(req),
-    fetchUserInfo,
-    revoke: revokeToken,
-    store: browserStore('sessionStorage'),
-    hintStore: browserStore('localStorage'),
-  });
+  if (!session) {
+    // 예전에는 토큰을 sessionStorage 에 뒀어요. 이제 localStorage (만료까지) 라서 옛 값은 지워요
+    browserStore('sessionStorage')?.remove(STORAGE_KEY);
+    session = createGoogleSession({
+      now: () => Date.now(),
+      requestToken: (req) => getRequester().requestToken(req),
+      fetchUserInfo,
+      revoke: revokeToken,
+      store: browserStore('localStorage'),
+      hintStore: browserStore('localStorage'),
+      server: createServerAuthClient({ fetch: (input, init) => fetch(input, init), navigate }),
+      currentPath: () => window.location.pathname + window.location.search,
+    });
+  }
   return session;
 }
 
@@ -64,14 +84,57 @@ export function isGoogleConfigured(): boolean {
  */
 export function preloadGoogle(): Promise<void> {
   if (!configured() || typeof window === 'undefined') return Promise.resolve();
-  return getRequester()
-    .preload()
+  // 어떤 로그인을 쓸지 먼저 정해 둬요. 서버 로그인이면 팝업 스크립트는 필요 없어요
+  return getSession()
+    .resolveFlow()
+    .then((flow) => (flow === 'gis' ? getRequester().preload() : undefined))
     .catch(() => {});
 }
 
-/** 동의 창 → 토큰 + 사용자 정보 */
-export function signIn(): Promise<GoogleUser> {
-  return getSession().signIn();
+/** 서버 로그인(갱신 토큰)인지 팝업 로그인인지. 설정이 없으면 null */
+export function resolveLoginFlow(): Promise<LoginFlow | null> {
+  if (!configured() || typeof window === 'undefined') return Promise.resolve(null);
+  return getSession().resolveFlow();
+}
+
+/**
+ * 구글로 시작하기. 서버 로그인이면 구글 로그인 화면으로 이동하고(돌아오면 returnTo, 기본은 지금 주소) 약속은 끝나지 않아요.
+ * 팝업 로그인이면 동의 창 → 토큰 + 사용자 정보
+ */
+export function signIn(opts?: { returnTo?: string }): Promise<GoogleUser> {
+  return getSession().signIn(opts);
+}
+
+/**
+ * 로그인 서버 쿠키로 이어서 쓰기 (로그아웃 상태에서 앱을 열었을 때). 구글 로그인 화면에서 막 돌아왔으면 꼭 묻고,
+ * 아니면 예전에 로그인한 적이 있을 때만 묻는다. 만료면 GoogleError('session_expired')
+ */
+export function resumeServerSession(opts?: { force?: boolean }): Promise<GoogleUser | null> {
+  if (!configured() || typeof window === 'undefined') return Promise.resolve(null);
+  return getSession().resumeServerSession(opts);
+}
+
+/** 서버가 로그인 만료(갱신 토큰 끝남) · 로그인 없음을 알리면 불러요 */
+export function onSessionEnded(listener: (reason: EndReason) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  return getSession().onEnded(listener);
+}
+
+/** 로그인 서버가 돌려보낸 표시 (?auth=1 · ?auth_error=<코드>) 를 읽고 주소에서 지워요 */
+export function consumeAuthReturn(): { returned: boolean; error: string | null } {
+  if (typeof window === 'undefined') return { returned: false, error: null };
+  try {
+    const url = new URL(window.location.href);
+    const returned = url.searchParams.get('auth') === '1';
+    const error = url.searchParams.get('auth_error');
+    if (!returned && !error) return { returned: false, error: null };
+    url.searchParams.delete('auth');
+    url.searchParams.delete('auth_error');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    return { returned, error };
+  } catch {
+    return { returned: false, error: null };
+  }
 }
 /**
  * 유효한 액세스 토큰. 만료(또는 1분 전)면 조용히 재발급 시도 (예전에 동의한 계정이면 login_hint 로).
@@ -90,7 +153,7 @@ export function restoreSession(emailHint: string): Promise<GoogleUser | null> {
   if (!configured() || typeof window === 'undefined') return Promise.resolve(null);
   return getSession().restoreSession(emailHint);
 }
-/** 이 기기에서 로그아웃 (토큰만 지운다). revoke: true 면 앱 권한까지 철회 — 다른 기기도 다시 로그인해야 한다 */
+/** 이 기기에서 로그아웃 (토큰 · 로그인 쿠키를 지운다). revoke: true 면 앱 권한까지 철회 — 다른 기기도 다시 로그인해야 한다 */
 export function signOut(opts?: { revoke?: boolean }): void {
   if (typeof window === 'undefined') return;
   getSession().signOut(opts);

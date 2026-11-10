@@ -12,7 +12,7 @@
 | --- | --- |
 | 형태 | 웹 앱 (폰 홈 화면에 추가하는 PWA) |
 | 기술 | Next.js, Vercel 배포 |
-| 데이터 저장 | 구글 시트 (가계부 1개 = 스프레드시트 1개). 운영하는 서버 없음 |
+| 데이터 저장 | 구글 시트 (가계부 1개 = 스프레드시트 1개). 데이터베이스 · 데이터 서버 없음. 서버는 로그인(갱신 토큰)만 하는 작은 함수뿐 (7장) |
 | 로그인 | 구글 로그인 (시트 접근 권한과 같은 계정) |
 | 돈 관리 단위 | **통장**. 기본 통장: 수입 / 고정지출 / 이벤트 / 저수지 / 저축투자 (이름·개수 변경 가능) |
 | 통장 잔액 | 처음에 시작 잔액을 한 번 입력하고, 이후 수입·이체·지출 기록으로 자동 계산. 실제 잔액과 다르면 언제든 맞춘다 |
@@ -694,7 +694,8 @@ id, 이름, 금액, 카테고리, 통장, 순서, 삭제됨
 **앱**
 
 - **Next.js 16** (App Router) · React 19 · TypeScript strict. Vercel 배포 (`main` = Production, 다른 브랜치·PR = Preview)
-- 서버 코드 없음. 모든 화면이 정적 페이지이고, 브라우저에서 구글 API를 직접 부른다
+- 화면은 모두 정적 페이지이고, 브라우저에서 구글 API(Sheets · Drive · Picker)를 직접 부른다
+- **서버는 로그인 전용 작은 API 하나**: Next.js 라우트 핸들러 `/api/auth/{login,callback,token,logout,status}` (Vercel 무료 서버리스 함수, 동적). 가계부 데이터는 서버를 지나지 않고, 데이터베이스는 없다. 상태는 암호화 쿠키 하나뿐이다. 본체는 `src/server/auth`
 - 화면 경로: `/start`(로그인 전 · 가계부 고르기) · `/start/new`(새 가계부 마법사) · `/`(홈) · `/check`(사도 돼?) · `/events` · `/events/trips`(여행, `?id=` 여행 하나) · `/accounts` · `/expenses` · `/members` · `/settings`. 로그인하지 않았거나 가계부를 고르지 않았으면 `/start`로 보낸다
 
 **화면 (`src/ui`, `src/theme`)**
@@ -706,12 +707,15 @@ id, 이름, 금액, 카테고리, 통장, 순서, 삭제됨
 
 **구글 연동 (`src/google`)**
 
-- **로그인**: Google Identity Services 토큰 클라이언트(팝업). 액세스 토큰만 받고 갱신 토큰·서버는 없다. 토큰은 sessionStorage, 마지막 계정 힌트는 localStorage 에 둔다
-- 토큰이 만료되면 계정 힌트로 조용히 다시 받는다. 막히면 '구글 다시 연결' 버튼을 보여 준다(사용자 클릭 안에서 요청해야 팝업이 막히지 않는다). 다른 계정으로 연결되면 거절한다
-- 로그아웃은 이 기기의 토큰만 지운다. 앱 권한 철회(revoke)는 하지 않는다
+- **로그인 (서버, 기본)**: 구글 인증 코드 흐름 + PKCE(S256) + `access_type=offline` · `include_granted_scopes`. `/api/auth/login` 이 state · code_verifier · nonce 를 10분짜리 암호화 쿠키에 넣고 구글로 보낸다(아는 계정이면 `login_hint`, 갱신 토큰 쿠키가 없을 때만 `prompt=consent`). `/api/auth/callback` 은 state(상수 시간 비교) · 흐름 쿠키 나이를 확인하고 코드를 교환한 뒤 id_token 클레임(aud · azp · iss · exp · iat · email_verified · nonce)을 확인한다. 서명은 확인하지 않는다 — 토큰 엔드포인트에서 TLS 로 직접 받았기 때문(OIDC Core 3.1.3.7). `drive.file` 이 빠졌으면 거절한다. 돌아갈 경로는 이 사이트 안의 경로만(`?open=` 초대 흐름 유지)
+- **갱신 토큰 보관**: httpOnly · Secure · SameSite=Lax 쿠키(`__Host-budget_session`, http://localhost 에서는 `budget_session`)에만 둔다. AES-256-GCM(Web Crypto), 키는 `AUTH_COOKIE_SECRET` 에서 HKDF 로 쿠키 용도마다 따로, 용도를 AAD 로 묶는다. 180일, 부를 때마다 연장. 외부 라이브러리 없음
+- **새 액세스 토큰**: `POST /api/auth/token` → `{accessToken, expiresIn, user}`. CSRF: POST + `X-Budget-Auth: 1` 머리글 + 같은 출처(Origin · Sec-Fetch-Site). 응답은 `no-store`. 구글이 `invalid_grant`(테스트 앱 7일 만료 · 철회 등)면 쿠키를 지우고 401 → 화면은 로그아웃하고 '로그인이 만료됐어요. 다시 로그인해 주세요'. 같은 계정으로 다시 로그인하면 최근 가계부를 되살린다. 환경 변수가 없으면 501
+- **브라우저**: `/api/auth/status` 로 서버 로그인인지 정한다. 서버면 '구글로 시작하기'가 전체 페이지 이동이고, 열 때마다 `/api/auth/token` 으로 팝업 없이 토큰을 받는다. 액세스 토큰은 만료(1시간)까지 localStorage 에 두어 바로 다시 연다(로그아웃 · 401 · 만료 때 지움). 만료 5분 전에 미리 갱신하고, 동시에 부르면 요청 하나(single-flight)
+- **팝업 로그인 (대체)**: 서버 설정이 없으면(개발 · 미리보기) 예전처럼 Google Identity Services 토큰 클라이언트. 만료되면 계정 힌트로 조용히 다시 받고, 막히면 '구글 다시 연결' 버튼. 다른 계정으로 연결되면 거절한다
+- **로그아웃**: 기본은 이 기기의 쿠키 · 토큰만 지운다. '모든 기기에서 로그아웃'은 서버가 구글에 갱신 토큰 철회를 보낸다(앱 권한 전체)
 - **권한 범위**: `openid` · `email` · `profile` · `drive.file` (앱이 만들었거나 사용자가 파일 선택 창에서 고른 파일만 접근). 공유받은 공용 가계부는 구글 파일 선택 창(Picker)으로 연다
-- **구글 OAuth 설정**: 테스트 모드로 운영한다. 테스트 사용자 100명까지는 구글 심사가 필요 없다
-- **환경 변수** 세 개 (공개 값): `NEXT_PUBLIC_GOOGLE_CLIENT_ID`(OAuth 클라이언트 ID), `NEXT_PUBLIC_GOOGLE_API_KEY`(Picker 용 API 키), `NEXT_PUBLIC_GOOGLE_APP_ID`(프로젝트 번호. 비우면 클라이언트 ID 앞 숫자). 빌드할 때 값이 들어가므로 바꾸면 다시 배포한다. 클라이언트 ID가 없으면 구글 로그인 버튼이 꺼지고 체험 모드만 열린다
+- **구글 OAuth 설정**: 테스트 모드로 시작한다. 테스트 사용자 100명까지는 구글 심사가 필요 없지만 갱신 토큰이 7일 뒤 끝난다. 권한이 민감하지 않은 범위뿐이라 프로덕션 게시로 7일 제한을 없앨 수 있다(README). 승인된 리디렉션 URI: `<주소>/api/auth/callback`
+- **환경 변수** 세 개 (공개 값): `NEXT_PUBLIC_GOOGLE_CLIENT_ID`(OAuth 클라이언트 ID), `NEXT_PUBLIC_GOOGLE_API_KEY`(Picker 용 API 키), `NEXT_PUBLIC_GOOGLE_APP_ID`(프로젝트 번호. 비우면 클라이언트 ID 앞 숫자). 빌드할 때 값이 들어가므로 바꾸면 다시 배포한다. 클라이언트 ID가 없으면 구글 로그인 버튼이 꺼지고 체험 모드만 열린다. 서버 전용 비밀 값 두 개: `GOOGLE_CLIENT_SECRET`(클라이언트 보안 비밀번호), `AUTH_COOKIE_SECRET`(base64 32바이트 이상). 둘 중 하나라도 없으면 서버 로그인을 끄고 팝업 로그인을 쓴다
 
 **저장 (`src/storage`)**
 

@@ -107,7 +107,17 @@ export function AccountCard() {
         <Button variant="outline" icon="logout" onClick={() => session.signOut()}>
           로그아웃
         </Button>
+        {session.mode === 'google' ? (
+          <Button variant="ghost" onClick={() => session.signOut({ everywhere: true })}>
+            모든 기기에서 로그아웃
+          </Button>
+        ) : null}
       </div>
+      {session.mode === 'google' ? (
+        <p className="st-desc">
+          모든 기기에서 로그아웃하면 이 앱에 준 구글 권한을 거둬요. 다른 기기에서도 다시 로그인해야 하고, 가계부 시트는 그대로 남아요.
+        </p>
+      ) : null}
     </Card>
   );
 }
