@@ -469,6 +469,20 @@
 .lineBtn {
   flex: none;
 }
+/* 줄 돈을 어디서 주는지: 데스크톱은 같은 줄, 모바일은 둘째 줄 (작은 글씨) */
+.oneLineSplit {
+  color: var(--text-muted);
+}
+@media (max-width: 767px) {
+  .oneLineSplit {
+    display: block;
+    font-size: 14px;
+    line-height: 22px;
+  }
+  .oneLineSep {
+    display: none;
+  }
+}
 
 /* 저수지에 갚을 돈: 펼치기 없이 한 카드에 줄 몇 개 */
 :global(.card).loanCard {

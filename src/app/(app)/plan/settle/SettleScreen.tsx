@@ -13,12 +13,14 @@ import {
   selectionLimitText,
   settleExplanation,
   settleRoster,
+  settlementSplitText,
+  settlementSummary,
   shortfallText,
 } from '@/domain';
 import type { Expense, Id, LedgerData, PendingClaim, Settlement, SettleItem, SettleItemKind, SettlePerson } from '@/domain';
 import { Badge, Banner, Button, Card, EmptyState, Icon, PageHeader, cx, isIconName } from '@/ui';
 import { PageSkeleton, RequireLedger, type ReadyLedger } from '../../_components';
-import { useSettleActions } from '../../_components/SettlementCard';
+import { peopleManText, useSettleActions } from '../../_components/SettlementCard';
 import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
 import { HashTarget } from '../../_components/HashTarget';
 import { LoanSection } from '../LoanCard';
@@ -180,6 +182,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
           들어올 돈이 먼저 모자란 돈을 메워요
         </Banner>
       ) : null}
+      <DueCard s={s} />
       <PayableCard s={s} baseYear={baseYear} />
 
       <Card as="section" aria-labelledby={listTitleId} className={styles.listCard}>
@@ -257,6 +260,53 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
 
       {editing ? <ExpenseDialog expense={editing} onClose={() => setEditing(null)} /> : null}
     </>
+  );
+}
+
+/**
+ * 맨 위: 이번 달 줄 돈(정산일까지 돌려줄 날이 된 모든 청구) · 그중 이벤트통장에서 줄 수 있는 돈 · 나머지(저수지에서 빌리거나 다음 달로).
+ * 생활비 통장 · 저수지에서 줄 몫이 있으면 한 줄 더
+ */
+function DueCard({ s }: { s: Settlement }) {
+  const titleId = useId();
+  const sum = settlementSummary(s);
+  const split = settlementSplitText(sum);
+  const others = sum.fromFixed + sum.fromReservoir + sum.borrow;
+  return (
+    <Card as="section" aria-labelledby={titleId} title={<span id={titleId}>이번 달 줄 돈</span>}>
+      <p className={claims.summaryLine} data-testid="settle-due">
+        이번 달 줄 돈 <strong>{formatWon(sum.total)}</strong>
+        {sum.people.length > 0 ? ` (${peopleManText(sum.people)})` : ''}
+      </p>
+      <dl className={styles.dueStats}>
+        <div>
+          <dt>줄 돈</dt>
+          <dd>{formatMan(sum.total)}</dd>
+        </div>
+        <div>
+          <dt>이벤트통장에서 줄 수 있는 돈</dt>
+          <dd>{formatMan(sum.fromEvent)}</dd>
+        </div>
+        <div>
+          <dt>나머지</dt>
+          <dd>{formatMan(sum.rest)}</dd>
+        </div>
+        {others > 0 ? (
+          <div>
+            <dt>생활비 통장 · 저수지에서</dt>
+            <dd>{formatMan(others)}</dd>
+          </div>
+        ) : null}
+      </dl>
+      {split ? (
+        <p className={claims.note} data-testid="settle-split">
+          {split}
+          {sum.rest > 0 && sum.fromEvent < sum.payable
+            ? ` (이벤트통장 한도는 ${formatMan(sum.payable)}이지만 청구는 나눠 주지 않아요)`
+            : ''}
+        </p>
+      ) : null}
+    </Card>
   );
 }
 

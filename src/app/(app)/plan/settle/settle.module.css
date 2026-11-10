@@ -13,6 +13,35 @@
   }
 }
 
+.dueStats {
+  margin: var(--space-3) 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.dueStats div {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.dueStats div:nth-child(4) {
+  grid-column: 1 / -1;
+}
+.dueStats dt {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
+.dueStats dd {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
 .calc {
   margin: var(--space-2) 0 0;
   display: flex;

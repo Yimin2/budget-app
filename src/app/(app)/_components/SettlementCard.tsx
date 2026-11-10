@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatMan, formatMonthKo, formatShortDate, settlementSummary, shortfallText } from '@/domain';
+import { formatMan, formatMonthKo, formatShortDate, settlementSplitText, settlementSummary, shortfallText } from '@/domain';
 import type { Settlement, SettlementSummary } from '@/domain';
 import { useLedger } from '@/state';
 import { Button, Card, cx, useToast } from '@/ui';
@@ -58,7 +58,9 @@ function nextText(sum: SettlementSummary, baseYear: number): string | null {
 
 /**
  * 이번 달 정산 한 줄 요약 (PLAN 4-9). 이벤트 화면과 홈에 보여요.
- * '이번 달 줄 돈 32.4만 (민구 30만 · 기쁜 2.4만) · 11/21 [정산하기]', 줄 돈이 없으면 '이번 달 줄 돈이 없어요 · 다음 정산 12/21 2.4만'.
+ * '이번 달 줄 돈 70만 (민구 55만 · 기쁜 15만) · 11/21 · 이벤트통장에서 2만 · 나머지 68만은 저수지에서 빌리거나 다음 달로 [정산하기]'.
+ * 줄 돈 = 정산일까지 돌려줄 날이 된 모든 청구 (지금 줄 수 있는 몫만이 아니에요). 모바일에서는 어디서 줄지가 둘째 줄로 내려가요.
+ * 줄 돈이 없으면 '이번 달 줄 돈이 없어요 · 다음 정산 12/21 2.4만'.
  * 이벤트통장이 음수면 '이벤트통장이 ○원 모자라요'를 함께 보여요.
  * 항목 고르기 · 지급은 정산 화면(/plan/settle)에서 해요. 아직 안 돌려준 청구가 하나도 없으면 그리지 않아요.
  * compact: 지금 돌려줄 돈이 있을 때만. home: 홈 (늘 같은 한 줄, 사람별 목록 카드 대신)
@@ -77,6 +79,7 @@ function SettlementLine({ s, baseYear, className, id }: { s: Settlement; baseYea
   if (!sum.hasClaims) return null;
   const next = sum.total > 0 ? null : nextText(sum, baseYear);
   const short = shortfallText(s);
+  const split = settlementSplitText(sum);
   return (
     <Card as="section" id={id} aria-label="이번 달 정산" className={cx(styles.lineCard, className)}>
       <p className={styles.oneLine} data-testid="settlement-line">
@@ -84,6 +87,12 @@ function SettlementLine({ s, baseYear, className, id }: { s: Settlement; baseYea
           <>
             이번 달 줄 돈 <strong>{formatMan(sum.total)}</strong>{' '}
             <span className={styles.oneLineSub}>({peopleManText(sum.people)})</span> · {formatShortDate(sum.date)}
+            {split ? (
+              <span className={styles.oneLineSplit} data-testid="settlement-split">
+                <span className={styles.oneLineSep}> · </span>
+                {split}
+              </span>
+            ) : null}
           </>
         ) : (
           <>
