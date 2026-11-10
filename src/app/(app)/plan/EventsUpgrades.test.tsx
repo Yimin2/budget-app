@@ -16,7 +16,7 @@ afterEach(cleanup);
 async function renderEvents() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
-  await screen.findByRole('region', { name: '이벤트통장 잔액' });
+  await screen.findByRole('region', { name: '이번 달 · 11월' });
   return h;
 }
 

@@ -9,7 +9,7 @@ import {
   usualSpendingInsight,
 } from '@/domain';
 import type { ExclusionDraft, Expense, Id, PlannedEvent, RepayMonths } from '@/domain';
-import { SettlementCard, type ReadyLedger } from '../_components';
+import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
 import { AnnualCard } from './AnnualCard';
 import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
@@ -17,16 +17,16 @@ import type { EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
 import { EmptyEvents } from './EmptyEvents';
 import { ExceptionCard } from './ExceptionCard';
-import { LoanCard } from './LoanCard';
 import { MonthlyCostCard } from './MonthlyCostCard';
 import { NoEventAccount } from './NoEventAccount';
 import { ProjectionCard } from './ProjectionCard';
 import { RecurringCard } from './RecurringCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
 import { ShortagePanel } from './ShortagePanel';
-import { SummaryCard } from './SummaryCard';
+import { ThisMonthCard } from './ThisMonthCard';
 import { TripsCard } from './trips/TripsCard';
 import { UsualInsightCard } from './UsualInsightCard';
+import styles from './EventsBody.module.css';
 
 export interface EventsBodyProps {
   ledger: ReadyLedger;
@@ -70,12 +70,23 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
   const shown = tried ?? projection;
 
   return (
-    <>
+    <div className={styles.grid}>
       {projection && hasEventAccount ? (
         <>
-          <SummaryCard projection={projection} />
-          <SettlementCard />
-          <LoanCard />
+          <ThisMonthCard projection={projection} repayMonths={repayMonths} className={styles.half} />
+          {insight ? (
+            <div className={styles.half}>
+              <UsualInsightCard
+                data={data}
+                projection={projection}
+                insight={insight}
+                today={today}
+                compromise={compromise}
+                repayMonths={repayMonths}
+                onRepayMonths={chooseMonths}
+              />
+            </div>
+          ) : null}
           <HashTarget />
           <ProjectionCard projection={shown ?? projection} today={today} badge={tried ? '미리 보는 중' : undefined} />
           <MonthlyCostCard data={data} today={today} onEditExpense={onEditExpense} />
@@ -88,17 +99,6 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
             draft={draft}
             onChange={setDraft}
           />
-          {insight ? (
-            <UsualInsightCard
-              data={data}
-              projection={projection}
-              insight={insight}
-              today={today}
-              compromise={compromise}
-              repayMonths={repayMonths}
-              onRepayMonths={chooseMonths}
-            />
-          ) : null}
           {!tried && projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
           ) : null}
@@ -125,6 +125,6 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
           onCancel={onCancel}
         />
       )}
-    </>
+    </div>
   );
 }

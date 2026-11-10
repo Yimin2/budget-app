@@ -1,0 +1,79 @@
+/* ThisMonthCard — 이벤트 화면 카드 1 '이번 달' */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(104px, 100%), 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+.kpi dt {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.kpi dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.kpiValue {
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.kpiPlus {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.kpiSub {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.warn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--warning-text);
+}
+.warn > svg {
+  flex: none;
+}
+.line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.lineText {
+  flex: 1 1 12em;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1024px) {
+  .kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

@@ -1,7 +1,9 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { dateInMonth, formatDateKo, formatMonthKo, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
+import { dateInMonth, formatDateKo, formatMan, formatMonthKo, formatShortDate, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
+  EventMonthUsage,
   LedgerData,
+  SettlementSummary,
   Category,
   EventProjection,
   Expense,
@@ -56,6 +58,34 @@ export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
   { value: 'monthly', label: '매월' },
   { value: 'yearly', label: '매년' },
 ];
+
+/* ───────── 이번 달 카드 ───────── */
+
+/**
+ * '이번 달' 카드의 정산 한 줄 (PLAN 4-9): '11/21 정산 30만 · 저수지에서 빌려 2.4만' /
+ * '이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만'. 이벤트통장에서 줄 수 있는 돈에 안 들어 넘어가는 청구는 따로
+ * carry: '못 준 돈 55만 → 다음 달 (민구)' (사람이 하나면 이름, 둘이면 이름과 금액)
+ */
+export function settleLineText(u: EventMonthUsage, sum: SettlementSummary): { text: string; carry: string | null } {
+  const parts: string[] = [];
+  if (sum.total <= 0) parts.push('이번 달 정산할 돈은 없어요');
+  if (u.plannedClaims > 0) parts.push(`${formatShortDate(sum.date)} 정산 ${formatMan(u.plannedClaims)}`);
+  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatMan(sum.fromFixed)}`);
+  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatMan(sum.fromReservoir)}`);
+  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatMan(sum.borrow)}`);
+  if (sum.total <= 0 && sum.next) parts.push(`다음 정산 ${formatShortDate(sum.next.date)} ${formatMan(sum.next.amount)}`);
+  let carry: string | null = null;
+  if (u.unpaid > 0) {
+    const who =
+      u.unpaidPeople.length === 1
+        ? ` (${u.unpaidPeople[0]!.name})`
+        : u.unpaidPeople.length === 2
+          ? ` (${u.unpaidPeople.map((p) => `${p.name} ${formatMan(p.amount)}`).join(' · ')})`
+          : '';
+    carry = `못 준 돈 ${formatMan(u.unpaid)} → 다음 달${who}`;
+  }
+  return { text: parts.join(' · '), carry };
+}
 
 /* ───────── 일정 목록 ───────── */
 

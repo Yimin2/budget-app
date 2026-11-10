@@ -34,7 +34,7 @@ import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
 import { HashTarget } from '../../_components/HashTarget';
 import { ExpandButton } from '../../_components/ExpandButton';
 import { readRepayMonths } from '../CompromisePanel';
-import { LoanAmountForm, LoanRecords, loanRecordName, loanSummaryText, useLoanActions } from '../LoanCard';
+import { LoanAmountForm, LoanRecords, loanRecordName, loanSummaryText, useLoanActions } from '../LoanLine';
 import styles from './settle.module.css';
 
 /**
