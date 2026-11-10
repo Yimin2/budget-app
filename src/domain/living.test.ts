@@ -254,10 +254,10 @@ describe('쓰는 날 (평일 · 공휴일 빼기 · 주 N회)', () => {
     expect(lunch.schedule).toEqual({ days: [1, 2, 3, 4, 5], skipHolidays: true, perWeek: null });
   });
 
-  it('쉬는 날(회사 휴무)을 넣으면 그날도 빼요', () => {
+  it("예전에 넣어 둔 쉬는 날(설정 '쉬는날')은 지우지 않지만 셈에는 쓰지 않아요 (공휴일만 빼요)", () => {
     const lunch = findLivingItem(computeLiving(ledger([], ['2026-11-13']), '2026-11-10'), 'lunch')!;
-    expect(lunch.useDay!.daysLeft).toBe(14);
-    expect(lunch.dailyBudget).toBe(15_600);
+    expect(lunch.useDay!.daysLeft).toBe(15);
+    expect(lunch.dailyBudget).toBe(14_600);
   });
 
   it('토요일: 직장식비는 오늘 0원이고 다음 쓰는 날을 알려요. 주말에 쓴 돈도 이번 달 남은 돈에서 빠져요', () => {
@@ -275,13 +275,16 @@ describe('쓰는 날 (평일 · 공휴일 빼기 · 주 N회)', () => {
   });
 
   it('이번 달에 쓰는 날이 더 없으면 남은 돈은 한 달 한도만처럼 봐요', () => {
-    const lunch = findLivingItem(computeLiving(ledger([], ['2026-11-30']), '2026-11-28'), 'lunch')!;
+    // 토요일만 쓰는 항목, 11/29(일)에는 이번 달 토요일이 더 없어요
+    const base = ledger();
+    const data = { ...base, fixedExpenses: base.fixedExpenses.map((f) => (f.categoryId === 'lunch' ? { ...f, useDays: [6] } : f)) };
+    const lunch = findLivingItem(computeLiving(data, '2026-11-29'), 'lunch')!;
     expect(lunch.spread).toBe('monthly');
     expect(lunch.noDaysLeft).toBe(true);
     expect(lunch.dailyBudget).toBeNull();
     expect(lunch.todayAvailable).toBeNull();
     expect(lunch.remaining).toBe(219_000);
-    expect(livingDayNote(lunch, '2026-11-28')).toBe('이번 달은 쓰는 날이 끝났어요');
+    expect(livingDayNote(lunch, '2026-11-29')).toBe('이번 달은 쓰는 날이 끝났어요');
   });
 
   it('주 2회: 이번 주 남은 2회 · 앞으로 5회 → 한 번에 20,000원', () => {

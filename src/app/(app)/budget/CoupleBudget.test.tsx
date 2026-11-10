@@ -11,17 +11,16 @@ vi.mock('next/navigation', () => ({ useRouter: () => nav.router, usePathname: ()
 
 import { formatMan, ruleNext } from '@/domain';
 import BudgetPage from './page';
+import { card, openOut, openRules } from './budgetTestUtils';
 
 afterEach(cleanup);
 
-function card(title: string): HTMLElement {
-  return screen.getByRole('heading', { level: 2, name: title }).closest('.card') as HTMLElement;
-}
 
 describe('예산 — 부부 예시', () => {
   it('수입 계획 목록 · 월급날마다 미리보기 · 나머지가 있으면 남는 돈 경고 없음', async () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
+    openRules();
     const income = card('수입 계획');
     expect(within(income).getByText('한 달 6,000,000원')).toBeTruthy();
     expect(within(income).getByRole('button', { name: /민지/ })).toBeTruthy();
@@ -49,6 +48,7 @@ describe('예산 — 부부 예시', () => {
   it("알아서 맞추기 배분은 줄에 다음 배분 금액 (자동)과 지난달과 달라진 까닭을 보여요", async () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
+    openRules();
     const ledger = current(h).ledger;
     const rule = ledger.data!.rules.find((r) => r.toAccountId === 'demo-acc-living-minji')!;
     await act(async () => {
@@ -77,6 +77,7 @@ describe('예산 — 부부 예시', () => {
   it('수입 계획 금액을 고치고, 남는 돈 전부 규칙을 매달 같은 금액으로 바꾸거나 같은 날 하나 더 만들지 못하게 해요', async () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
+    openRules();
 
     // 수입 계획: 준호 월급 280만 → 300만
     fireEvent.click(within(card('수입 계획')).getByRole('button', { name: /준호/ }));
@@ -126,6 +127,7 @@ describe('예산 — 부부 예시', () => {
   it("금액을 찾지 못해 되돌린 용돈 배분 줄에 '용돈 금액을 확인해 주세요' + 그 자리 금액 칸 (4-7)", async () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
+    openRules();
     const rule = current(h).ledger.data!.rules.find((r) => r.toAccountId === 'demo-acc-allowance-junho')!;
     await act(async () => {
       await current(h).ledger.saveRule({ ...rule, kind: 'fixed', amount: 50_000, needsReview: true });
@@ -148,7 +150,8 @@ describe('예산 — 부부 예시', () => {
   it('생활비 항목은 누구 생활비인지 고르고, 같은 항목도 사람마다 따로 둘 수 있어요', async () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
-    const living = card('생활비 예산');
+    openRules();
+    const living = openOut('생활비(민지)', '생활비 예산');
     fireEvent.click(within(living).getByRole('button', { name: '생활비 항목 추가' }));
     const dialog = screen.getByRole('dialog', { name: '생활비 항목 추가' });
     const who = within(dialog).getByLabelText(/누구 생활비인가요/) as HTMLSelectElement;

@@ -71,8 +71,11 @@ export function installmentProgressText(p: InstallmentPlan): string {
   return parts.join(' · ');
 }
 
-/** 할부: 이름 · 총액(또는 매달 금액) · 개월 · 첫 달 · 결제일 · 통장 · 카테고리. 고치면 다음 회차부터 (PLAN 4-10) */
-export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
+/**
+ * 할부: 이름 · 총액(또는 매달 금액) · 개월 · 첫 달 · 결제일 · 통장 · 카테고리. 고치면 다음 회차부터 (PLAN 4-10).
+ * accountId 를 주면 그 통장의 할부만 카드 틀 없이 보여 줘요 (예산 화면 통장 카드 안, 새 할부도 그 통장)
+ */
+export function InstallmentCard({ ledger, accountId }: { ledger: ReadyLedger; accountId?: string }) {
   const { busy, run } = useRunner();
   const [draft, setDraft] = useState<NewDraft | null>(null);
   const [edit, setEdit] = useState<EditDraft | null>(null);
@@ -93,13 +96,14 @@ export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
   const keyOf = (p: InstallmentPlan) => ownerKeyOf(accounts.find((a) => a.id === p.accountId));
   const myKey = ledger.myLivingAccountId ? ownerKeyOf(ledger.activeAccounts.find((a) => a.id === ledger.myLivingAccountId)) : null;
   const owners = useOwnerFilter(plans.map(keyOf), ledger.data, undefined, myKey);
-  const shown = plans.filter((p) => owners.matches(keyOf(p)));
+  const shown = accountId ? plans.filter((p) => p.accountId === accountId) : plans.filter((p) => owners.matches(keyOf(p)));
   const plan = edit ? (ledger.installments.find((p) => p.id === edit.planId) ?? null) : null;
   const viewing = viewId ? (ledger.installments.find((p) => p.id === viewId) ?? null) : null;
 
   const firstMonthOptions = draft ? firstMonthChoices(month) : [];
 
   function defaultAccountId(): string {
+    if (accountId) return accountId;
     return (ledger.accountByRole('fixed') ?? ledger.accountByRole('allowance') ?? accounts[0])?.id ?? '';
   }
 
@@ -314,16 +318,14 @@ export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
   const newHint = draft ? newPreview() : null;
   const preview = edit ? editPreview() : null;
 
-  return (
-    <Card id="st-installment" title="할부">
-      <p className="st-desc">
-        정한 회차만큼 결제일에 지출로 자동 기록되고, 마지막 회차 뒤에 저절로 끝나요. 도중에 고치면 다음 회차부터 바뀌고 지난 회차는 그대로예요.
-      </p>
-
-      <OwnerTabs filter={owners} label="누구 할부" />
-
+  const body = (
+    <>
       {shown.length === 0 ? (
-        <EmptyState icon="calendar" headingLevel={3} title="할부가 없어요" description="TV · 노트북처럼 나눠 내는 돈을 등록해 주세요." />
+        accountId ? (
+          <p className="st-desc">이 통장에서 나가는 할부가 없어요.</p>
+        ) : (
+          <EmptyState icon="calendar" headingLevel={3} title="할부가 없어요" description="TV · 노트북처럼 나눠 내는 돈을 등록해 주세요." />
+        )
       ) : (
         <ul className="list">
           {shown.map((p) => (
@@ -608,6 +610,17 @@ export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
         onConfirm={() => void applyConfirm()}
         onCancel={() => setConfirm(null)}
       />
+    </>
+  );
+
+  if (accountId) return <div className="bd-embed">{body}</div>;
+  return (
+    <Card id="st-installment" title="할부">
+      <p className="st-desc">
+        정한 회차만큼 결제일에 지출로 자동 기록되고, 마지막 회차 뒤에 저절로 끝나요. 도중에 고치면 다음 회차부터 바뀌고 지난 회차는 그대로예요.
+      </p>
+      <OwnerTabs filter={owners} label="누구 할부" />
+      {body}
     </Card>
   );
 }

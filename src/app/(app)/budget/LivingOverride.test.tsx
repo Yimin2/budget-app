@@ -10,12 +10,10 @@ const nav = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ useRouter: () => nav.router, usePathname: () => '/budget' }));
 
 import BudgetPage from './page';
+import { openOut } from './budgetTestUtils';
 
 afterEach(cleanup);
 
-function card(title: string): HTMLElement {
-  return screen.getByRole('heading', { level: 2, name: title }).closest('.card') as HTMLElement;
-}
 
 describe('예산 — 생활비 항목 금액', () => {
   it('금액을 바꾸면 이번 달부터 새 행, 지난달은 그대로 · 이 달만 다른 금액을 넣고 지워요', async () => {
@@ -29,7 +27,7 @@ describe('예산 — 생활비 항목 금액', () => {
       await ledger().saveFixed({ ...food, startMonth: '2026-06' });
     });
 
-    fireEvent.click(within(card('생활비 예산')).getByRole('button', { name: new RegExp(name) }));
+    fireEvent.click(within(openOut('고정지출통장', '생활비 예산')).getByRole('button', { name: new RegExp(name) }));
     let dialog = screen.getByRole('dialog', { name: '생활비 예산 고치기' });
     expect(within(dialog).getByText('바꾸면 11월부터 적용돼요. 지난달 계산은 그대로예요.')).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText(/한 달 예산/), { target: { value: String(food.amount + 50_000) } });
@@ -43,7 +41,7 @@ describe('예산 — 생활비 항목 금액', () => {
     expect(screen.getByText('이번 달부터 바꿨어요. 지난달은 그대로예요')).toBeTruthy();
 
     // 이 달만 다른 금액: 2026-12 · 700,000원
-    fireEvent.click(within(card('생활비 예산')).getByRole('button', { name: new RegExp(name) }));
+    fireEvent.click(within(openOut('고정지출통장', '생활비 예산')).getByRole('button', { name: new RegExp(name) }));
     dialog = screen.getByRole('dialog', { name: '생활비 예산 고치기' });
     expect(within(dialog).queryByText(/바꾸면 11월부터/)).toBeNull();
     fireEvent.change(within(dialog).getByLabelText('달'), { target: { value: '2026-12' } });
@@ -58,10 +56,10 @@ describe('예산 — 생활비 항목 금액', () => {
     // 목록에는 평소 행만, 이 달만은 한 줄 설명으로
     fireEvent.click(within(dialog).getByRole('button', { name: '취소' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(within(card('생활비 예산')).getByText(/12월만 700,000원/)).toBeTruthy();
+    expect(within(openOut('고정지출통장', '생활비 예산')).getByText(/12월만 700,000원/)).toBeTruthy();
 
     // 지우기
-    fireEvent.click(within(card('생활비 예산')).getByRole('button', { name: new RegExp(name) }));
+    fireEvent.click(within(openOut('고정지출통장', '생활비 예산')).getByRole('button', { name: new RegExp(name) }));
     dialog = screen.getByRole('dialog', { name: '생활비 예산 고치기' });
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: '2026-12 금액 지우기' }));

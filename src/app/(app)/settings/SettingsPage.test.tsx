@@ -10,6 +10,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => nav.router, usePathname: ()
 
 import BudgetPage from '../budget/page';
 import SettingsPage from './page';
+import { card as headingCard, openOut, openRules } from '../budget/budgetTestUtils';
 
 /** 설정과 예산을 한 번에 (예전 설정 화면 테스트를 그대로 써요) */
 function Pages() {
@@ -23,9 +24,13 @@ function Pages() {
 
 afterEach(cleanup);
 
+/** 제목으로 카드 찾기. 예산 화면은 접힌 칸을 펼쳐서 (8-3: 배분은 [배분 고치기], 고정비 · 할부 · 생활비는 통장 카드 안) */
 function card(title: string): HTMLElement {
-  const heading = screen.getByRole('heading', { level: 2, name: title });
-  return heading.closest('.card') as HTMLElement;
+  if (title === '매달 배분' || title === '수입 계획') openRules();
+  if (title === '고정 지출') return openOut('고정지출통장', '고정비');
+  if (title === '할부') return openOut('고정지출통장', '할부');
+  if (title === '생활비 예산') return openOut('고정지출통장', '생활비 예산');
+  return headingCard(title);
 }
 
 describe('설정 화면', () => {
@@ -38,10 +43,10 @@ describe('설정 화면', () => {
     for (const title of ['가계부와 통장', '가계부', '통장', '멤버 · 공유', '함께 쓰는 사람', '기록 도우미', '카테고리', '자주 쓰는 지출', '파일에서 가져오기', '테마', '계정 · 가계부 바꾸기', '정보']) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy();
     }
-    // 예산: 월급과 배분 → 생활비 항목 → 고정비 · 할부 (차례 링크와 같은 순서)
+    // 예산: 월급날 돈 흐름 → 통장별 들어오는 돈 · 나가는 돈 (차례 링크와 같은 순서, 8-3)
     const index = screen.getByRole('navigation', { name: '예산 차례' });
-    expect(within(index).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['#bd-income', '#bd-living', '#bd-fixed']);
-    for (const title of ['월급과 배분', '수입 계획', '매달 배분', '생활비 항목', '생활비 예산', '고정비 · 할부', '고정 지출', '할부']) {
+    expect(within(index).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['#bd-flow', '#bd-accounts']);
+    for (const title of ['월급날 돈 흐름', '통장별 들어오는 돈 · 나가는 돈']) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy();
     }
     // 설정 화면의 예산 카드는 예산 화면에만 있어요
@@ -222,7 +227,7 @@ describe('설정 화면', () => {
       });
     });
     expect(current(h).ledger.living!.items.map((i) => i.name)).toEqual(['생활비']);
-    const banner = await within(card('생활비 예산')).findByText('생활비를 항목별로 나눠 보세요');
+    const banner = await within(card('생활비 정리')).findByText('생활비를 항목별로 나눠 보세요');
     fireEvent.click(within(banner.closest('.banner') as HTMLElement).getByRole('button', { name: '항목으로 나누기' }));
     dialog = screen.getByRole('dialog', { name: '생활비를 항목으로 나눠요' });
     fireEvent.change(within(within(dialog).getByRole('group', { name: '식비' })).getByLabelText('한 달 예산'), { target: { value: '400000' } });
@@ -238,7 +243,7 @@ describe('설정 화면', () => {
       ['쇼핑', 200_000, 'monthly'],
     ]);
     expect(after.living!.items.find((i) => i.unbudgeted)?.name).toBe('기타(예산 없음)');
-    expect(within(card('생활비 예산')).queryByText('생활비를 항목별로 나눠 보세요')).toBeNull();
+    expect(screen.queryByText('생활비를 항목별로 나눠 보세요')).toBeNull();
   });
 
   it('할부: 회차 · 남은 금액을 보여 주고, 미리 갚으면 다음 회차부터 줄어요', async () => {
@@ -292,7 +297,7 @@ describe('설정 화면', () => {
   it('할부 추가: 총액과 개월로 매달 금액을 보여 줘요', async () => {
     const h = renderApp(<Pages />);
     await startDemo(h);
-    fireEvent.click(screen.getByRole('button', { name: '할부 추가' }));
+    fireEvent.click(within(card('할부')).getByRole('button', { name: '할부 추가' }));
     const dialog = screen.getByRole('dialog', { name: '할부 추가' });
     fireEvent.change(within(dialog).getByLabelText(/이름/), { target: { value: '노트북' } });
     fireEvent.change(within(dialog).getByLabelText(/^총액/), { target: { value: '1200000' } });

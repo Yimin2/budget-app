@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import {
-  activeLivingRows, addMonths, defaultSpreadFor, isLivingOverride, livingOverridesOf, splitLivingRow, formatDateKo, formatWon, hasLegacyLivingRow, HOLIDAY_YEARS, holidayTableEndingSoon, isMonthActive,
-  isValidDate, monthOf, normalizeDays, previewLivingItem, scheduleLabel, scheduleMode, scheduleOf, schedulePreviewText, WEEK_ORDER,
+  activeLivingRows, addMonths, defaultSpreadFor, isLivingOverride, livingOverridesOf, splitLivingRow, formatWon, hasLegacyLivingRow, HOLIDAY_YEARS, holidayTableEndingSoon, isMonthActive,
+  monthOf, normalizeDays, previewLivingItem, scheduleLabel, scheduleMode, scheduleOf, schedulePreviewText, WEEK_ORDER,
   WEEKDAY_SHORT, WEEKDAYS, WEEKENDS, type ScheduleMode,
 } from '@/domain';
 import type { Category, FixedExpense, LivingSchedule, LivingSpread } from '@/domain/types';
 import {
-  Badge, Banner, Button, Card, Chip, ChipGroup, ConfirmDialog, DateInput, Dialog, EmptyState, Field, Icon, ListRow, Money, MoneyInput,
+  Badge, Banner, Button, Card, Chip, ChipGroup, ConfirmDialog, Dialog, EmptyState, Field, Icon, ListRow, Money, MoneyInput,
   SegmentedControl, Select, TextInput, focusFirstInvalid, isIconName,
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
@@ -103,15 +103,15 @@ function nextOf(prev: FixedExpense, d: Draft, cat: Category | undefined): FixedE
 /**
  * 생활비 예산: 항목(카테고리)마다 한 달 예산과 쓰는 방식(하루에 나눠 쓰기 / 한 달 한도만).
  * 예전 방식의 '생활비' 한 줄이 있으면 항목으로 나누라고 안내하고, 나누면 그 줄은 이번 달부터 빼요.
+ * accountId 를 주면 그 통장의 항목만 카드 틀 없이 (예산 화면 통장 카드 안, 새 항목도 그 통장),
+ * extras 면 통장마다 두지 않는 것(예전 한 줄 나누기 안내 · 공휴일 표 끝 안내)만 카드 하나로 보여 줘요 (없으면 아무것도 안 그려요)
  */
-export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
+export function LivingCard({ ledger, accountId: onlyAccountId, extras = false }: { ledger: ReadyLedger; accountId?: string; extras?: boolean }) {
   const { busy, run } = useRunner();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [confirm, setConfirm] = useState<{ action: 'end' | 'delete'; row: FixedExpense } | null>(null);
   const [split, setSplit] = useState<LivingDraft[] | null>(null);
-  const [newOff, setNewOff] = useState('');
-  const [offError, setOffError] = useState<string | undefined>(undefined);
   // '이 달만 다른 금액' 넣는 칸 (고치는 항목 창 안)
   const [ovMonth, setOvMonth] = useState('');
   const [ovAmount, setOvAmount] = useState<number | null>(null);
@@ -148,9 +148,10 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
   const keyOfAccount = (id: string) => ownerKeyOf(ledger.activeAccounts.find((a) => a.id === id));
   const meKey = ledger.myLivingAccountId ? keyOfAccount(ledger.myLivingAccountId) : null;
   const people = useOwnerFilter(livingAccounts.map((a) => ownerKeyOf(a)), data, keyOfAccount(accountId), meKey);
-  const shownRows = rows.filter((f) => people.matches(keyOfAccount(f.accountId)));
-  const newAccountId =
-    people.selected !== null ? (livingAccounts.find((a) => ownerKeyOf(a) === people.selected)?.id ?? accountId) : accountId;
+  const shownRows = onlyAccountId ? rows.filter((f) => f.accountId === onlyAccountId) : rows.filter((f) => people.matches(keyOfAccount(f.accountId)));
+  const newAccountId = onlyAccountId
+    ? onlyAccountId
+    : people.selected !== null ? (livingAccounts.find((a) => ownerKeyOf(a) === people.selected)?.id ?? accountId) : accountId;
   const editing = draft?.id ? data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
 
   const nameOf = (f: FixedExpense) => (f.categoryId ? (catById.get(f.categoryId)?.name ?? f.name) : f.name || '생활비');
@@ -337,47 +338,26 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
     return item ? schedulePreviewText(item, ledger.today) : '';
   })();
 
-  // 쉬는 날 (회사 휴무 등): '공휴일 빼기' 항목이 있거나 이미 넣은 날이 있을 때 보여요
-  const daysOff = data.settings.daysOff ?? [];
-  const upcomingOff = daysOff.filter((d) => d >= `${month}-01`);
+  // 공휴일 표가 끝나 가면 안내 (회사 쉬는 날 넣기는 없앴어요, 8-3)
   const usesHolidays = rows.some((f) => f.kind === 'living' && f.spread === 'daily' && scheduleOf(f).skipHolidays);
-  const showDaysOff = usesHolidays || upcomingOff.length > 0;
   const tableEnding = usesHolidays && holidayTableEndingSoon(ledger.today);
 
-  async function addDayOff() {
-    if (!isValidDate(newOff)) {
-      setOffError('날짜를 골라 주세요');
-      return;
-    }
-    if (daysOff.includes(newOff)) {
-      setOffError('이미 넣은 날이에요');
-      return;
-    }
-    setOffError(undefined);
-    const ok = await run('off', () => ledger.saveDaysOff([...daysOff, newOff]), '쉬는 날을 넣었어요');
-    if (ok) setNewOff('');
-  }
-
-  return (
-    <Card
-      id="st-living"
-      title="생활비 예산"
-      aside={thisMonthTotal > 0 ? <span className="muted">한 달 {formatWon(thisMonthTotal)}</span> : undefined}
-    >
-      <p className="st-desc">
-        {multiAccount ? '사람마다 생활비 통장을 고르고 ' : ''}항목마다 한 달 예산을 정해요. 하루에 나눠 쓰는 항목은 오늘 써도 되는 돈을, 한 달 한도만 보는 항목은 이번 달 남은 돈을 알려 드려요.
-        예산이 없는 카테고리 지출은 &lsquo;기타(예산 없음)&rsquo;으로 모여요.
-      </p>
-
+  const banner = (
+    <>
       {legacy ? (
         <Banner tone="info" title="생활비를 항목별로 나눠 보세요" action={{ label: '항목으로 나누기', onClick: openSplit }}>
           지금은 생활비 {formatWon(legacyTotal)} 한 줄이에요. 식비·카페처럼 나누면 항목마다 따로 알려 드려요.
         </Banner>
       ) : null}
 
-      <OwnerTabs filter={people} label="누구 생활비" />
+    </>
+  );
+  const list = (
+    <>
 
-      {shownRows.length === 0 ? (
+      {shownRows.length === 0 && onlyAccountId ? (
+        <p className="st-desc">이 통장의 생활비 항목이 없어요.</p>
+      ) : shownRows.length === 0 ? (
         <EmptyState
           icon="wallet"
           headingLevel={3}
@@ -396,7 +376,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                   title={nameOf(f)}
                   subtitle={
                     <span className="st-sub">
-                      {multiAccount && (!people.show || people.selected === null) ? <span>{accountLabel(f.accountId)}</span> : null}
+                      {multiAccount && !onlyAccountId && (!people.show || people.selected === null) ? <span>{accountLabel(f.accountId)}</span> : null}
                       <span>{SPREAD_TEXT[f.spread]}</span>
                       {f.spread === 'daily' && scheduleLabel(scheduleOf(f)) ? <span>{scheduleLabel(scheduleOf(f))}</span> : null}
                       {f.categoryId === null ? (
@@ -432,43 +412,15 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         </Button>
       </div>
 
-      {showDaysOff ? (
-        <section className="st-daysoff" aria-labelledby="st-daysoff-title">
-          <h3 className="st-label" id="st-daysoff-title">
-            쉬는 날
-          </h3>
-          <p className="st-desc">회사 휴무처럼 쉬는 날을 넣으면 &lsquo;공휴일 빼기&rsquo; 항목은 그날도 빼고 나눠요.</p>
-          {tableEnding ? (
-            <Banner tone="info" title={`공휴일은 ${HOLIDAY_YEARS.to}년까지 알고 있어요`}>
-              그 뒤로는 주말만 빼요. 공휴일은 쉬는 날로 넣어 주세요.
-            </Banner>
-          ) : null}
-          {upcomingOff.length > 0 ? (
-            <ChipGroup label="넣은 쉬는 날">
-              {upcomingOff.map((d) => (
-                <Chip
-                  key={d}
-                  removeLabel={`${formatDateKo(d)} 빼기`}
-                  onRemove={() =>
-                    void run('off', () => ledger.saveDaysOff(daysOff.filter((x) => x !== d)), '쉬는 날을 뺐어요')
-                  }
-                >
-                  {formatDateKo(d)}
-                </Chip>
-              ))}
-            </ChipGroup>
-          ) : null}
-          <div className="st-daysoff-add">
-            <Field label="쉬는 날 추가 (회사 휴무 등)" error={offError}>
-              <DateInput value={newOff} onChange={(v) => setNewOff(v)} min={`${month}-01`} />
-            </Field>
-            <Button variant="outline" icon="plus" onClick={() => void addDayOff()} loading={busy === 'off'} disabled={!newOff}>
-              추가
-            </Button>
-          </div>
-        </section>
-      ) : null}
-
+    </>
+  );
+  const holidayNotice = tableEnding ? (
+    <Banner tone="info" title={`공휴일은 ${HOLIDAY_YEARS.to}년까지 알고 있어요`}>
+      그 뒤로는 &lsquo;공휴일 빼기&rsquo; 항목도 주말만 빼요.
+    </Banner>
+  ) : null;
+  const dialogs = (
+    <>
       <Dialog
         open={draft !== null}
         onClose={() => (busy ? undefined : setDraft(null))}
@@ -757,6 +709,43 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         onConfirm={() => void applyConfirm()}
         onCancel={() => setConfirm(null)}
       />
+    </>
+  );
+
+  if (onlyAccountId) {
+    return (
+      <div className="bd-embed">
+        {list}
+        {dialogs}
+      </div>
+    );
+  }
+  if (extras) {
+    if (!legacy && !tableEnding) return null;
+    return (
+      <Card id="st-living-extra" title="생활비 정리">
+        {banner}
+        {holidayNotice}
+        {dialogs}
+      </Card>
+    );
+  }
+  return (
+    <Card
+      id="st-living"
+      title="생활비 예산"
+      aside={thisMonthTotal > 0 ? <span className="muted">한 달 {formatWon(thisMonthTotal)}</span> : undefined}
+    >
+      <p className="st-desc">
+        {multiAccount ? '사람마다 생활비 통장을 고르고 ' : ''}항목마다 한 달 예산을 정해요. 하루에 나눠 쓰는 항목은 오늘 써도 되는 돈을, 한 달 한도만 보는 항목은 이번 달 남은 돈을 알려 드려요.
+        예산이 없는 카테고리 지출은 &lsquo;기타(예산 없음)&rsquo;으로 모여요.
+      </p>
+
+      {banner}
+      <OwnerTabs filter={people} label="누구 생활비" />
+      {list}
+      {holidayNotice}
+      {dialogs}
     </Card>
   );
 }
