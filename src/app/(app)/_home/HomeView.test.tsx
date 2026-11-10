@@ -194,6 +194,57 @@ describe('HomeView — 새 가계부', () => {
   });
 });
 
+describe('HomeView — 두 칸 배치와 읽는 순서', () => {
+  const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('넓은 화면(≥1280)은 이번 달 쓴 돈 · 최근 지출이 오른쪽 칸 이벤트통장 아래, 좁으면 이번 달 쓴 돈이 항목별 생활비 바로 아래', async () => {
+    const original = window.matchMedia;
+    const setWide = (wide: boolean) => {
+      window.matchMedia = ((query: string) => ({
+        matches: wide && query === '(min-width: 1280px)',
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+    };
+    try {
+      setWide(true);
+      const h = makeHarness({ couple: true });
+      await act(async () => {
+        render(<HomeView />, { wrapper: h.Wrapper });
+      });
+      const spent = await screen.findByRole('region', { name: '이번 달 쓴 돈 · 민지' });
+      const items = screen.getByRole('region', { name: '항목별 생활비 · 민지' });
+      const recent = screen.getByRole('region', { name: '최근 지출' });
+      const event = screen.getByRole('region', { name: /이벤트통장/ });
+      // 같은 오른쪽 칸: 이벤트통장 → 이번 달 쓴 돈 → 최근 지출 (DOM = 탭 순서)
+      expect(spent.parentElement).toBe(event.parentElement);
+      expect(recent.parentElement).toBe(event.parentElement);
+      expect(items.parentElement).not.toBe(event.parentElement);
+      expect(follows(event, spent) && follows(spent, recent)).toBe(true);
+      cleanup();
+
+      setWide(false);
+      const h2 = makeHarness({ couple: true });
+      await act(async () => {
+        render(<HomeView />, { wrapper: h2.Wrapper });
+      });
+      const spent2 = await screen.findByRole('region', { name: '이번 달 쓴 돈 · 민지' });
+      const items2 = screen.getByRole('region', { name: '항목별 생활비 · 민지' });
+      const event2 = screen.getByRole('region', { name: /이벤트통장/ });
+      const recent2 = screen.getByRole('region', { name: '최근 지출' });
+      expect(spent2.parentElement).toBe(items2.parentElement);
+      expect(follows(items2, spent2) && follows(spent2, event2) && follows(event2, recent2)).toBe(true);
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+});
+
 describe('HomeView — 이번 달 쓴 돈 (부부 예시)', () => {
   const JUNHO = 'demo-acc-living-junho';
 

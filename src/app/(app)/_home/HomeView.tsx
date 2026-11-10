@@ -61,7 +61,8 @@ function HomeBody() {
   const ledger = useLedger();
   const data = ledger.data!;
   const banner = shortageBannerText(ledger.eventProjection, ledger.today);
-  // 1280px 이상은 최근 지출이 왼쪽 칸, 그보다 좁으면 부족 알림 · 이벤트통장 뒤 (읽는 순서 = 보이는 순서)
+  // 1280px 이상(두 칸)은 이번 달 쓴 돈 · 최근 지출이 오른쪽 칸 이벤트통장 아래(두 칸 길이를 맞춰요).
+  // 그보다 좁으면(한 줄 · 태블릿) 이번 달 쓴 돈은 항목별 생활비 바로 아래, 최근 지출은 이벤트통장 뒤. 읽는 순서 = 보이는 순서
   const wide = useMediaQuery(WIDE_QUERY);
   // 사람별 생활비 (PLAN 4-14): 기본은 나, 다른 사람으로 바꿔 볼 수 있어요
   const [viewId, setViewId] = useState<string | null>(null);
@@ -72,6 +73,13 @@ function HomeBody() {
   const selected = multi && targetId ? (views.find((v) => v.accountId === targetId) ?? views[0]!) : null;
   const living = selected ? selected.status : ledger.living;
   const person = selected ? { view: selected, isMe: selected.accountId === ledger.myLivingAccountId } : null;
+  const spentCard = (
+    <MonthSpentCard
+      statuses={selected ? [selected.status] : multi ? views.map((v) => v.status) : ledger.living ? [ledger.living] : []}
+      livingAccountId={selected?.accountId ?? null}
+      owner={selected?.name ?? null}
+    />
+  );
 
   return (
     <>
@@ -95,12 +103,7 @@ function HomeBody() {
         <FavoriteChips favorites={data.favorites} />
         {/* 모두 합친 화면(나를 고르기 전)에서는 항목이 사람마다 겹쳐 보여서 빼요 */}
         {living && living.items.length > 0 && (!multi || selected) ? <LivingItemsCard living={living} owner={selected?.name ?? null} /> : null}
-        <MonthSpentCard
-          statuses={selected ? [selected.status] : multi ? views.map((v) => v.status) : ledger.living ? [ledger.living] : []}
-          livingAccountId={selected?.accountId ?? null}
-          owner={selected?.name ?? null}
-        />
-        {wide ? <RecentExpenses /> : null}
+        {wide ? null : spentCard}
       </div>
       <div className={styles.col}>
         {banner ? (
@@ -111,7 +114,8 @@ function HomeBody() {
         {/* 이번 달 정산 한 줄 (줄 돈이 없으면 '이번 달 줄 돈이 없어요 · 다음 정산 …', 청구가 없으면 숨김). 이벤트통장이 없을 때만 사람별 목록 */}
         {ledger.settlement ? <SettlementCard home className={styles.oClaims} /> : <ClaimsCard className={styles.oClaims} />}
         <EventAccountCard />
-        {wide ? null : <RecentExpenses />}
+        {wide ? spentCard : null}
+        <RecentExpenses />
       </div>
     </>
   );
