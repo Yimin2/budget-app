@@ -1,5 +1,5 @@
 /**
- * 배분 시점과 '다음 배분에 필요한 금액' — PLAN 4-15.
+ * 배분 시점과 '알아서 맞추기' 금액 — PLAN 4-15.
  *
  * 배분 기간: D일 배분(M월)은 [M월 D일, M+1월 D일) 에 날짜가 든 결제를 채운다 (말일보다 크면 말일).
  * 그래서 21일 배분이면 11/21 배분은 11/21 ~ 12/20 결제를 채운다. 11/10 에 시작한 고정비의 첫 결제는
@@ -7,17 +7,17 @@
  *
  * 필요한 금액(통장 A, 배분일 a) = [a, 다음 배분일) 의 A 통장 고정 결제(고정비 · 세부 항목 · 할부)
  *                              + A 통장 생활비 항목 예산 (그 기간이 거의 다 드는 달 = 다음 배분일 전날의 달)
- * '필요한 만큼 (자동)' 배분(kind='auto')은 기록될 때 이 금액을 보낸다
+ * '알아서 맞추기' 배분(kind='auto')은 기록될 때 이 금액을 보낸다
  */
 import {
-  billAmountOn, billChargeDate, billCharges, billHasEnd, billSeries, billSeriesId, currentBillRow, firstChargeDate, hasSubItems,
+  activeSubItems, billAmountOn, billChargeDate, billCharges, billHasEnd, billSeriesId, currentBillRow, firstChargeDate, hasSubItems,
   isDatedBill, lastChargeDate, nextChargeOnOrAfter, rowStart,
 } from './bills';
 import { addDays, addMonths, dateInMonth, formatShortDate, isMonthActive, isValidDate, isValidMonth, monthOf } from './dates';
 import { autoTransferId } from './ids';
 import { installmentGroups, installmentPayments, installmentPlanId } from './installments';
 import { activeLivingRows } from './living';
-import { formatWon } from './money';
+import { formatMan, formatWon } from './money';
 import type { Account, AllocationRule, FixedExpense, Id, ISODate, LedgerData, Won, YearMonth } from './types';
 
 /* ---------- 배분 기간 ---------- */
@@ -91,6 +91,8 @@ export interface WindowCharge {
   kind: 'bill' | 'installment';
   /** 세부 항목이 있는 고정비면 true */
   withItems: boolean;
+  /** 그 결제일에 살아 있는 세부 항목 (세부 항목이 있는 고정비만) */
+  items?: { name: string; amount: Won }[];
 }
 
 /** 이 통장에서 [from, to) 에 나갈 고정 결제 (고정비 · 용돈 · 할부, 날짜 순) */
@@ -100,7 +102,16 @@ export function accountCharges(data: LedgerData, accountId: Id, from: ISODate, t
     if (f.deleted || !isDatedBill(f) || f.accountId !== accountId) continue;
     for (const c of billCharges(f, from, to)) {
       if (c.amount <= 0) continue;
-      out.push({ key: `bill:${billSeriesId(f.id)}`, name: f.name, date: c.date, amount: c.amount, kind: 'bill', withItems: hasSubItems(f) });
+      const withItems = hasSubItems(f);
+      out.push({
+        key: `bill:${billSeriesId(f.id)}`,
+        name: f.name,
+        date: c.date,
+        amount: c.amount,
+        kind: 'bill',
+        withItems,
+        ...(withItems ? { items: activeSubItems(f, c.date).map((x) => ({ name: x.name, amount: Math.max(0, Math.round(x.amount)) })) } : {}),
+      });
     }
   }
   for (const [planId, rows] of installmentGroups(data.fixedExpenses)) {
@@ -169,134 +180,141 @@ export function needBreakdownText(n: Pick<WindowNeed, 'bills' | 'installments' |
   return parts.length > 0 ? parts.join(' · ') : '나갈 돈 없음';
 }
 
-/* ---------- 다음 배분에 필요한 금액 ---------- */
+/* ---------- 규칙마다 다음 배분 금액과 지난달과 달라진 까닭 ---------- */
 
-export interface AllocationNeed {
-  account: Account;
-  /** 정한 금액 규칙 중 맞출 규칙 (자동 규칙만 있으면 null) */
-  rule: AllocationRule | null;
-  /** 자동 규칙이 있으면 true (맞추지 않아도 저절로 따라가요) */
-  auto: boolean;
-  /** 다음 배분일 */
-  next: ISODate;
-  need: WindowNeed;
-  /** 다음 배분 달에 이 통장으로 들어오는 정한 금액 배분 합 (자동은 need.total) */
-  current: Won;
-  /** need.total − current */
-  diff: Won;
-  /** 바뀐 까닭 ('넷플릭스 시작' · '보험 금액 변경' · '생활비 항목 변경') */
-  reasons: string[];
-  /** 맞추기를 누르면 그 규칙에 넣을 금액 (맞출 수 없으면 null) */
-  adjustTo: Won | null;
-  /** 지금 기간(앞 배분 ~ 다음 배분)에 새로 시작해 배분에 없는 결제 합 */
-  uncovered: Won;
-  uncoveredNames: string[];
+/** 방식 이름 (화면): 매달 같은 금액 / 알아서 맞추기 / 남는 돈 전부 */
+export const RULE_KIND_LABEL = { fixed: '매달 같은 금액', auto: '알아서 맞추기', remainder: '남는 돈 전부' } as const;
+
+/** 규칙의 방식 이름 */
+export function ruleKindLabel(rule: Pick<AllocationRule, 'kind'>): string {
+  return rule.kind === 'remainder' ? RULE_KIND_LABEL.remainder : isAutoRule(rule) ? RULE_KIND_LABEL.auto : RULE_KIND_LABEL.fixed;
 }
 
 /** 이 규칙의 다음 배분일: 이번 달 회차가 아직 기록 전이고 오늘 이후(포함)면 이번 달, 아니면 다음 달 */
-function nextAllocationDate(data: LedgerData, rule: AllocationRule, today: ISODate): ISODate {
+export function nextAllocationDate(data: LedgerData, rule: AllocationRule, today: ISODate): ISODate {
   const m = monthOf(today);
   const here = dateInMonth(m, rule.dayOfMonth);
   const recorded = data.transfers.some((t) => !t.deleted && t.id === autoTransferId(rule.id, m));
   return here < today || (here === today && recorded) ? dateInMonth(addMonths(m, 1), rule.dayOfMonth) : here;
 }
 
-function chargeMap(list: WindowCharge[]): Map<string, { name: string; amount: Won }> {
-  const map = new Map<string, { name: string; amount: Won }>();
-  for (const c of list) {
-    const cur = map.get(c.key);
-    map.set(c.key, { name: c.name, amount: (cur?.amount ?? 0) + c.amount });
+interface NeedItem {
+  name: string;
+  amount: Won;
+  /** 세부 항목 (고정비에 있을 때, 이름 → 금액) */
+  items: Map<string, Won> | null;
+}
+
+function needItems(n: WindowNeed): Map<string, NeedItem> {
+  const map = new Map<string, NeedItem>();
+  for (const c of n.charges) {
+    const cur = map.get(c.key) ?? { name: c.name, amount: 0, items: c.items ? new Map<string, Won>() : null };
+    cur.amount += c.amount;
+    if (c.items && cur.items) for (const it of c.items) cur.items.set(it.name, (cur.items.get(it.name) ?? 0) + it.amount);
+    map.set(c.key, cur);
   }
   return map;
 }
 
-/** 두 기간을 비교한 까닭 */
-export function needReasons(prev: WindowNeed, next: WindowNeed): string[] {
-  const a = chargeMap(prev.charges);
-  const b = chargeMap(next.charges);
-  const out: string[] = [];
-  for (const [k, v] of b) {
-    const before = a.get(k);
-    if (!before) out.push(`${v.name} 시작`);
-    else if (before.amount !== v.amount) out.push(`${v.name} 금액 변경`);
-  }
-  for (const [k, v] of a) if (!b.has(k)) out.push(`${v.name} 끝`);
-  if (prev.living !== next.living) out.push('생활비 항목 변경');
-  return out;
+export interface NeedChange {
+  /** 다음 − 앞 */
+  delta: Won;
+  /** '넷플릭스 시작' · '보험 금액 변경' · '운동 끝' · '생활비 항목 변경' */
+  text: string;
 }
 
 /**
- * 생활비 · 용돈 통장마다 다음 배분에 필요한 금액 (그 통장으로 정한 금액 · 자동 배분이 있을 때, 통장 순서).
- * 정한 금액 규칙이면 지금 금액과 차이 · 까닭, [배분 금액 맞추기] 에 넣을 금액. 자동 규칙이면 diff 0
+ * 두 기간을 비교해 바뀐 것들 (고정비 · 세부 항목 · 할부 · 생활비 항목), 바뀐 금액이 큰 순.
+ * 두 기간 모두 있는 세부 항목 고정비는 세부 항목마다 비교해요 ('넷플릭스 시작')
  */
-export function allocationNeeds(data: LedgerData, today: ISODate): AllocationNeed[] {
-  const out: AllocationNeed[] = [];
-  const accounts = data.accounts.filter((a) => !a.deleted && canAutoFill(a)).sort((a, b) => a.order - b.order);
-  for (const account of accounts) {
-    const anyRule = allocationRuleInto(data, account.id, monthOf(today)) ?? allocationRuleInto(data, account.id, addMonths(monthOf(today), 1));
-    if (!anyRule) continue;
-    const next = nextAllocationDate(data, anyRule, today);
-    const day = anyRule.dayOfMonth;
-    const month = monthOf(next);
-    const into = data.rules.filter(
-      (r) => !r.deleted && r.toAccountId === account.id && r.kind !== 'remainder' && isValidMonth(r.startMonth) && isMonthActive(month, r.startMonth, r.endMonth),
-    );
-    if (into.length === 0) continue;
-    const auto = into.some(isAutoRule);
-    const need = windowNeed(data, account.id, next, day);
-    const prevDate = dateInMonth(addMonths(month, -1), day);
-    const prev = windowNeed(data, account.id, prevDate, day);
-    const fixedRules = into.filter(isFixedRule);
-    const fixedSum = fixedRules.reduce((s, r) => s + r.amount, 0);
-    const current = auto ? need.total : fixedSum;
-    const diff = auto ? 0 : need.total - fixedSum;
-    const rule = fixedRules.sort((a, b) => b.amount - a.amount || (a.id < b.id ? -1 : 1))[0] ?? null;
-    const adjustTo = !auto && rule && diff !== 0 && rule.amount + diff > 0 ? rule.amount + diff : null;
-    // 지금 기간에 새로 시작한 결제 (첫 결제가 앞 배분일 뒤) — 앞 배분은 몰랐던 돈
-    const uncoveredList = prev.charges.filter((c) => c.date < next && firstOfKey(data, c.key) !== null && firstOfKey(data, c.key)! > prevDate);
-    out.push({
-      account,
-      rule,
-      auto,
-      next,
-      need,
-      current,
-      diff,
-      reasons: needReasons(prev, need),
-      adjustTo,
-      uncovered: uncoveredList.reduce((s, c) => s + c.amount, 0),
-      uncoveredNames: uncoveredList.map((c) => c.name),
-    });
+export function needChanges(prev: WindowNeed, next: WindowNeed): NeedChange[] {
+  const a = needItems(prev);
+  const b = needItems(next);
+  const out: NeedChange[] = [];
+  const diffItem = (name: string, before: Won | undefined, after: Won | undefined) => {
+    if (before === undefined && after !== undefined) out.push({ delta: after, text: `${name} 시작` });
+    else if (before !== undefined && after === undefined) out.push({ delta: -before, text: `${name} 끝` });
+    else if (before !== undefined && after !== undefined && before !== after) out.push({ delta: after - before, text: `${name} 금액 변경` });
+  };
+  for (const [k, v] of b) {
+    const before = a.get(k);
+    if (before && before.items && v.items) {
+      for (const [name, amt] of v.items) diffItem(name, before.items.get(name), amt);
+      for (const [name, amt] of before.items) if (!v.items.has(name)) diffItem(name, amt, undefined);
+    } else diffItem(v.name, before?.amount, v.amount);
+  }
+  for (const [k, v] of a) if (!b.has(k)) diffItem(v.name, v.amount, undefined);
+  if (prev.living !== next.living) out.push({ delta: next.living - prev.living, text: '생활비 항목 변경' });
+  return out.filter((c) => c.delta !== 0).sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+}
+
+export interface RuleNext {
+  rule: AllocationRule;
+  /** 다음 배분일 */
+  date: ISODate;
+  /** 다음 배분 금액 (매달 같은 금액은 그대로, 알아서 맞추기는 그 기간의 필요한 금액) */
+  amount: Won;
+  auto: boolean;
+  /** 알아서 맞추기의 내역 */
+  need: WindowNeed | null;
+  /** 지난달 회차 금액과의 차이 (알아서 맞추기만, 아니면 0) */
+  diff: Won;
+  /** 가장 크게 바뀐 까닭 ('넷플릭스 시작'), 없으면 null */
+  reason: string | null;
+}
+
+/** 규칙의 다음 배분 금액 (남는 돈 전부는 null — remainderViews 로) */
+export function ruleNext(data: LedgerData, rule: AllocationRule, today: ISODate): RuleNext | null {
+  if (rule.kind === 'remainder') return null;
+  const date = nextAllocationDate(data, rule, today);
+  if (!isAutoRule(rule)) return { rule, date, amount: rule.amount, auto: false, need: null, diff: 0, reason: null };
+  const need = windowNeed(data, rule.toAccountId, date, rule.dayOfMonth);
+  const prev = windowNeed(data, rule.toAccountId, dateInMonth(addMonths(monthOf(date), -1), rule.dayOfMonth), rule.dayOfMonth);
+  const diff = need.total - prev.total;
+  const reason = diff !== 0 ? (needChanges(prev, need)[0]?.text ?? null) : null;
+  return { rule, date, amount: need.total, auto: true, need, diff, reason };
+}
+
+/** '지난달보다 +1.5만 · 넷플릭스 시작' (바뀌지 않았으면 null) */
+export function ruleChangeText(n: Pick<RuleNext, 'diff' | 'reason'>): string | null {
+  if (n.diff === 0) return null;
+  const sign = n.diff > 0 ? '+' : '−';
+  const head = `지난달보다 ${sign}${formatMan(Math.abs(n.diff))}`;
+  return n.reason ? `${head} · ${n.reason}` : head;
+}
+
+/* ---------- 기존 시트 자동 고치기: 생활비 · 용돈 배분을 알아서 맞추기로 ---------- */
+
+/** 바꾼 뒤 한 번 보여 주는 알림 */
+export const AUTO_KIND_NOTICE = "생활비 · 용돈 배분을 '알아서 맞추기'로 바꿨어요";
+
+const overlaps = (a: Pick<AllocationRule, 'startMonth' | 'endMonth'>, b: Pick<AllocationRule, 'startMonth' | 'endMonth'>) =>
+  (a.endMonth === null || b.startMonth <= a.endMonth) && (b.endMonth === null || a.startMonth <= b.endMonth);
+
+/**
+ * 생활비 · 용돈 통장으로 보내는 '매달 같은 금액' 규칙 중 이번 달 이후에도 살아 있는 것을 '알아서 맞추기'(금액 0)로 바꾼 행.
+ * 이벤트 · 저축 · 저수지 등으로 가는 규칙, 남는 돈 전부, 이미 끝난 규칙은 그대로. 같은 통장으로 같은 달에 겹쳐 들어오는
+ * 규칙이 여럿이거나 이미 알아서 맞추기가 있으면 두 번 보내게 되므로 그 통장은 건드리지 않아요. 다시 해도 같아요 (바꿀 게 없으면 빈 배열)
+ */
+export function rulesToAutoKind(data: LedgerData, today: ISODate): AllocationRule[] {
+  const month = monthOf(today);
+  const live = (r: AllocationRule) => !r.deleted && isValidMonth(r.startMonth) && (r.endMonth === null || r.endMonth >= month);
+  const byTarget = new Map<Id, AllocationRule[]>();
+  for (const r of data.rules) {
+    if (!live(r) || !isFixedRule(r)) continue;
+    const to = data.accounts.find((a) => a.id === r.toAccountId && !a.deleted);
+    if (!canAutoFill(to)) continue;
+    byTarget.set(r.toAccountId, [...(byTarget.get(r.toAccountId) ?? []), r]);
+  }
+  const out: AllocationRule[] = [];
+  for (const [target, list] of byTarget) {
+    const autos = data.rules.filter((r) => live(r) && isAutoRule(r) && r.toAccountId === target);
+    const clash =
+      list.some((r) => autos.some((x) => overlaps(r, x))) || list.some((r, i) => list.some((x, j) => j > i && overlaps(r, x)));
+    if (clash) continue;
+    for (const r of list) out.push({ ...r, kind: 'auto', amount: 0 });
   }
   return out;
-}
-
-/** 묶음 키의 첫 결제일 (고정비: 첫 행의 첫 결제, 할부: 첫 회차) */
-function firstOfKey(data: LedgerData, key: string): ISODate | null {
-  if (key.startsWith('bill:')) {
-    const id = key.slice(5);
-    const rows = billSeries(data.fixedExpenses).get(id) ?? [];
-    return rows[0] ? firstChargeDate(rows[0]) : null;
-  }
-  const id = key.slice(5);
-  const rows = installmentGroups(data.fixedExpenses).get(id) ?? [];
-  return installmentPayments(rows)[0]?.date ?? null;
-}
-
-/** 다음 배분 한 줄: '생활비(민구): 1,272,600원 → 1,287,600원 (+15,000원 · 넷플릭스 시작)' */
-export function needLineText(n: AllocationNeed): string {
-  if (n.auto) return `${n.account.name}: ${formatWon(n.need.total)} (자동)`;
-  if (n.diff === 0) return `${n.account.name}: ${formatWon(n.current)} 그대로예요`;
-  const sign = n.diff > 0 ? '+' : '−';
-  const why = [`${sign}${formatWon(Math.abs(n.diff))}`, ...n.reasons.slice(0, 3)].join(' · ');
-  return `${n.account.name}: ${formatWon(n.current)} → ${formatWon(n.need.total)} (${why})`;
-}
-
-/** 지금 기간 한 줄: '이번 달은 15,000원이 배분에 없어요 · 생활비에서 나가요' (없으면 null) */
-export function uncoveredText(n: AllocationNeed): string | null {
-  if (n.uncovered <= 0) return null;
-  const where = n.account.role === 'allowance' ? '용돈' : '생활비';
-  return `이번 달은 ${formatWon(n.uncovered)}이 배분에 없어요 · ${where}에서 나가요`;
 }
 
 /* ---------- 고정비 하나의 배분 시점 ---------- */

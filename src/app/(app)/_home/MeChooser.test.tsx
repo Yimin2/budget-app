@@ -46,8 +46,11 @@ function imported(myOwnerName: string): LedgerData {
     'demo-acc-living-junho': myOwnerName,
     'demo-acc-allowance-junho': myOwnerName,
   };
+  // 생활비 · 용돈 배분은 이미 '알아서 맞추기' (배분 자동 고치기 알림은 따로 시험해요 — state/ruleKindMigration.test)
+  const autoInto = new Set(['demo-acc-living-minji', 'demo-acc-living-junho', 'demo-acc-allowance-minji', 'demo-acc-allowance-junho']);
   return {
     ...d,
+    rules: d.rules.map((r) => (autoInto.has(r.toAccountId) ? { ...r, kind: 'auto' as const, amount: 0 } : r)),
     accounts: d.accounts.map((a) => ({ ...a, ownerName: ownerOf[a.id] ?? null, ownerEmail: null })),
     members: [{ email: 'gb@example.com', displayName: '기쁜', shared: true, role: 'writer' }],
   };

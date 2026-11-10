@@ -117,7 +117,7 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
         amount,
         status: 'done',
         ruleId: rule.id,
-        memo: auto ? '매달 배분 (필요한 만큼)' : '매달 배분',
+        memo: auto ? '매달 배분 (알아서 맞추기)' : '매달 배분',
         author,
         createdAt: now,
         updatedAt: now,

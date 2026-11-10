@@ -234,6 +234,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 매달 배분 줄: '지난달보다 +1.5만 · 넷플릭스 시작' */
+.st-change {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 /* 좁은 휴대폰: 지금 잔액을 이름 아래 줄로 내려 이름·역할·시작 잔액이 잘리지 않게 */
 @media (max-width: 419.98px) {
   .st-acc-row {
@@ -799,24 +806,6 @@
   color: var(--danger-text);
   font-weight: 500;
 }
-.st-needs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.st-needs li {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: 14px;
-  line-height: 22px;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
 /* 생활비 '이 달만 다른 금액' */
 .st-once {
   display: flex;

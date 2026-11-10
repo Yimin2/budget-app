@@ -1,5 +1,5 @@
-import { account, emptyLedger, fixed, rule } from './_fixtures';
-import { allocationNeeds, needLineText, ruleAmountIn, uncoveredText, windowNeed } from './allocation';
+import { account, emptyLedger, fixed, rule, transfer } from './_fixtures';
+import { AUTO_KIND_NOTICE, ruleAmountIn, ruleChangeText, ruleKindLabel, ruleNext, rulesToAutoKind, windowNeed } from './allocation';
 import { normalizeBill } from './bills';
 import { autoTransferId } from './ids';
 import { paydayPlans, projectRemainders, remainderViews } from './income';
@@ -62,45 +62,93 @@ describe('window need (allocation on D funds [D, next D))', () => {
   });
 });
 
-describe('다음 배분에 필요한 금액', () => {
-  const fixedRule = rule({ id: 'r-liv', fromAccountId: salary.id, toAccountId: liv.id, amount: 550_000, dayOfMonth: 21, startMonth: '2026-11' });
+describe('규칙마다 다음 배분 금액 · 지난달과 달라진 까닭', () => {
+  const autoRule = rule({ id: 'r-auto', fromAccountId: salary.id, toAccountId: liv.id, amount: 0, kind: 'auto', dayOfMonth: 21, startMonth: '2026-11' });
 
-  it('compares with the fixed rule and explains the difference', () => {
-    const [n] = allocationNeeds(ledger({ rules: [fixedRule] }), '2026-11-12');
-    expect(n!.next).toBe('2026-11-21');
-    expect(n!.need.total).toBe(595_000);
-    expect(n!.diff).toBe(45_000);
-    expect(n!.reasons).toEqual(['넷플릭스 시작']);
-    expect(needLineText(n!)).toBe('생활비(가람): 550,000원 → 595,000원 (+45,000원 · 넷플릭스 시작)');
-    expect(n!.adjustTo).toBe(595_000);
+  it('알아서 맞추기는 다음 배분 기간의 필요한 금액, 바뀌었으면 가장 크게 바뀐 까닭 (넷플릭스 시작)', () => {
+    const n = ruleNext(ledger({ rules: [autoRule] }), autoRule, '2026-11-12')!;
+    expect(n.date).toBe('2026-11-21');
+    expect(n.amount).toBe(595_000);
+    // 10/21 기간: 보험 50,000 + 운동 30,000(11/5) + 생활비 500,000 = 580,000 → +15,000 넷플릭스
+    expect(n.diff).toBe(15_000);
+    expect(n.reason).toBe('넷플릭스 시작');
+    expect(ruleChangeText(n)).toBe('지난달보다 +1.5만 · 넷플릭스 시작');
   });
 
-  it('notes a mid-window start that the last allocation did not cover', () => {
-    const [n] = allocationNeeds(ledger({ rules: [fixedRule] }), '2026-11-12');
-    expect(n!.uncovered).toBe(30_000);
-    expect(uncoveredText(n!)).toBe('이번 달은 30,000원이 배분에 없어요 · 생활비에서 나가요');
+  it('바뀐 게 없으면 문구가 없고, 이번 달 회차가 기록됐으면 다음 달 배분을 봐요', () => {
+    const d = ledger({ rules: [autoRule], transfers: [transfer({ id: autoTransferId('r-auto', '2026-11'), date: '2026-11-21', amount: 595_000 })] });
+    const n = ruleNext(d, autoRule, '2026-11-21')!;
+    expect(n.date).toBe('2026-12-21');
+    expect(n.amount).toBe(595_000);
+    expect(ruleChangeText(n)).toBeNull();
   });
 
-  it('after this month’s allocation is recorded, looks at next month', () => {
-    const d = ledger({ rules: [fixedRule], transfers: pendingAutoRecords(ledger({ rules: [fixedRule] }), '2026-11-21', 'a', NOW).transfers });
-    const [n] = allocationNeeds(d, '2026-11-21');
-    expect(n!.next).toBe('2026-12-21');
+  it('세부 항목이 붙거나 금액이 줄면 그 항목 이름으로 (−는 끝)', () => {
+    const subs = bill({ id: 'subs', name: '구독', dayOfMonth: 1, subItems: [{ name: '유튜브', amount: 14_900 }, { name: '넷플릭스', amount: 17_000, startDate: '2027-01-01' }] });
+    const d = ledger({ rules: [autoRule], fixedExpenses: [...bills(), subs] });
+    const n = ruleNext(d, autoRule, '2026-12-12')!;
+    expect(n.date).toBe('2026-12-21');
+    expect(ruleChangeText(n)).toBe('지난달보다 +1.7만 · 넷플릭스 시작');
+    const ended = ledger({ rules: [autoRule], fixedExpenses: bills().map((f) => (f.id === 'ins' ? normalizeBill({ ...f, endDate: '2026-12-31' }) : f)) });
+    const e = ruleNext(ended, autoRule, '2026-12-22')!;
+    expect(ruleChangeText(e)).toBe('지난달보다 −5만 · 보험 끝');
   });
 
-  it('matching amounts: no diff, nothing to adjust', () => {
-    const [n] = allocationNeeds(ledger({ rules: [{ ...fixedRule, amount: 595_000 }] }), '2026-11-12');
-    expect(n!.diff).toBe(0);
-    expect(n!.adjustTo).toBeNull();
-    expect(needLineText(n!)).toBe('생활비(가람): 595,000원 그대로예요');
-  });
-
-  it('event accounts and accounts without a rule are not listed', () => {
-    const d = ledger({ rules: [rule({ fromAccountId: salary.id, toAccountId: ev.id, amount: 300_000, dayOfMonth: 21 })] });
-    expect(allocationNeeds(d, '2026-11-12')).toEqual([]);
+  it('매달 같은 금액은 금액 그대로 · 바뀜 없음, 남는 돈 전부는 null', () => {
+    const fixedLiv = rule({ id: 'r-fx', fromAccountId: salary.id, toAccountId: liv.id, amount: 600_000, dayOfMonth: 21, startMonth: '2026-11' });
+    const rest = rule({ id: 'r-rest', fromAccountId: salary.id, toAccountId: res.id, amount: 0, kind: 'remainder', dayOfMonth: 21, startMonth: '2026-11' });
+    const d = ledger({ rules: [fixedLiv, rest] });
+    expect(ruleNext(d, fixedLiv, '2026-11-12')).toMatchObject({ amount: 600_000, auto: false, diff: 0, reason: null });
+    expect(ruleNext(d, rest, '2026-11-12')).toBeNull();
+    expect([fixedLiv, autoRule, rest].map(ruleKindLabel)).toEqual(['매달 같은 금액', '알아서 맞추기', '남는 돈 전부']);
   });
 });
 
-describe('필요한 만큼 (자동) 배분', () => {
+describe('기존 시트 자동 고치기: 생활비 · 용돈 배분 → 알아서 맞추기', () => {
+  const allow = account('allowance', { id: 'allow', name: '용돈(가람)', order: 4, openingDate: OPEN });
+  const sav = account('savings', { id: 'sav', name: '저축투자', order: 5, openingDate: OPEN });
+  const base = [
+    rule({ id: 'r-liv', fromAccountId: salary.id, toAccountId: liv.id, amount: 600_000, dayOfMonth: 21, startMonth: '2026-01' }),
+    rule({ id: 'r-allow', fromAccountId: salary.id, toAccountId: allow.id, amount: 300_000, dayOfMonth: 25, startMonth: '2026-01' }),
+    rule({ id: 'r-ev', fromAccountId: salary.id, toAccountId: ev.id, amount: 300_000, dayOfMonth: 21, startMonth: '2026-01' }),
+    rule({ id: 'r-sav', fromAccountId: salary.id, toAccountId: sav.id, amount: 1_000_000, dayOfMonth: 25, startMonth: '2026-01' }),
+    rule({ id: 'r-res', fromAccountId: salary.id, toAccountId: res.id, amount: 0, kind: 'remainder', dayOfMonth: 21, startMonth: '2026-01' }),
+    // 이미 끝난 예전 생활비 규칙은 그대로
+    rule({ id: 'r-old', fromAccountId: salary.id, toAccountId: liv.id, amount: 500_000, dayOfMonth: 21, startMonth: '2025-01', endMonth: '2025-12' }),
+  ];
+  const d = () => emptyLedger({ accounts: [salary, liv, ev, res, allow, sav], rules: base });
+
+  it('생활비 · 용돈으로 가는 매달 같은 금액만 알아서 맞추기(금액 0)로 바꿔요', () => {
+    const out = rulesToAutoKind(d(), '2026-11-12');
+    expect(out.map((r) => [r.id, r.kind, r.amount])).toEqual([
+      ['r-liv', 'auto', 0],
+      ['r-allow', 'auto', 0],
+    ]);
+    expect(AUTO_KIND_NOTICE).toBe("생활비 · 용돈 배분을 '알아서 맞추기'로 바꿨어요");
+  });
+
+  it('다시 해도 같아요 (바꾼 뒤에는 바꿀 게 없음)', () => {
+    const data = d();
+    const changed = rulesToAutoKind(data, '2026-11-12');
+    const byId = new Map(changed.map((r) => [r.id, r]));
+    const after = { ...data, rules: data.rules.map((r) => byId.get(r.id) ?? r) };
+    expect(rulesToAutoKind(after, '2026-11-12')).toEqual([]);
+  });
+
+  it('같은 통장으로 겹쳐 들어오는 규칙이 여럿이거나 이미 알아서 맞추기가 있으면 그 통장은 그대로', () => {
+    const two = emptyLedger({
+      accounts: [salary, liv, ev, res, allow, sav],
+      rules: [
+        ...base,
+        rule({ id: 'r-liv2', fromAccountId: ev.id, toAccountId: liv.id, amount: 50_000, dayOfMonth: 1, startMonth: '2026-06' }),
+        rule({ id: 'r-allow-auto', fromAccountId: salary.id, toAccountId: allow.id, amount: 0, kind: 'auto', dayOfMonth: 1, startMonth: '2026-06' }),
+      ],
+    });
+    expect(rulesToAutoKind(two, '2026-11-12')).toEqual([]);
+  });
+});
+
+describe('알아서 맞추기 (자동) 배분', () => {
   const autoRule = rule({ id: 'r-auto', fromAccountId: salary.id, toAccountId: liv.id, amount: 0, kind: 'auto', dayOfMonth: 21, startMonth: '2026-11' });
   const eventRule = rule({ id: 'r-ev', fromAccountId: salary.id, toAccountId: ev.id, amount: 100_000, dayOfMonth: 21, startMonth: '2026-11' });
   const restRule = rule({ id: 'r-rest', fromAccountId: salary.id, toAccountId: res.id, amount: 0, kind: 'remainder', dayOfMonth: 21, startMonth: '2026-11' });
@@ -150,13 +198,6 @@ describe('필요한 만큼 (자동) 배분', () => {
     const d = ledger({ rules: [autoRule, eventRule], incomePlans: [plan(600_000)] });
     expect(paydayPlans(d, '2026-11', salary.id)[0]!.short).toBe(95_000);
   });
-
-  it('an auto rule is listed as auto in the needs card (no adjust button)', () => {
-    const [n] = allocationNeeds(ledger({ rules: [autoRule] }), '2026-11-12');
-    expect(n!.auto).toBe(true);
-    expect(n!.adjustTo).toBeNull();
-    expect(needLineText(n!)).toBe('생활비(가람): 595,000원 (자동)');
-  });
 });
 
 describe('나머지 예상 문구와 수입 변경', () => {
@@ -165,7 +206,7 @@ describe('나머지 예상 문구와 수입 변경', () => {
 
   it('shows the next payday estimate and the monthly total', () => {
     const [v] = remainderViews(ledger({ rules: [fixedLiv, restRule], incomePlans: [plan(3_050_000)] }), '2026-11-12');
-    expect(v!.text).toBe('나머지 전부 → 저수지 · 다음 21일 예상 2,450,000원');
+    expect(v!.text).toBe('남는 돈 전부 → 저수지 · 다음 21일 예상 2,450,000원');
     expect(v!.monthlyText).toBe('저수지로 매달 약 245만원');
     expect(v!.empty).toBe(false);
   });
@@ -187,7 +228,7 @@ describe('나머지 예상 문구와 수입 변경', () => {
 
   it('without income plans the estimate is unknown', () => {
     const [v] = remainderViews(ledger({ rules: [fixedLiv, restRule] }), '2026-11-12');
-    expect(v!.text).toBe('나머지 전부 → 저수지');
+    expect(v!.text).toBe('남는 돈 전부 → 저수지');
     expect(v!.nextText).toBeNull();
   });
 });

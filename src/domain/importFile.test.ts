@@ -360,7 +360,7 @@ describe('budget-import v2', () => {
     // 가계부에 있던 '저수지통장' · '이벤트통장' 은 합치고 그 id 를 써요
     expect(plan.merges.map((m) => m.name)).toEqual(['이벤트통장', '저수지통장']);
     expect(plan.summary.find((l) => l.key === 'incomePlans')).toMatchObject({ added: 2, amount: 5_970_000, amountLabel: '매달' });
-    expect(plan.warnings.some((w) => w.includes('나머지 전부 보내기 2개'))).toBe(true);
+    expect(plan.warnings.some((w) => w.includes('남는 돈 전부 2개'))).toBe(true);
     expect(plan.rows.fixedExpenses.filter((f) => f.kind === 'bill').map((f) => f.accountId)).toEqual([accId('liv-a'), accId('liv-b')]);
 
     const after = applyImportPlan(data, plan);

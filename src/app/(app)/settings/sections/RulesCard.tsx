@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 import {
-  canAutoFill, conflictingRemainderRule, formatMonthKo, formatWon, isAutoRule, isRemainderRule, monthOf, needBreakdownText, paydayPlans,
-  remainderViews, ruleAmountIn,
+  canAutoFill, conflictingRemainderRule, formatMan, formatMonthKo, formatWon, isAutoRule, isRemainderRule, monthOf, needBreakdownText, paydayPlans,
+  remainderViews, ruleChangeText, ruleKindLabel, ruleNext, RULE_KIND_LABEL,
 } from '@/domain';
 import type { AllocationRule, RuleKind } from '@/domain/types';
 import {
-  Badge, Banner, Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, SegmentedControl, Select,
+  Badge, Banner, Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, MoneyInput, SegmentedControl, Select,
   focusFirstInvalid,
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
@@ -27,16 +27,20 @@ interface Draft {
 type Errors = Partial<Record<'to' | 'amount' | 'kind', string>>;
 
 const KIND_OPTIONS: { value: RuleKind; label: string }[] = [
-  { value: 'fixed', label: '정한 금액' },
-  { value: 'auto', label: '필요한 만큼' },
-  { value: 'remainder', label: '나머지 전부' },
+  { value: 'fixed', label: RULE_KIND_LABEL.fixed },
+  { value: 'auto', label: RULE_KIND_LABEL.auto },
+  { value: 'remainder', label: RULE_KIND_LABEL.remainder },
 ];
+
+/** 받는 통장이 생활비 · 용돈이면 '알아서 맞추기'가 기본, 아니면 '매달 같은 금액' */
+const AUTO_ONLY_MESSAGE = '알아서 맞추기는 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요';
 
 const kindOf = (r: AllocationRule): RuleKind => (isRemainderRule(r) ? 'remainder' : isAutoRule(r) ? 'auto' : 'fixed');
 
 /**
- * 매달 배분: 보내는 통장 → 받는 통장 · 정한 금액 또는 나머지 전부 · 이체일.
- * 수입통장마다 합계가 수입보다 크면 경고하고, 월급날마다 어디로 얼마가 가는지 미리 보여 줘요 (PLAN 4-13)
+ * 매달 배분: 보내는 통장 → 받는 통장 · 매달 같은 금액 / 알아서 맞추기 / 남는 돈 전부 · 이체일.
+ * 줄마다 다음 배분 금액을 바로 보여 주고(알아서 맞추기는 지난달과 달라졌으면 까닭도), 누르지 않아도 다음 배분에 저절로 반영돼요.
+ * 수입통장마다 합계가 수입보다 크면 경고하고, 월급날마다 어디로 얼마가 가는지 미리 보여 줘요 (PLAN 4-13 · 4-15)
  */
 export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
   const { busy, run } = useRunner();
@@ -62,7 +66,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
     const from = ledger.incomeAccounts[0] ?? accounts[0];
     const to = accounts.find((a) => a.id !== from?.id);
     setErrors({});
-    setDraft({ id: null, fromAccountId: from?.id ?? '', toAccountId: to?.id ?? '', kind: 'fixed', amount: null, day: 1 });
+    setDraft({ id: null, fromAccountId: from?.id ?? '', toAccountId: to?.id ?? '', kind: canAutoFill(to) ? 'auto' : 'fixed', amount: null, day: 1 });
   }
   function openEdit(r: AllocationRule) {
     setErrors({});
@@ -76,7 +80,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
     if (!draft.toAccountId || draft.toAccountId === draft.fromAccountId) next.to = '보내는 통장과 다른 통장을 골라 주세요';
     if (draft.kind === 'fixed' && (draft.amount === null || draft.amount <= 0)) next.amount = '금액을 입력해 주세요';
     if (draft.kind === 'auto' && !canAutoFill(accounts.find((a) => a.id === draft.toAccountId))) {
-      next.kind = '필요한 만큼은 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요';
+      next.kind = AUTO_ONLY_MESSAGE;
     }
     if (
       draft.kind === 'remainder' &&
@@ -96,7 +100,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
       return;
     }
     const amount = draft.kind === 'fixed' ? draft.amount! : 0;
-    // 받는 통장이 생활비 · 용돈이 아니면 '필요한 만큼'은 고를 수 없어요 (이벤트통장 등은 정한 금액)
+    // 받는 통장이 생활비 · 용돈이 아니면 '알아서 맞추기'는 고를 수 없어요 (이벤트통장 등은 매달 같은 금액)
     const ok = await run(
       'save',
       async () => {
@@ -157,7 +161,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
                   </div>
                 ) : null}
                 <div className="line">
-                  <span>{x.remainder ? '이번 달 정한 금액 합계' : '이번 달 배분 합계'}</span>
+                  <span>{x.remainder ? '이번 달 배분 합계 (남는 돈 전부 빼고)' : '이번 달 배분 합계'}</span>
                   <strong>{formatWon(x.total)}</strong>
                 </div>
                 <div className="line">
@@ -166,7 +170,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
                 </div>
                 {x.remainder && x.left !== null ? (
                   <div className="line">
-                    <span>나머지 → {accountNameWithOwner(accounts, x.remainder.toAccountId)}</span>
+                    <span>남는 돈 전부 → {accountNameWithOwner(accounts, x.remainder.toAccountId)}</span>
                     <strong>{formatWon(x.left)}</strong>
                   </div>
                 ) : null}
@@ -206,36 +210,28 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
         <ul className="list">
           {rules.map((r) => {
             const label = periodLabel(r.startMonth, r.endMonth, month);
+            const rest = remainders.get(r.id);
+            const next = ruleNext(ledger.data, r, ledger.today);
+            const change = next ? ruleChangeText(next) : null;
+            const amountText = next ? `${formatMan(next.amount)}${next.auto ? ' (자동)' : ''}` : null;
+            const route = `${r.dayOfMonth}일 · ${accountNameWithOwner(accounts, r.fromAccountId)} → ${accountNameWithOwner(accounts, r.toAccountId)}`;
             return (
               <li key={r.id}>
                 <ListRow
                   icon="arrow-left-right"
-                  title={`${accountNameWithOwner(accounts, r.fromAccountId)} → ${accountNameWithOwner(accounts, r.toAccountId)}`}
+                  title={amountText ? `${route} · ${amountText}` : route}
                   subtitle={
                     <span className="st-sub">
-                      <span>매달 {r.dayOfMonth}일</span>
-                      {remainders.get(r.id)?.nextText ? (
-                        <span className={remainders.get(r.id)!.empty ? 'st-warn-text' : undefined}>{remainders.get(r.id)!.nextText}</span>
-                      ) : null}
-                      {remainders.get(r.id)?.monthlyText ? <span>{remainders.get(r.id)!.monthlyText}</span> : null}
+                      <span>{ruleKindLabel(r)}</span>
+                      {change ? <span className="st-change">{change}</span> : null}
+                      {rest?.nextText ? <span className={rest.empty ? 'st-warn-text' : undefined}>{rest.nextText}</span> : null}
+                      {rest?.monthlyText ? <span>{rest.monthlyText}</span> : null}
                       {label ? (
                         <Badge size="sm" tone="info">
                           {label}
                         </Badge>
                       ) : null}
                     </span>
-                  }
-                  trailing={
-                    isRemainderRule(r) ? (
-                      <span className="muted">나머지 전부</span>
-                    ) : isAutoRule(r) ? (
-                      <span className="st-trail">
-                        <Money amount={ruleAmountIn(ledger.data, r, month)} />
-                        <span className="st-cap">필요한 만큼</span>
-                      </span>
-                    ) : (
-                      <Money amount={r.amount} />
-                    )
                   }
                   onClick={() => openEdit(r)}
                 />
@@ -282,7 +278,12 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
             <Field label="받는 통장" error={errors.to}>
               <Select
                 value={draft.toAccountId}
-                onChange={(v) => setDraft({ ...draft, toAccountId: v })}
+                onChange={(v) => {
+                  // 새 배분은 받는 통장에 따라 기본 방식을 바꿔요 (생활비 · 용돈 → 알아서 맞추기)
+                  const auto = canAutoFill(accounts.find((a) => a.id === v));
+                  const kind = draft.id ? draft.kind : auto && draft.kind === 'fixed' && draft.amount === null ? 'auto' : !auto && draft.kind === 'auto' ? 'fixed' : draft.kind;
+                  setDraft({ ...draft, toAccountId: v, kind });
+                }}
                 options={accountOptions}
                 placeholder="통장 고르기"
               />
@@ -321,7 +322,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
               <p className="st-desc">
                 {autoTarget
                   ? '그 배분이 채우는 한 달(이번 배분일 ~ 다음 배분일 전날)에 이 통장에서 나갈 고정비 · 세부 항목 · 할부와 생활비 항목 예산을 더해 보내요. 금액은 그날 기록될 때 정해져요.'
-                  : '필요한 만큼은 생활비 · 용돈 통장으로 보낼 때만 고를 수 있어요.'}
+                  : `${AUTO_ONLY_MESSAGE}.`}
               </p>
             ) : (
               <p className="st-desc">
@@ -365,7 +366,7 @@ export function RulesCard({ ledger }: { ledger: ReadyLedger }) {
   );
 }
 
-/** 월급날마다 어디로 얼마가 가는지 한 줄씩 ('21일: 297만 → 생활비(가람) 82.8만 · 나머지 36.94만 → 저수지') */
+/** 월급날마다 어디로 얼마가 가는지 한 줄씩 ('21일: 297만 → 생활비(가람) 82.8만 · 남는 돈 전부 36.94만 → 저수지') */
 function PaydayPreview({ ledger, sourceAccountId }: { ledger: ReadyLedger; sourceAccountId: string }) {
   const month = monthOf(ledger.today);
   const lines = paydayPreviewLines(ledger.data, month, sourceAccountId);
@@ -385,12 +386,12 @@ function PaydayPreview({ ledger, sourceAccountId }: { ledger: ReadyLedger; sourc
             <span>{l.text}</span>
             {p?.auto.map((a) => (
               <span key={a.rule.id} className="st-hint-line">
-                {nameOf(a.rule.toAccountId)} 자동 {formatWon(a.amount)} = {a.need ? needBreakdownText(a.need) : ''}
+                {nameOf(a.rule.toAccountId)} 알아서 맞추기 {formatWon(a.amount)} = {a.need ? needBreakdownText(a.need) : ''}
               </span>
             ))}
             {rest?.nextText ? <span className={rest.empty ? 'st-payday-warn' : 'st-hint-line'}>{rest.text}</span> : null}
             {rest?.monthlyText ? <span className="st-hint-line">{rest.monthlyText}</span> : null}
-            {l.short > 0 ? <span className="st-payday-warn">정한 금액과 자동이 그날 들어온 돈보다 {formatWon(l.short)} 많아요</span> : null}
+            {l.short > 0 ? <span className="st-payday-warn">매달 같은 금액과 알아서 맞추기가 그날 들어온 돈보다 {formatWon(l.short)} 많아요</span> : null}
           </li>
         );
       })}
