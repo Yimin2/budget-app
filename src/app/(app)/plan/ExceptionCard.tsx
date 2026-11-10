@@ -146,12 +146,14 @@ export function ExceptionCard({ data, today, candidates, before, after, draft, o
           </div>
 
           <div className={styles.applyRow}>
-            <Button icon="check" onClick={() => void save()} loading={busy} disabled={!previewing}>
-              저장
-            </Button>
-            <Button variant="outline" onClick={() => onChange({})} disabled={busy || !previewing}>
-              되돌리기
-            </Button>
+            <div className={styles.applyBtns}>
+              <Button variant="outline" onClick={() => onChange({})} disabled={busy || !previewing}>
+                되돌리기
+              </Button>
+              <Button icon="check" onClick={() => void save()} loading={busy} disabled={!previewing}>
+                저장
+              </Button>
+            </div>
             <p className={styles.applyNote}>
               {previewing ? `${changes.length}건을 바꿔 봤어요. 누르기 전에는 저장하지 않아요` : '아직 바꾼 것이 없어요'}
             </p>

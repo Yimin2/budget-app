@@ -8,6 +8,7 @@ import type { ReadyLedger } from "../_components/RequireLedger";
 import { IncomePlansCard } from "../settings/sections/IncomePlansCard";
 import { RulesCard } from "../settings/sections/RulesCard";
 import { paydayFlows, type FlowKind, type PaydayFlow } from "./flow";
+import { ReadOnly } from "./ReadOnly";
 import { useHashOpen } from "./useHashOpen";
 import styles from "./budget.module.css";
 
@@ -38,7 +39,7 @@ function barStyle(amount: number, scale: number): CSSProperties {
  * 예산 맨 위 '월급날 돈 흐름' (작업정리 8-3): 월급날마다 월급통장 → 받는 통장 막대, 길이 · 굵기 = 금액.
  * 그림은 보조라 화면 읽기 프로그램에는 같은 내용의 표를 읽어 줘요. [배분 고치기]를 누르면 같은 자리에 수입 계획 · 매달 배분이 펼쳐져요
  */
-export function MoneyFlow({ ledger }: { ledger: ReadyLedger }) {
+export function MoneyFlow({ ledger, readOnly = false }: { ledger: ReadyLedger; readOnly?: boolean }) {
   const month = monthOf(ledger.today);
   const flows = paydayFlows(ledger.data, month);
   const multiSource = new Set(flows.map((f) => f.sourceId)).size > 1;
@@ -49,8 +50,9 @@ export function MoneyFlow({ ledger }: { ledger: ReadyLedger }) {
     <div className="stack gap-4">
       {flows.length === 0 ? (
         <p className="st-desc">
-          아직 월급날 배분이 없어요. 아래 [배분 고치기]에서 수입 계획과 매달
-          배분을 정해 주세요.
+          {readOnly
+            ? "이 달에는 월급날 배분이 없어요."
+            : "아직 월급날 배분이 없어요. 아래 [배분 고치기]에서 수입 계획과 매달 배분을 정해 주세요."}
         </p>
       ) : (
         <div className={styles.flowGrid}>
@@ -78,21 +80,26 @@ export function MoneyFlow({ ledger }: { ledger: ReadyLedger }) {
       ) : null}
       <div className={styles.summaryRow}>
         <p className={styles.summaryText}>
-          월급 · 매달 배분은 여기서 고쳐요. 바꾸면 위 그림과 아래 통장 카드가
-          바로 바뀌어요.
+          {readOnly
+            ? "이 달에 적용된 수입 계획과 매달 배분을 볼 수 있어요."
+            : "월급 · 매달 배분은 여기서 고쳐요. 바꾸면 위 그림과 아래 통장 카드가 바로 바뀌어요."}
         </p>
         <ExpandButton
           open={open}
           onToggle={() => setOpen((o) => !o)}
           controls={editId}
-          openLabel="배분 고치기"
+          openLabel={readOnly ? "배분 보기" : "배분 고치기"}
           label="수입 계획과 매달 배분"
         />
       </div>
       {open ? (
-        <div id={editId} className="st-grid">
-          <IncomePlansCard ledger={ledger} />
-          <RulesCard ledger={ledger} />
+        <div id={editId}>
+          <ReadOnly on={readOnly}>
+            <div className="st-grid">
+              <IncomePlansCard ledger={ledger} />
+              <RulesCard ledger={ledger} />
+            </div>
+          </ReadOnly>
         </div>
       ) : (
         <div id={editId} hidden />

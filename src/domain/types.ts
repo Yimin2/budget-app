@@ -380,6 +380,11 @@ export interface LedgerSettings {
    * 가계부에 저장돼 함께 쓰는 사람에게도 다시 보이지 않아요
    */
   dismissedRecurring?: string[];
+  /**
+   * 예산 달별 보기 (작업정리 13): [전달 복사]로 준비한 다음 달 ('YYYY-MM'). 설정 키 '준비한달', 빈 값 = 준비 안 함.
+   * 이번 달의 다음 달과 같을 때만 '준비됨'이에요 (달이 바뀌면 지난 값은 저절로 뜻이 없어져요)
+   */
+  preparedMonth?: YearMonth | null;
 }
 
 export interface LedgerData {

@@ -10,6 +10,7 @@ import type { TripInput } from '@/domain/trips';
 import type { InstallmentInput, InstallmentPatch } from '@/domain/installments';
 import type { ImportFile, ImportPlan } from '@/domain/importFile';
 import type { Settlement } from '@/domain/settlement';
+import type { BudgetTable } from '@/domain/budgetMonth';
 import type { CategoryMergePlan } from '@/domain/categoryMerge';
 import type { LedgerRef } from '@/storage/types';
 import type { DirectOpenResult, InviteOpenResult } from './invite';
@@ -340,11 +341,18 @@ export interface LedgerApi {
   /** 고정비 끝내기: end = 해지일 (그 뒤 시작하는 행은 지움), null = 모든 행 지우기 */
   endFixedSeries(seriesId: Id, end: ISODate | null): Promise<void>;
   /** 수입 계획 추가 (PLAN 4-13). 받는 날이 지난 이번 달 회차는 바로 기록해요 */
-  addIncomePlan(input: Omit<IncomePlan, 'id' | 'deleted'>): Promise<IncomePlan>;
+  addIncomePlan(input: Omit<IncomePlan, 'id' | 'deleted'> & { id?: string }): Promise<IncomePlan>;
   /** 수입 계획 고치기 · 지우기 (deleted). 이미 생긴 수입 기록은 그대로 */
   saveIncomePlan(plan: IncomePlan): Promise<void>;
   saveFixed(fixed: FixedExpense): Promise<void>;
-  addFixed(input: Omit<FixedExpense, 'id' | 'deleted'>): Promise<FixedExpense>;
+  addFixed(input: Omit<FixedExpense, 'id' | 'deleted'> & { id?: string }): Promise<FixedExpense>;
+  // 예산 달별 보기 (작업정리 13)
+  /** [전달 복사]: 이번 달 예산 중 다음 달에도 이어지는 행을 이번 달로 끝내고 '<id>@<다음 달>' 행을 다음 달부터 (설정 '준비한달' = 다음 달) */
+  prepareNextMonth(): Promise<void>;
+  /** [초기화]: 다음 달 표시가 붙은 행을 지우고 앞 행의 끝을 되돌려요 — 다시 이번 달 예산이 이어져요 (설정 '준비한달' 비움) */
+  resetNextMonth(): Promise<void>;
+  /** 다음 달 화면에서 고치기 전에 이번 달과 걸친 행을 나눠요. 다음 달 행 id (나눌 것이 없으면 그대로) */
+  splitForNextMonth(table: BudgetTable, rowId: Id): Promise<Id>;
   saveCategory(category: Category): Promise<void>;
   /**
    * 카테고리를 delta 칸 옮겨요 (-1 = 위로, +1 = 아래로). 순서(order)를 0..n-1 로 다시 매기고 바뀐 행만 한 번에 저장해요.

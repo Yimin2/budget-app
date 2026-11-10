@@ -680,6 +680,12 @@
   flex-direction: column;
   gap: var(--space-2);
 }
+/* 되돌리기 · 저장을 한데 묶어 오른쪽 끝에 (저장이 맨 끝) */
+.applyBtns {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
 .applyNote {
   margin: 0;
   font-size: 14px;

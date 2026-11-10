@@ -12,6 +12,9 @@ import { InstallmentCard } from '../settings/sections/InstallmentCard';
 import { LivingCard } from '../settings/sections/LivingCard';
 import { OwnerTabs, ownerGroups, ownerKeyOf, useOwnerFilter } from '../settings/sections/OwnerTabs';
 import { accountMoney, type AccountMoney, type FlowKind } from './flow';
+import { INSTALLMENT_THIS_MONTH } from './monthLedger';
+import { ReadOnly } from './ReadOnly';
+import type { BudgetMonthKind } from '@/domain';
 import { useHashOpen } from './useHashOpen';
 import styles from './budget.module.css';
 
@@ -41,7 +44,16 @@ interface OutRows {
  * 들어오는 돈(배분 금액 · 날짜)과 나가는 돈(고정비 · 할부 · 생활비 예산 합)을 접힌 요약으로, 펼치면 그 자리에서 항목을 고쳐요.
  * 항목 고치기는 예전 카드(FixedCard · InstallmentCard · LivingCard)를 그 통장으로 좁혀 그대로 써요 — 항목은 한 곳에만 보여요
  */
-export function AccountCards({ ledger }: { ledger: ReadyLedger }) {
+export function AccountCards({
+  ledger,
+  readOnly = false,
+  kind = 'current',
+}: {
+  ledger: ReadyLedger;
+  /** 지난 달 · 준비하지 않은 다음 달: 펼쳐도 보기만 (작업정리 13) */
+  readOnly?: boolean;
+  kind?: BudgetMonthKind;
+}) {
   const month = monthOf(ledger.today);
   const data = ledger.data;
   const fixed = data.fixedExpenses;
@@ -92,11 +104,13 @@ export function AccountCards({ ledger }: { ledger: ReadyLedger }) {
               money={accountMoney(data, a.id, month, ledger.today)}
               rows={rows}
               anchor={a.id === anchorId}
+              readOnly={readOnly}
+              installmentsReadOnly={readOnly || kind !== 'current'}
             />
           );
         })}
       </div>
-      <LivingCard ledger={ledger} extras />
+      {kind === 'current' ? <LivingCard ledger={ledger} extras /> : null}
     </div>
   );
 }
@@ -107,12 +121,16 @@ function AccountCard({
   money,
   rows,
   anchor,
+  readOnly,
+  installmentsReadOnly,
 }: {
   ledger: ReadyLedger;
   account: Account;
   money: AccountMoney;
   rows: OutRows;
   anchor: boolean;
+  readOnly: boolean;
+  installmentsReadOnly: boolean;
 }) {
   const [inOpen, setInOpen] = useState(false);
   const headId = `bd-acc-${account.id}`;
@@ -168,7 +186,7 @@ function AccountCard({
             })}
             <li>
               <a className={styles.inlineLink} href="#st-rules">
-                배분 고치기
+                {readOnly ? '배분 보기' : '배분 고치기'}
               </a>
             </li>
           </ul>
@@ -198,7 +216,9 @@ function AccountCard({
                 count={money.billCount}
                 amount={money.bills}
               >
-                <FixedCard ledger={ledger} accountId={account.id} />
+                <ReadOnly on={readOnly}>
+                  <FixedCard ledger={ledger} accountId={account.id} />
+                </ReadOnly>
               </OutRow>
             ) : null}
             {rows.installments ? (
@@ -210,12 +230,16 @@ function AccountCard({
                 count={money.installmentCount}
                 amount={money.installments}
               >
-                <InstallmentCard ledger={ledger} accountId={account.id} />
+                <ReadOnly on={installmentsReadOnly} note={readOnly ? undefined : INSTALLMENT_THIS_MONTH}>
+                  <InstallmentCard ledger={ledger} accountId={account.id} />
+                </ReadOnly>
               </OutRow>
             ) : null}
             {rows.living ? (
               <OutRow id={anchor ? 'st-living' : undefined} baseId={`${headId}-living`} name={name} label="생활비 예산" amount={money.living}>
-                <LivingCard ledger={ledger} accountId={account.id} />
+                <ReadOnly on={readOnly}>
+                  <LivingCard ledger={ledger} accountId={account.id} />
+                </ReadOnly>
               </OutRow>
             ) : null}
           </div>

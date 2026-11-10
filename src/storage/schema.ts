@@ -777,6 +777,15 @@ export const SETTINGS_DEFS: SettingDef[] = [
       },
     },
   },
+  // 예산 달별 보기: [전달 복사]로 준비한 다음 달 'YYYY-MM'. 빈 값 = 준비 안 함 (작업정리 13)
+  {
+    field: 'preparedMonth',
+    key: '준비한달',
+    codec: {
+      enc: (v) => (typeof v === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(v) ? v : ''),
+      dec: (c) => (isBlank(c) ? undefined : (toYearMonth(c) ?? undefined)),
+    },
+  },
 ];
 
 export const DEFAULT_SETTINGS: LedgerSettings = {
