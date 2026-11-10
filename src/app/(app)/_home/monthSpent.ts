@@ -81,7 +81,7 @@ function spentFrom(data: LedgerData, month: string, ids: ReadonlySet<Id>): Won {
 
 /**
  * 홈 '이번 달 쓴 돈'. 보이는 사람(livingAccountId, null = 모두 합쳐)의 기타 · 용돈과 이벤트통장.
- * 줄마다 보일 게 없으면 null: 기타는 0건, 용돈은 통장이 없거나 쓴 돈 · 잔액이 모두 0, 이벤트통장은 통장이 없거나 셋 다 0
+ * 줄이 없으면 null: 기타는 0건, 용돈은 그 사람 용돈 통장이 없을 때, 이벤트통장은 통장이 없을 때
  */
 export function monthSpent(
   data: LedgerData,
@@ -111,7 +111,7 @@ export function monthSpent(
   const allowanceSpent = spentFrom(data, month, new Set(allowanceIds));
   const allowanceBalance = allowanceIds.reduce((s, id) => s + (input.balances[id] ?? 0), 0);
   const allowance: MonthSpentAllowance | null =
-    allowanceIds.length > 0 && (allowanceSpent !== 0 || allowanceBalance !== 0)
+    allowanceIds.length > 0
       ? {
           spent: allowanceSpent,
           balance: allowanceBalance,
@@ -129,13 +129,17 @@ export function monthSpent(
     const spent = spentFrom(data, month, new Set([eventId]));
     const contribution = input.eventProjection!.monthlyContribution;
     const balance = input.balances[eventId] ?? input.eventProjection!.currentBalance;
-    if (spent !== 0 || contribution !== 0 || balance !== 0) event = { spent, contribution, balance, href: '/plan' };
+    event = { spent, contribution, balance, href: '/plan' };
   }
 
   return { etc, allowance, event };
 }
 
-/** 카드를 보일지: 줄이 하나라도 있으면 */
+/** 카드를 보일지: 0 이 아닌 금액이 있는 줄이 하나라도 있으면 (줄이 모두 없거나 모두 0원이면 숨겨요) */
 export function hasMonthSpent(s: MonthSpent): boolean {
-  return s.etc !== null || s.allowance !== null || s.event !== null;
+  return (
+    (s.etc !== null && s.etc.count > 0) ||
+    (s.allowance !== null && (s.allowance.spent !== 0 || s.allowance.balance !== 0)) ||
+    (s.event !== null && (s.event.spent !== 0 || s.event.contribution !== 0 || s.event.balance !== 0))
+  );
 }

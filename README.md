@@ -104,7 +104,8 @@
   ],
   "rules": [
     { "key": "a", "from": "salary", "to": "liv-a", "kind": "fixed", "amount": 828000, "dayOfMonth": 21, "startMonth": "2026-11" },
-    { "key": "rest21", "from": "salary", "to": "res", "kind": "remainder", "dayOfMonth": 21, "startMonth": "2026-11" }  // 나머지 전부 (amount 없음)
+    { "key": "rest21", "from": "salary", "to": "res", "kind": "remainder", "dayOfMonth": 21, "startMonth": "2026-11" },  // 나머지 전부 (amount 없음)
+    { "key": "pocket", "from": "salary", "to": "pocket-a", "kind": "auto", "dayOfMonth": 25, "startMonth": "2026-11" }   // 필요한 만큼 (amount 없음)
   ],
   "fixedExpenses": [
     { "key": "dues-a", "name": "회비", "amount": 30000, "account": "liv-a", "kind": "bill", "dayOfMonth": 5, "startMonth": "2026-11" },
@@ -112,13 +113,19 @@
     { "key": "lunch-a", "name": "직장식비", "amount": 220000, "account": "liv-a", "kind": "living", "spread": "daily",
       "useDays": "weekdays", "skipHolidays": true, "startMonth": "2026-11" },                       // 평일 · 공휴일 빼기
     { "key": "dine-a", "name": "외식", "amount": 160000, "account": "liv-a", "kind": "living", "spread": "daily",
-      "perWeek": 2, "startMonth": "2026-11" }                                                        // 주 2회
+      "perWeek": 2, "startMonth": "2026-11" },                                                       // 주 2회
+    { "key": "stream", "name": "영상 구독", "amount": 13500, "account": "liv-a", "kind": "bill",
+      "startDate": "2026-11-15", "endDate": "2027-02-10" },                                           // 시작일 · 해지일 (결제일 = 15일)
+    { "key": "club", "name": "회비", "account": "liv-a", "kind": "bill", "dayOfMonth": 21, "startMonth": "2026-11",
+      "subItems": [{ "name": "정기 모임", "amount": 40000 },
+                   { "name": "연말 행사", "amount": 30000, "startDate": "2026-12-01", "endDate": "2026-12-31" }] } // 세부 항목
   ]
 }
 ```
 
 - `incomePlans`: 받는 날마다 수입이 자동으로 기록돼요(`income:<계획id>:<월>`). 같은 월급을 `transfers` 나 `salary` 로 또 넣지 마세요
-- `rules[].kind`: `fixed`(기본, `amount` 필요) · `remainder`(그날 정한 금액을 보낸 뒤 남은 돈 전부, `amount` 는 비우거나 0). 같은 통장 · 같은 날 `remainder` 는 하나만
+- `rules[].kind`: `fixed`(기본, `amount` 필요) · `auto`(필요한 만큼: 그 배분이 채우는 한 달의 고정비 · 세부 항목 · 할부 + 생활비 항목 예산, 생활비 · 용돈 통장으로만, `amount` 는 비우거나 0) · `remainder`(그날 정한 금액 · 자동을 보낸 뒤 남은 돈 전부, `amount` 는 비우거나 0). 같은 통장 · 같은 날 `remainder` 는 하나만
+- 고정비 (`kind: "bill"` · `"allowance"`, 모두 선택): `startDate`(이날 이후 첫 결제일부터) · `endDate`(해지 · 만기일, 이날 이전 마지막 결제일까지) · `subItems`(`[{ "name", "amount", "startDate"?, "endDate"? }]`, 있으면 결제 금액 = 그 결제일에 살아 있는 항목 합이라 `amount` 는 비워도 돼요). `startDate` 가 있으면 `startMonth` · `dayOfMonth` 를 비워도 돼요 (첫 결제 달 · 시작일의 날). 시작월 · 종료월은 첫 · 마지막 결제 달로 맞춰요 (PLAN 4-15)
 - 사람별 생활비 · 용돈 통장은 통장의 `ownerName` · `ownerEmail` 로, 생활비 예산 · 고정비는 그 통장(`account`)으로 적어요
 - 생활비 쓰는 날 (`kind: "living"` · `spread: "daily"` 만, 모두 선택): `useDays` = `"every"`(기본) · `"weekdays"` · `"weekends"` · `["mon", "wed", "fri"]`, `skipHolidays` = `true` 면 공휴일 · 쉬는 날 빼기, `perWeek` = 1~7 (있으면 주 N회로 나누고 `useDays` · `skipHolidays` 는 안 봐요). 비우면 매일이라 예전 파일과 똑같아요
 

@@ -190,3 +190,40 @@ describe('HomeView — 새 가계부', () => {
     expect(screen.getByRole('link', { name: '가계부 고르기' }).getAttribute('href')).toBe('/start');
   });
 });
+
+describe('HomeView — 이번 달 쓴 돈 (부부 예시)', () => {
+  const JUNHO = 'demo-acc-living-junho';
+
+  it('항목별 생활비 아래에 보이는 사람의 기타 · 용돈과 이벤트통장, 사람을 바꾸면 따라가요', async () => {
+    const h = makeHarness({ couple: true });
+    await act(async () => {
+      render(<HomeView />, { wrapper: h.Wrapper });
+    });
+    const card = await screen.findByRole('region', { name: '이번 달 쓴 돈 · 민지' });
+    const items = screen.getByRole('region', { name: '항목별 생활비 · 민지' });
+    expect(items.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // 민지: 기타 지출은 없고, 용돈은 제주 항공권 청구로 잔액 0원, 이벤트통장은 숙소 예약금 15만 + 항공권 청구 30만
+    expect(within(card).queryByRole('link', { name: /기타/ })).toBeNull();
+    expect(within(card).getByRole('link', { name: /용돈/ }).textContent).toContain('0원 썼어요 · 남은 돈 0원');
+    const event = within(card).getByRole('link', { name: /이벤트통장/ });
+    expect(event.textContent).toContain('45만 썼어요 · 적립 30만 · 잔액 45만');
+    expect(event.getAttribute('href')).toBe('/plan');
+
+    // 준호의 생활비 통장에 카테고리 없는 지출, 용돈 통장에 지출
+    const ledger = () => h.probe.ledger!;
+    await act(async () => {
+      await ledger().addExpense({ date: '2026-11-20', amount: 23_400, accountId: JUNHO, categoryId: null, memo: '기타' });
+      await ledger().addExpense({ date: '2026-11-20', amount: 40_000, accountId: 'demo-acc-allowance-junho', categoryId: null, memo: '용돈' });
+    });
+    fireEvent.click(screen.getByRole('radio', { name: '준호' }));
+    const his = await screen.findByRole('region', { name: '이번 달 쓴 돈 · 준호' });
+    const etc = within(his).getByRole('link', { name: /기타/ });
+    expect(etc.textContent).toContain('23,400원 · 1건');
+    expect(etc.getAttribute('href')).toBe(`/history?month=2026-11&account=${JUNHO}`);
+    const allowance = within(his).getByRole('link', { name: /용돈/ });
+    expect(allowance.textContent).toContain('4만 썼어요 · 남은 돈 18.6만');
+    expect(allowance.getAttribute('href')).toBe('/history?tab=accounts&id=demo-acc-allowance-junho');
+    expect(within(his).getByRole('link', { name: /이벤트통장/ }).textContent).toContain('45만 썼어요');
+  });
+});
