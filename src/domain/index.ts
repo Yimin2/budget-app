@@ -35,3 +35,4 @@ export * from './compromise';
 export * from './usualBreakdown';
 export * from './budgetMonth';
 export * from './suggestions';
+export * from './stats';

@@ -18,6 +18,7 @@ import { HistoryScreen, historyHref, parseHistoryTab } from './HistoryScreen';
 beforeEach(() => {
   nav.params = new URLSearchParams();
   nav.router.replace.mockClear();
+  nav.router.push.mockClear();
 });
 afterEach(cleanup);
 
@@ -46,6 +47,25 @@ describe('내역 화면', () => {
     expect(await screen.findByRole('region', { name: '2026년 11월 지출 목록' })).toBeTruthy();
     fireEvent.click(within(tabs).getByRole('radio', { name: '통장 잔액' }));
     expect(nav.router.replace).toHaveBeenCalledWith('/history?tab=accounts', { scroll: false });
+  });
+
+  it('맨 위 [내역 · 통계]: 내역이 골라져 있고 통계를 누르면 /history/stats 로', async () => {
+    await open();
+    const views = screen.getByRole('radiogroup', { name: '내역 · 통계' });
+    expect(within(views).getAllByRole('radio').map((r) => r.textContent)).toEqual(['내역', '통계']);
+    expect(within(views).getByRole('radio', { name: '내역' }).getAttribute('aria-checked')).toBe('true');
+    // [내역 · 통계]가 [지출 · 이체 · 통장 잔액]보다 위
+    const tabs = screen.getByRole('radiogroup', { name: '내역 종류' });
+    expect(views.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(views).getByRole('radio', { name: '통계' }));
+    expect(nav.router.push).toHaveBeenCalledWith('/history/stats', { scroll: false });
+    cleanup();
+    // 이체 · 통장 잔액 탭에도 있고, 통장 하나(&id=)에서는 숨겨요
+    await open('tab=transfers');
+    expect(screen.getByRole('radiogroup', { name: '내역 · 통계' })).toBeTruthy();
+    cleanup();
+    await open('tab=accounts&id=demo-acc-event');
+    expect(screen.queryByRole('radiogroup', { name: '내역 · 통계' })).toBeNull();
   });
 
   it('이체 탭: 수입 · 이체 기록을 달마다 보여 주고 눌러서 자세히 봐요', async () => {

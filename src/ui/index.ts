@@ -18,6 +18,7 @@ export { ToastProvider, useToast, type ToastApi, type ToastOptions, type ToastTo
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { Spinner, LoadingBlock, Skeleton, type SpinnerProps, type SkeletonProps } from './Spinner';
 export { ProgressBar, type ProgressBarProps } from './ProgressBar';
+export { Donut, donutColor, type DonutProps, type DonutPart } from './Donut';
 export { Money, type MoneyProps } from './Money';
 export { SignalIcon, VerdictCard, SIGNAL_LABEL, type SignalIconProps, type VerdictCardProps } from './Verdict';
 export { StatTile, type StatTileProps } from './StatTile';
