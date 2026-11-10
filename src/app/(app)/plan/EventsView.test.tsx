@@ -34,6 +34,31 @@ describe('EventsView — 체험 가계부', () => {
     expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
   });
 
+  it('평소 쓰는 돈과 적립: 처음에는 한 줄 요약 + 작은 도넛, [자세히]로 같은 자리에서 막대 · 도넛 · 항목별 표', async () => {
+    const h = await renderEvents();
+    await act(async () => {
+      await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 900_000, accountId: 'demo-acc-event', categoryId: null, memo: '갑작스런 경조사' });
+    });
+    const card = await screen.findByRole('region', { name: '평소 쓰는 돈과 적립' });
+    expect(within(card).getByTestId('usual-summary').textContent).toMatch(/이대로면 매달 .+씩 줄어요/);
+    expect(within(card).getByTestId('usual-donut-small').getAttribute('aria-label')).toMatch(/^평소 쓰는 돈 월 .+만: /);
+    expect(within(card).queryByRole('table')).toBeNull();
+    expect(within(card).queryByTestId('savings-bar')).toBeNull();
+    const toggle = within(card).getByRole('button', { name: '평소 쓰는 돈 자세히' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(within(card).getByTestId('savings-status').textContent).toMatch(/^.+만 넘어요/);
+    expect(within(card).getByTestId('usual-donut').textContent).toMatch(/^월.+만$/);
+    const table = within(card).getByRole('table');
+    const row = within(table).getByRole('button', { name: '분류 없음 지출' });
+    fireEvent.click(row);
+    expect(within(card).getByRole('list', { name: '분류 없음 지출 (최근 것 먼저)' }).textContent).toContain('갑작스런 경조사');
+    fireEvent.click(within(card).getByRole('button', { name: '평소 쓰는 돈 접기' }));
+    expect(within(card).queryByRole('table')).toBeNull();
+  });
+
   it('이번 달 정산은 한 줄 요약과 [정산하기] (→ /plan/settle), 이번 달 예측에 돌려줄 돈이 들어가요', async () => {
     const h = await renderEvents();
     const card = screen.getByRole('region', { name: '이번 달 정산' });

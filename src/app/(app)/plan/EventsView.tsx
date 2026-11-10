@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from 'react';
 import {
   effectiveExclusions,
   findExceptionCandidates,
+  formatManShort,
   formatMonthKo,
   formatWon,
   manWon,
@@ -13,7 +14,17 @@ import {
   recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { Category, CompromisePlan, EventProjection, ExclusionDraft, Id, PlannedEvent, RepayMonths, UsualInsight } from '@/domain';
+import type {
+  Category,
+  CompromisePlan,
+  EventProjection,
+  ExclusionDraft,
+  Id,
+  LedgerData,
+  PlannedEvent,
+  RepayMonths,
+  UsualInsight,
+} from '@/domain';
 import { useLedger } from '@/state';
 import {
   Button,
@@ -30,6 +41,7 @@ import {
   useToast,
 } from '@/ui';
 import { RequireLedger, SettlementCard, type ReadyLedger } from '../_components';
+import { ExpandButton } from '../_components/ExpandButton';
 import { HashTarget } from '../_components/HashTarget';
 import { AnnualCard } from './AnnualCard';
 import { CompleteDialog } from './CompleteDialog';
@@ -47,12 +59,13 @@ import {
   projectionTotals,
   sectionEvents,
   spentByEvent,
-  usualCategoriesText,
 } from './selectors';
 import { ShortagePanel } from './ShortagePanel';
 import { TripDialog } from './trips/TripDialog';
 import { TripsCard } from './trips/TripsCard';
+import { UsualDetails, UsualDonut, useUsualBreakdown } from './UsualSpendingViz';
 import styles from './events.module.css';
+import vizStyles from './usualViz.module.css';
 
 type Overlay =
   | { kind: 'add'; preset?: EventPreset }
@@ -253,6 +266,8 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
           />
           {insight ? (
             <UsualInsightCard
+              data={data}
+              projection={projection}
               insight={insight}
               today={today}
               compromise={compromise}
@@ -336,12 +351,16 @@ function SummaryCard({ projection }: { projection: EventProjection }) {
 /* ───────── 평소 쓰는 돈과 적립 (정보만, 바꾸는 버튼 없음) ───────── */
 
 function UsualInsightCard({
+  data,
+  projection,
   insight,
   today,
   compromise,
   repayMonths,
   onRepayMonths,
 }: {
+  data: LedgerData;
+  projection: EventProjection;
   insight: UsualInsight;
   today: string;
   compromise: CompromisePlan | null;
@@ -349,8 +368,11 @@ function UsualInsightCard({
   onRepayMonths: (m: RepayMonths) => void;
 }) {
   const titleId = useId();
+  const bodyId = useId();
+  const [open, setOpen] = useState(false);
   const short = Math.round(insight.gap / 1000) < 0;
-  const top = usualCategoriesText(insight.topCategories);
+  const accountId = projection.accountId ?? '';
+  const { breakdown, slices } = useUsualBreakdown(data, accountId, today, null);
   return (
     <Card as="section" className={styles.insight} aria-labelledby={titleId}>
       <div className={styles.insightHead}>
@@ -359,41 +381,63 @@ function UsualInsightCard({
           <h2 id={titleId} className={styles.insightTitle}>
             평소 쓰는 돈과 적립
           </h2>
-          <p className={cx(styles.insightMsg, short && styles.bad)}>{insight.message}</p>
+          <p className={cx(styles.insightMsg, short && styles.bad)} data-testid="usual-summary">
+            {insight.message}
+          </p>
         </div>
       </div>
-      <dl className={styles.insightFacts}>
-        <div>
-          <dt>평소 쓰는 돈 (최근 {insight.months}개월 평균)</dt>
-          <dd>매달 {manWon(insight.monthlyUsual)}</dd>
-        </div>
-        {top ? (
-          <div>
-            <dt>많이 쓰는 곳</dt>
-            <dd>{top}</dd>
-          </div>
+      <div className={vizStyles.summaryRow}>
+        <UsualDonut slices={slices} total={breakdown.monthlyTotal} size="sm" />
+        <span className={styles.foot}>평소 쓰는 돈 월 {formatManShort(breakdown.monthlyTotal)}</span>
+        <ExpandButton
+          open={open}
+          onToggle={() => setOpen((o) => !o)}
+          controls={bodyId}
+          openLabel="자세히"
+          label="평소 쓰는 돈"
+        />
+      </div>
+      <div id={bodyId} hidden={!open} className={vizStyles.details}>
+        {open ? (
+          <>
+            <UsualDetails
+              data={data}
+              accountId={accountId}
+              today={today}
+              contribution={insight.monthlyContribution}
+              usual={insight.monthlyUsual}
+              planned={insight.monthlyPlanned}
+              shortages={projection.shortages}
+            />
+            <dl className={styles.insightFacts}>
+              <div>
+                <dt>평소 쓰는 돈 (최근 {insight.months}개월 평균)</dt>
+                <dd>매달 {manWon(insight.monthlyUsual)}</dd>
+              </div>
+              <div>
+                <dt>등록한 일정 · 여행 (앞으로 매달 평균)</dt>
+                <dd>매달 {manWon(insight.monthlyPlanned)}</dd>
+              </div>
+              <div>
+                <dt>매달 적립</dt>
+                <dd>{manWon(insight.monthlyContribution)}</dd>
+              </div>
+              {insight.heaviest ? (
+                <div>
+                  <dt>작년 기록 중 가장 많이 쓴 달</dt>
+                  <dd>
+                    {formatMonthKo(insight.heaviest.month, Number(today.slice(0, 4)))} ·{' '}
+                    {manWon(insight.heaviest.amount)}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            <p className={styles.foot}>
+              일정이나 여행에 묶지 않은 이벤트통장 지출을 ‘평소 쓰는 돈’으로 셌어요. 적립액은 예산의 매달 배분에서 직접 정해요
+            </p>
+          </>
         ) : null}
-        <div>
-          <dt>등록한 일정 · 여행 (앞으로 매달 평균)</dt>
-          <dd>매달 {manWon(insight.monthlyPlanned)}</dd>
-        </div>
-        <div>
-          <dt>매달 적립</dt>
-          <dd>{manWon(insight.monthlyContribution)}</dd>
-        </div>
-        {insight.heaviest ? (
-          <div>
-            <dt>작년 기록 중 가장 많이 쓴 달</dt>
-            <dd>
-              {formatMonthKo(insight.heaviest.month, Number(today.slice(0, 4)))} ·{' '}
-              {manWon(insight.heaviest.amount)}
-            </dd>
-          </div>
-        ) : null}
-      </dl>
-      <p className={styles.foot}>
-        일정이나 여행에 묶지 않은 이벤트통장 지출을 ‘평소 쓰는 돈’으로 셌어요. 적립액은 예산의 매달 배분에서 직접 정해요
-      </p>
+      </div>
       {compromise ? <CompromisePanel plan={compromise} months={repayMonths} onMonths={onRepayMonths} /> : null}
     </Card>
   );
