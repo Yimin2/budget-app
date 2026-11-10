@@ -116,7 +116,7 @@ export function MonthEndDialog() {
         {showItems ? (
           <ul className="me-items" aria-label="항목별 남은 돈">
             {pending.items.map((i) => (
-              <li key={i.categoryId ?? ''}>
+              <li key={`${i.accountId ?? ''}|${i.categoryId ?? ''}`}>
                 <span className="name">
                   <Icon name={isIconName(i.icon) ? i.icon : 'dots'} size={16} />
                   {i.name}
@@ -135,7 +135,9 @@ export function MonthEndDialog() {
               <strong>저수지로 보내기</strong>
               <span>
                 {reservoir
-                  ? `합계 ${amountText}을 ${livingAccountName ?? '생활비 통장'} → ${reservoir.name} 이체 한 번으로 기록해요`
+                  ? ledger.livingViews.length > 1
+                    ? `사람마다 남은 생활비를 각자의 생활비 통장 → ${reservoir.name} 이체로 기록해요`
+                    : `합계 ${amountText}을 ${livingAccountName ?? '생활비 통장'} → ${reservoir.name} 이체 한 번으로 기록해요`
                   : '저수지통장이 없어서 고를 수 없어요. 설정에서 통장을 추가할 수 있어요'}
               </span>
             </div>

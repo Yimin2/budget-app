@@ -8,7 +8,18 @@ const nav = vi.hoisted(() => ({
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => nav.router, usePathname: () => '/settings' }));
 
+import BudgetPage from '../budget/page';
 import SettingsPage from './page';
+
+/** 설정과 예산을 한 번에 (예전 설정 화면 테스트를 그대로 써요) */
+function Pages() {
+  return (
+    <>
+      <SettingsPage />
+      <BudgetPage />
+    </>
+  );
+}
 
 afterEach(cleanup);
 
@@ -19,12 +30,22 @@ function card(title: string): HTMLElement {
 
 describe('설정 화면', () => {
   it('불러오는 동안 뼈대, 준비되면 섹션들', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     expect(screen.getByText('설정을 불러오는 중이에요')).toBeTruthy();
+    expect(screen.getByText('예산을 불러오는 중이에요')).toBeTruthy();
     await startDemo(h);
-    for (const title of ['가계부', '통장', '매달 배분', '생활비 예산', '고정 지출', '카테고리', '자주 쓰는 지출', '화면', '계정', '정보']) {
+    // 설정: 가계부 · 통장 · 멤버 · 기록 도우미 · 테마 · 계정
+    for (const title of ['가계부와 통장', '가계부', '통장', '멤버 · 공유', '함께 쓰는 사람', '기록 도우미', '카테고리', '자주 쓰는 지출', '파일에서 가져오기', '테마', '계정 · 가계부 바꾸기', '정보']) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy();
     }
+    // 예산: 월급과 배분 → 생활비 항목 → 고정비 · 할부 (차례 링크와 같은 순서)
+    const index = screen.getByRole('navigation', { name: '예산 차례' });
+    expect(within(index).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['#bd-income', '#bd-living', '#bd-fixed']);
+    for (const title of ['월급과 배분', '수입 계획', '매달 배분', '생활비 항목', '생활비 예산', '고정비 · 할부', '고정 지출', '할부']) {
+      expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy();
+    }
+    // 설정 화면의 예산 카드는 예산 화면에만 있어요
+
     // 사람별 수입통장마다 배분 합계 = 그 사람 수입 → 경고 없음
     const rules = card('매달 배분');
     const minji = within(rules).getByRole('group', { name: '민지 수입통장 배분' });
@@ -33,11 +54,12 @@ describe('설정 화면', () => {
     expect(within(junho).getByText('이번 달 배분 합계').nextSibling?.textContent).toBe('2,000,000원');
     expect(within(rules).queryByText(/수입보다/)).toBeNull();
     expect(screen.getByRole('radiogroup', { name: '화면 테마' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '로그아웃' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '체험 데이터 처음으로 되돌리기' })).toBeTruthy();
   });
 
   it('자주 쓰는 지출 추가 · 매달 배분 금액 바꾸기 · 이름 바꾸기', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
 
     // 자주 쓰는 지출 추가 (입력 확인 → 저장)
@@ -53,7 +75,7 @@ describe('설정 화면', () => {
 
     // 매달 배분: 이벤트 적립 30만 → 35만
     const rules = card('매달 배분');
-    fireEvent.click(within(rules).getByRole('button', { name: /수입통장 → 이벤트통장/ }));
+    fireEvent.click(within(rules).getByRole('button', { name: /수입통장.* → 이벤트통장/ }));
     dialog = screen.getByRole('dialog', { name: '매달 배분 고치기' });
     fireEvent.change(within(dialog).getByLabelText('금액'), { target: { value: '350000' } });
     expect(within(dialog).getByText(/새 금액을 적용해요/)).toBeTruthy();
@@ -71,7 +93,7 @@ describe('설정 화면', () => {
   });
 
   it('고정 지출 이번 달까지만 · 카테고리 아이콘 바꾸기', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
 
     const fixed = card('고정 지출');
@@ -95,10 +117,10 @@ describe('설정 화면', () => {
   });
 
   it('한 사람 수입통장만 넘치면 그 통장 이름으로 경고해요', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
     const rules = card('매달 배분');
-    fireEvent.click(within(rules).getByRole('button', { name: /준호 수입통장 → 고정지출통장/ }));
+    fireEvent.click(within(rules).getByRole('button', { name: /준호 수입통장.* → 고정지출통장/ }));
     const dialog = screen.getByRole('dialog', { name: '매달 배분 고치기' });
     fireEvent.change(within(dialog).getByLabelText('금액'), { target: { value: '1000000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
@@ -109,15 +131,20 @@ describe('설정 화면', () => {
   });
 
   it('다른 사람 수입통장 추가: 주인 이름으로 통장 이름을 지어요', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
     fireEvent.click(within(card('통장')).getByRole('button', { name: '다른 사람 수입통장 추가' }));
     const dialog = screen.getByRole('dialog', { name: '수입통장 추가' });
-    fireEvent.change(within(dialog).getByLabelText(/^주인(?! 이메일)/), { target: { value: '서연' } });
-    fireEvent.change(within(dialog).getByLabelText(/주인 이메일/), { target: { value: 'nope' } });
+    // 함께 쓰는 사람이 아니면 '직접 입력'으로 이름과 이메일을 적어요
+    const owner = within(dialog).getByRole('combobox', { name: /^주인/ }) as HTMLSelectElement;
+    expect([...owner.options].map((o) => o.text)).toEqual(['함께 쓰는 통장 (주인 없음)', '민지 · minji@demo', '준호 · junho@demo', '직접 입력']);
+    fireEvent.change(owner, { target: { value: '__manual__' } });
+    const manual = within(dialog).getByRole('group', { name: '주인 직접 입력' });
+    fireEvent.change(within(manual).getByLabelText(/이름/), { target: { value: '서연' } });
+    fireEvent.change(within(manual).getByLabelText(/이메일/), { target: { value: 'nope' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
     expect(within(dialog).getByText('이메일 주소를 확인해 주세요')).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText(/주인 이메일/), { target: { value: 'seo@x.com' } });
+    fireEvent.change(within(manual).getByLabelText(/이메일/), { target: { value: 'seo@x.com' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const added = current(h).ledger.data!.accounts.find((a) => a.name === '서연 수입통장');
@@ -125,8 +152,42 @@ describe('설정 화면', () => {
     expect(current(h).ledger.incomeAccounts).toHaveLength(3);
   });
 
+  it('통장 주인: 함께 쓰는 사람을 고르면 이름과 이메일이 함께 채워져요', async () => {
+    const h = renderApp(<Pages />);
+    await startDemo(h);
+    fireEvent.click(within(card('통장')).getByRole('button', { name: '통장 추가' }));
+    const dialog = screen.getByRole('dialog', { name: '통장 추가' });
+    fireEvent.change(within(dialog).getByLabelText(/^이름/), { target: { value: '여행 적금' } });
+    const owner = within(dialog).getByRole('combobox', { name: /^주인/ }) as HTMLSelectElement;
+    expect(owner.value).toBe('');
+    fireEvent.change(owner, { target: { value: 'junho@demo' } });
+    expect(within(dialog).queryByRole('group', { name: '주인 직접 입력' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const added = current(h).ledger.data!.accounts.find((a) => a.name === '여행 적금');
+    expect(added).toMatchObject({ ownerName: '준호', ownerEmail: 'junho@demo' });
+    // 목록에도 이름과 이메일이 함께 보여요
+    expect(within(card('통장')).getByText('준호 · junho@demo')).toBeTruthy();
+  });
+
+  it('용돈 받는 사람: 함께 쓰는 사람에서 골라요', async () => {
+    const h = renderApp(<Pages />);
+    await startDemo(h);
+    fireEvent.click(within(card('고정 지출')).getByRole('button', { name: '고정 지출 추가' }));
+    const dialog = screen.getByRole('dialog', { name: '고정 지출 추가' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: '용돈' }));
+    fireEvent.change(within(dialog).getByLabelText(/^이름/), { target: { value: '간식비' } });
+    fireEvent.change(within(dialog).getByLabelText(/^금액/), { target: { value: '50000' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    expect(within(dialog).getByText('받는 사람을 골라 주세요')).toBeTruthy();
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /^받는 사람/ }), { target: { value: 'junho@demo' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(current(h).ledger.data!.fixedExpenses.find((f) => f.name === '간식비')).toMatchObject({ kind: 'allowance', targetEmail: 'junho@demo' });
+  });
+
   it('생활비 예산: 항목 추가 · 쓰는 방식 · 예전 생활비 한 줄을 항목으로 나누기', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
     const living = card('생활비 예산');
     expect(within(living).getByRole('button', { name: /식비/ })).toBeTruthy();
@@ -178,7 +239,7 @@ describe('설정 화면', () => {
   });
 
   it('할부: 회차 · 남은 금액을 보여 주고, 미리 갚으면 다음 회차부터 줄어요', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
     const inst = card('할부');
     expect(within(inst).getByText('TV 할부')).toBeTruthy();
@@ -197,7 +258,7 @@ describe('설정 화면', () => {
   });
 
   it('할부 고치기: 언제부터를 바꾸면 남은 회차도 그 달부터 다시 세서 전체 회차가 늘지 않아요', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
     fireEvent.click(within(card('할부')).getByRole('button', { name: /TV 할부/ }));
     const dialog = screen.getByRole('dialog', { name: 'TV 할부' });
@@ -211,7 +272,7 @@ describe('설정 화면', () => {
   });
 
   it('끝난 할부도 열어서 지울 수 있어요', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
     await act(async () => {
       await current(h).ledger.endInstallment('demo-installment-tv');
@@ -226,7 +287,7 @@ describe('설정 화면', () => {
   });
 
   it('할부 추가: 총액과 개월로 매달 금액을 보여 줘요', async () => {
-    const h = renderApp(<SettingsPage />);
+    const h = renderApp(<Pages />);
     await startDemo(h);
     fireEvent.click(screen.getByRole('button', { name: '할부 추가' }));
     const dialog = screen.getByRole('dialog', { name: '할부 추가' });

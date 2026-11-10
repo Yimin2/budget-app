@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { useId, useState } from 'react';
-import { formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord } from '@/domain';
-import type { Account, Favorite, LivingItem, LivingStatus } from '@/domain';
+import { formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, withSubject } from '@/domain';
+import type { Favorite, LivingItem, LivingStatus, LivingView } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import {
   AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
-  useToast, cx, ACCOUNT_ROLE_ICON, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
+  SegmentedControl, useToast, cx, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
 } from '@/ui';
 import { ClaimsCard, LedgerSwitcher } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
@@ -15,7 +15,7 @@ import { ProjectionChart } from './ProjectionChart';
 import { errorMessage, expenseTitle, recentExpenses, shortageBannerText, upcomingEvents } from './selectors';
 import styles from './home.module.css';
 
-/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 이벤트통장 · 최근 지출 */
+/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 부족 알림 · 이벤트통장 · 최근 지출 (통장 잔액은 내역) */
 export function HomeView() {
   const ledger = useLedger();
   const session = useSession();
@@ -57,32 +57,50 @@ export function HomeView() {
 function HomeBody() {
   const ledger = useLedger();
   const data = ledger.data!;
-  const living = ledger.living;
   const banner = shortageBannerText(ledger.eventProjection, ledger.today);
   // 1280px 이상은 최근 지출이 왼쪽 칸, 그보다 좁으면 부족 알림 · 이벤트통장 뒤 (읽는 순서 = 보이는 순서)
   const wide = useMediaQuery(WIDE_QUERY);
+  // 사람별 생활비 (PLAN 4-14): 기본은 나, 다른 사람으로 바꿔 볼 수 있어요
+  const [viewId, setViewId] = useState<string | null>(null);
+  const views = ledger.livingViews;
+  const multi = views.length > 1;
+  const selected = multi
+    ? (views.find((v) => v.accountId === (viewId ?? ledger.myLivingAccountId)) ?? views[0]!)
+    : null;
+  const living = selected ? selected.status : ledger.living;
+  const person = selected ? { view: selected, isMe: selected.accountId === ledger.myLivingAccountId } : null;
 
   return (
     <>
       <div className={styles.col}>
-        {living && hasLivingBudget(living) ? <TodayCard living={living} /> : <LivingSetupCard />}
+        {living && hasLivingBudget(living) ? (
+          <TodayCard
+            living={living}
+            person={person}
+            views={multi ? views : []}
+            myAccountId={ledger.myLivingAccountId}
+            household={multi ? ledger.living : null}
+            onPick={setViewId}
+          />
+        ) : (
+          <LivingSetupCard />
+        )}
         <Button href="/check" size="lg" block icon="cart" className={styles.oCta}>
           사도 돼? 확인하기
         </Button>
         <FavoriteChips favorites={data.favorites} />
-        {living && living.items.length > 0 ? <LivingItemsCard living={living} /> : null}
+        {living && living.items.length > 0 ? <LivingItemsCard living={living} owner={selected?.name ?? null} /> : null}
         {wide ? <RecentExpenses /> : null}
       </div>
       <div className={styles.col}>
         {banner ? (
-          <Banner tone="warning" title={banner.title} action={{ label: '대처하기', href: '/events' }} className={styles.oBanner}>
+          <Banner tone="warning" title={banner.title} action={{ label: '대처하기', href: '/plan' }} className={styles.oBanner}>
             {banner.description}
           </Banner>
         ) : null}
         <ClaimsCard className={styles.oClaims} />
         <EventAccountCard />
         {wide ? null : <RecentExpenses />}
-        <BalancesCard />
       </div>
     </>
   );
@@ -96,7 +114,28 @@ function useCardTitle(text: string) {
 
 /* ───────── 오늘 써도 되는 돈 ───────── */
 
-function TodayCard({ living }: { living: LivingStatus }) {
+/** 한 사람(생활비 통장)의 큰 숫자: 하루 항목이 있으면 오늘 써도 되는 돈, 없으면 이번 달 남은 생활비 */
+function headline(living: LivingStatus): number {
+  return living.items.some((i) => i.spread === 'daily') ? living.todayAvailable : living.remaining;
+}
+
+function TodayCard({
+  living,
+  person = null,
+  views = [],
+  myAccountId = null,
+  household = null,
+  onPick,
+}: {
+  living: LivingStatus;
+  /** 사람별 생활비일 때 지금 보는 사람 */
+  person?: { view: LivingView; isMe: boolean } | null;
+  views?: LivingView[];
+  myAccountId?: string | null;
+  /** 사람별 생활비일 때 모두 합친 생활비 */
+  household?: LivingStatus | null;
+  onPick?: (accountId: string) => void;
+}) {
   const titleId = useId();
   const daily = living.items.filter((i) => i.spread === 'daily');
   const hasDaily = daily.length > 0;
@@ -104,11 +143,29 @@ function TodayCard({ living }: { living: LivingStatus }) {
   const ratio = living.monthBudget > 0 ? living.spent / living.monthBudget : 0;
   const tone = living.remaining < 0 ? 'danger' : ratio >= 0.8 ? 'warning' : 'primary';
   const dailyNames = daily.map((i) => i.name).join(' · ');
+  const who = person ? (person.isMe ? '내가' : withSubject(person.view.name)) : null;
+  const title = hasDaily
+    ? who
+      ? `오늘 ${who} 써도 되는 돈`
+      : '오늘 써도 되는 돈'
+    : person
+      ? `${person.isMe ? '내' : `${person.view.name}의`} 이번 달 남은 생활비`
+      : '이번 달 남은 생활비';
+  const others = person ? views.filter((v) => v.accountId !== person.view.accountId) : [];
 
   return (
     <Card as="section" variant="brand" className={cx(styles.hero, styles.oHero)} aria-labelledby={titleId}>
+      {person && views.length > 1 && onPick ? (
+        <SegmentedControl<string>
+          ariaLabel="누구 생활비를 볼까요"
+          block
+          value={person.view.accountId}
+          onChange={onPick}
+          options={views.map((v) => ({ value: v.accountId, label: v.accountId === myAccountId ? `${v.name} (나)` : v.name }))}
+        />
+      ) : null}
       <h2 id={titleId} className={styles.heroLabel}>
-        {hasDaily ? '오늘 써도 되는 돈' : '이번 달 남은 생활비'}
+        {title}
       </h2>
       <Money amount={Math.max(0, hasDaily ? living.todayAvailable : living.remaining)} hero animate as="p" style={{ margin: 0 }} />
       {hasDaily && living.items.length > 1 ? <p className={styles.heroNote}>{dailyNames} 합계</p> : null}
@@ -146,6 +203,20 @@ function TodayCard({ living }: { living: LivingStatus }) {
           </span>
         </div>
       </div>
+      {person && household ? (
+        <ul className={styles.heroOthers} aria-label="다른 사람과 합계">
+          {others.map((v) => (
+            <li key={v.accountId}>
+              <span>{v.name}</span>
+              <strong>{formatWon(Math.max(0, headline(v.status)))}</strong>
+            </li>
+          ))}
+          <li>
+            <span>{views.length === 2 ? '둘이 합쳐' : '모두 합쳐'}</span>
+            <strong>{formatWon(Math.max(0, headline(household)))}</strong>
+          </li>
+        </ul>
+      ) : null}
     </Card>
   );
 }
@@ -158,14 +229,14 @@ function itemTone(i: LivingItem): 'primary' | 'warning' | 'danger' {
   return 'primary';
 }
 
-function LivingItemsCard({ living }: { living: LivingStatus }) {
-  const heading = useCardTitle('항목별 생활비');
+function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner?: string | null }) {
+  const heading = useCardTitle(owner ? `항목별 생활비 · ${owner}` : '항목별 생활비');
   return (
     <Card
       as="section"
       {...heading}
       aside={
-        <Button href="/settings#st-living" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
+        <Button href="/budget#st-living" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
           예산 바꾸기
         </Button>
       }
@@ -233,7 +304,7 @@ function LivingSetupCard() {
         생활비 예산을 정해 주세요
       </h2>
       <p className={styles.setupText}>식비·카페처럼 항목마다 예산을 정하면 오늘 써도 되는 돈을 매일 계산해 드려요.</p>
-      <Button href="/settings#st-living" icon="settings">
+      <Button href="/budget#st-living" icon="settings">
         생활비 정하기
       </Button>
     </Card>
@@ -348,7 +419,7 @@ function EventAccountCard() {
               <ListRow
                 leadText={formatShortDate(e.date)}
                 title={e.name}
-                href={e.tripId ? `/events/trips?id=${encodeURIComponent(e.tripId)}` : undefined}
+                href={e.tripId ? `/plan/trips?id=${encodeURIComponent(e.tripId)}` : undefined}
                 subtitle={
                   e.tripId ? (
                     '여행 · 남은 예산'
@@ -368,7 +439,7 @@ function EventAccountCard() {
         <p className={styles.emptyLine}>다가오는 일정이 없어요.</p>
       )}
       <div className={styles.cardFoot}>
-        <Button href="/events" variant="ghost" iconRight="chevron-right">
+        <Button href="/plan" variant="ghost" iconRight="chevron-right">
           {events.length > 0 ? '일정 모두 보기' : '일정 추가하기'}
         </Button>
       </div>
@@ -394,7 +465,7 @@ function RecentExpenses() {
       as="section"
       {...heading}
       aside={
-        <Button href="/expenses" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
+        <Button href="/history" variant="ghost" iconRight="chevron-right" className={styles.asideLink}>
           모두 보기
         </Button>
       }
@@ -427,43 +498,6 @@ function RecentExpenses() {
           })}
         </ul>
       )}
-    </Card>
-  );
-}
-
-/* ───────── 통장 잔액 (데스크톱) ───────── */
-
-function BalancesCard() {
-  const ledger = useLedger();
-  const heading = useCardTitle('통장 잔액');
-  const accounts: Account[] = ledger.activeAccounts;
-  if (accounts.length === 0) return null;
-  const total = accounts.reduce((s, a) => s + (ledger.balances[a.id] ?? 0), 0);
-
-  return (
-    <Card
-      as="section"
-      {...heading}
-      aside={
-        <span className={styles.totalAside}>
-          <span className={styles.totalLabel}>합계</span>
-          <Money amount={total} className={styles.balanceAside} />
-        </span>
-      }
-      className={cx(styles.cardGap, styles.oBalances, 'show-wide')}
-    >
-      <ul className={cx('list', styles.listTop)}>
-        {accounts.map((a) => (
-          <li key={a.id}>
-            <ListRow icon={ACCOUNT_ROLE_ICON[a.role]} title={a.name} trailing={<Money amount={ledger.balances[a.id] ?? 0} className={styles.amountCell} />} />
-          </li>
-        ))}
-      </ul>
-      <div className={styles.cardFoot}>
-        <Button href="/accounts" variant="ghost" iconRight="chevron-right">
-          통장 보기
-        </Button>
-      </div>
     </Card>
   );
 }

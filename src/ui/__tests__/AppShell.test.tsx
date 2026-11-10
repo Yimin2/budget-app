@@ -31,19 +31,52 @@ describe('AppShell', () => {
     expect(screen.getByRole('main').textContent).toBe('본문');
   });
 
-  it('match 로 다른 경로에서도 메뉴를 켜요 (모바일 더보기)', () => {
+  it('match 로 다른 경로에서도 메뉴를 켜요 (홈이 사도 돼? 화면에서도)', () => {
     const mobileNav: NavItem[] = [
-      { href: '/', label: '홈', icon: 'home' },
-      { href: '/settings', label: '더보기', icon: 'menu', match: ['/expenses', '/members'] },
+      { href: '/', label: '홈', icon: 'home', match: ['/check'] },
+      { href: '/history', label: '내역', icon: 'receipt' },
     ];
     render(
-      <AppShell nav={nav} mobileNav={mobileNav} current="/expenses">
+      <AppShell nav={nav} mobileNav={mobileNav} current="/check">
         <p>본문</p>
       </AppShell>,
     );
     const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
-    expect(within(side).getByRole('link', { current: 'page' }).textContent).toContain('지출');
-    expect(within(dock).getByRole('link', { current: 'page' }).textContent).toContain('더보기');
+    expect(within(side).getByRole('link', { current: 'page' }).textContent).toContain('사도 돼?');
+    expect(within(dock).getByRole('link', { current: 'page' }).textContent).toContain('홈');
+  });
+
+  it('기록 버튼은 하단 메뉴 가운데 · 사이드바 위, 내 정보 버튼은 머리 · 사이드바 아래', () => {
+    const items: NavItem[] = [
+      { href: '/', label: '홈', icon: 'home' },
+      { href: '/history', label: '내역', icon: 'receipt' },
+      { href: '/budget', label: '예산', icon: 'piggy-bank' },
+      { href: '/plan', label: '계획', icon: 'calendar' },
+      { href: '/extra', label: '그 밖', icon: 'dots' },
+    ];
+    let opened = 0;
+    render(
+      <AppShell
+        nav={items}
+        current="/settings"
+        create={{ label: '기록', onClick: () => (opened += 1) }}
+        profile={{ href: '/settings', name: '하늘', caption: '설정', avatar: <span>하늘</span> }}
+      >
+        <p>본문</p>
+      </AppShell>,
+    );
+    const [, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
+    // + 가 끼면 링크는 4개까지, + 는 가운데
+    expect(within(dock).getAllByRole('link')).toHaveLength(4);
+    const plus = within(dock).getByRole('button', { name: '기록' });
+    expect(plus.previousElementSibling?.textContent).toBe('내역');
+    expect(plus.getAttribute('aria-haspopup')).toBe('dialog');
+    plus.click();
+    (document.querySelector('.side-create') as HTMLButtonElement).click();
+    expect(opened).toBe(2);
+    const profiles = screen.getAllByRole('link', { name: '내 정보와 설정' });
+    expect(profiles.map((p) => p.className)).toEqual(['top-profile on', 'side-profile on']);
+    expect(profiles[0]!.getAttribute('aria-current')).toBe('page');
   });
 
   it('홈은 정확히 / 일 때만 켜져요', () => {

@@ -36,8 +36,13 @@ export function ClaimFields({ accountId, amount, paidBy, onChange, expense, sett
   const checked = paidBy !== null;
   if (due === null && !checked) return null;
 
-  const payers = [...(ledger.claimPayers ?? [])];
-  if (paidBy && paidBy.trim() && !payers.includes(paidBy)) payers.push(paidBy);
+  // 고를 수 있는 사람은 이 가계부의 멤버뿐이에요. 고치는 지출에 이미 적힌 다른 이름(예전 청구)은 보이게 남겨요
+  const people = [...(ledger.claimPayers ?? [])];
+  const payers = [...people];
+  for (const legacy of [expense?.paidBy, paidBy]) {
+    const v = legacy?.trim();
+    if (v && !payers.includes(v)) payers.push(v);
+  }
   const me = session.user ? ledger.displayName(session.user.email) : '';
 
   function toggle(on: boolean) {
@@ -45,7 +50,7 @@ export function ClaimFields({ accountId, amount, paidBy, onChange, expense, sett
       onChange(null);
       return;
     }
-    onChange(payers.includes(me) ? me : (payers[0] ?? ''));
+    onChange(people.includes(me) ? me : (people[0] ?? payers[0] ?? ''));
   }
 
   const name = paidBy?.trim() ?? '';

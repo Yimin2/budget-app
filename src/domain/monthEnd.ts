@@ -1,6 +1,6 @@
 import { addMonths, compareMonth, dateInMonth, isValidMonth, localDateOf, monthOf, monthRange } from './dates';
 import { monthEndTransferId } from './ids';
-import { firstAccountByRole, livingAccountIdFor } from './internal';
+import { firstAccountByRole, livingAccountIdsFor } from './internal';
 import { livingLeftoverItems } from './living';
 import type { ISODate, LedgerData, MonthEnd, MonthEndItem, PendingMonthEnd, Transfer, YearMonth, Won } from './types';
 
@@ -38,8 +38,11 @@ export function pendingMonthEnd(data: LedgerData, today: ISODate): PendingMonthE
 }
 
 /**
- * 결정 기록: MonthEnd 행(항목별 남은 돈 포함) + reservoir 면 생활비 통장 → 저수지 transfer(done, 다음 달 1일, 합계 한 건).
- * 저수지 통장 없으면 transfer 없음. 이월이면 다음 달 computeLiving 이 items 를 같은 항목에 더한다
+ * 결정 기록: MonthEnd 행(항목별 남은 돈 포함) + reservoir 면 생활비 통장 → 저수지 transfer(done, 다음 달 1일).
+ * - 생활비 통장이 하나면 합계 한 건 (id monthend:<월>)
+ * - 사람별 생활비 통장이 여럿이면(항목에 accountId) 통장마다 그 통장 항목 합이 0 보다 클 때 한 건씩.
+ *   첫 생활비 통장은 monthend:<월>, 나머지는 monthend:<월>@<통장id> (모두 결정적 id)
+ * 저수지 통장 없으면 transfer 없음. 이월이면 다음 달 computeLiving 이 items 를 같은 통장 · 같은 항목에 더한다
  */
 export function decideMonthEnd(
   data: LedgerData,
@@ -49,33 +52,50 @@ export function decideMonthEnd(
   author: string,
   now: string,
   items: MonthEndItem[] | null = null,
-): { monthEnd: MonthEnd; transfer: Transfer | null } {
+): { monthEnd: MonthEnd; transfer: Transfer | null; transfers: Transfer[] } {
   const clean = items
-    ? items.filter((i) => i.leftover !== 0).map((i) => ({ categoryId: i.categoryId, leftover: i.leftover }))
+    ? items
+        .filter((i) => i.leftover !== 0)
+        .map((i) => ({ categoryId: i.categoryId, leftover: i.leftover, ...(i.accountId ? { accountId: i.accountId } : {}) }))
     : null;
   const monthEnd: MonthEnd = {
     month, leftover, choice, decidedBy: author, decidedAt: now, items: clean && clean.length > 0 ? clean : null,
   };
-  if (choice !== 'reservoir' || leftover <= 0) return { monthEnd, transfer: null };
+  const none = { monthEnd, transfer: null, transfers: [] };
+  if (choice !== 'reservoir' || leftover <= 0) return none;
   const reservoir = firstAccountByRole(data, 'reservoir');
-  const from = livingAccountIdFor(data, month);
-  if (!reservoir || !from) return { monthEnd, transfer: null };
-  return {
-    monthEnd,
-    transfer: {
-      id: monthEndTransferId(month),
-      date: dateInMonth(addMonths(month, 1), 1),
-      kind: 'transfer',
-      fromAccountId: from,
-      toAccountId: reservoir.id,
-      amount: leftover,
-      status: 'done',
-      ruleId: null,
-      memo: '남은 생활비',
-      author,
-      createdAt: now,
-      updatedAt: now,
-      deleted: false,
-    },
-  };
+  const ids = livingAccountIdsFor(data, month);
+  const primary = ids[0] ?? null;
+  if (!reservoir || !primary) return none;
+  const make = (id: string, from: string, amount: Won): Transfer => ({
+    id,
+    date: dateInMonth(addMonths(month, 1), 1),
+    kind: 'transfer',
+    fromAccountId: from,
+    toAccountId: reservoir.id,
+    amount,
+    status: 'done',
+    ruleId: null,
+    memo: '남은 생활비',
+    author,
+    createdAt: now,
+    updatedAt: now,
+    deleted: false,
+  });
+  const perAccount = new Map<string, Won>();
+  for (const i of clean ?? []) {
+    const acc = i.accountId ?? primary;
+    perAccount.set(acc, (perAccount.get(acc) ?? 0) + i.leftover);
+  }
+  if (perAccount.size <= 1) {
+    const from = perAccount.keys().next().value ?? primary;
+    const t = make(monthEndTransferId(month), from === primary ? primary : from, leftover);
+    return { monthEnd, transfer: t, transfers: [t] };
+  }
+  const transfers: Transfer[] = [];
+  for (const [acc, amount] of perAccount) {
+    if (amount <= 0 || acc === reservoir.id) continue;
+    transfers.push(make(acc === primary ? monthEndTransferId(month) : `${monthEndTransferId(month)}@${acc}`, acc, amount));
+  }
+  return { monthEnd, transfer: transfers[0] ?? null, transfers };
 }

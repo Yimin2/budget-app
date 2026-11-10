@@ -10,7 +10,8 @@ const MONTH_END_PREFIX = 'monthend:';
 export function isCountedTransfer(data: LedgerData, t: Transfer): boolean {
   if (t.deleted || t.status !== 'done') return false;
   if (t.id.startsWith(MONTH_END_PREFIX)) {
-    const month = t.id.slice(MONTH_END_PREFIX.length);
+    // 사람별 생활비 통장이 여럿이면 monthend:<월>@<통장id>
+    const month = t.id.slice(MONTH_END_PREFIX.length).split('@')[0];
     return data.monthEnds.some((m) => m.month === month && m.choice === 'reservoir');
   }
   return true;

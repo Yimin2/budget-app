@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Favorite } from '@/domain/types';
 import { Button, Card, ConfirmDialog, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
-import { accountName } from '../helpers';
+import { accountName, accountOptions as accountOptionsOf } from '../helpers';
 import { useRunner } from '../useRunner';
 
 interface Draft {
@@ -29,7 +29,7 @@ export function FavoritesCard({ ledger }: { ledger: ReadyLedger }) {
   const editing = draft?.id ? ledger.data.favorites.find((f) => f.id === draft.id) : undefined;
 
   const categoryOptions = [{ value: '', label: '없음' }, ...categories.map((c) => ({ value: c.id, label: c.name }))];
-  const accountOptions = [{ value: '', label: '카테고리에 맞춰 자동으로' }, ...accounts.map((a) => ({ value: a.id, label: a.name }))];
+  const accountOptions = [{ value: '', label: '카테고리에 맞춰 자동으로' }, ...accountOptionsOf(accounts)];
 
   function openNew() {
     setErrors({});

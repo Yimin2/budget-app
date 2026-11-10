@@ -6,15 +6,19 @@ import * as googleModule from '@/google';
 import { LocalBackend, SheetsBackend } from '@/storage';
 import type { LedgerBackend, LedgerRef } from '@/storage/types';
 import { openInvitedLedger as runInviteOpen, type InviteOpenResult } from './invite';
-import { DEMO_LEDGER_ID, SESSION_KEY, browserStorage, readJson, removeKey, writeJson, type SessionStorageLike } from './storageKeys';
+import { DEMO_LEDGER_ID, REMEMBER_KEY, SESSION_KEY, browserStorage, readJson, removeKey, writeJson, type SessionStorageLike } from './storageKeys';
 import type { SessionApi, SessionMode, SessionUser } from './types';
 
 /* ---------- 바꿔 끼울 수 있는 의존성 (테스트 주입용) ---------- */
 
+type GoogleUserInfo = { email: string; name: string; picture: string | null };
+
 export interface GoogleDeps {
   isGoogleConfigured(): boolean;
-  signIn(): Promise<{ email: string; name: string; picture: string | null }>;
-  signOut(): void;
+  /** 서버 로그인이면 구글 로그인 화면으로 이동해서 끝나지 않아요 (돌아오면 returnTo) */
+  signIn(opts?: { returnTo?: string }): Promise<GoogleUserInfo>;
+  /** revoke: 앱 권한 철회 (모든 기기에서 로그아웃) */
+  signOut(opts?: { revoke?: boolean }): void;
   restoreSession(emailHint: string): Promise<{ email: string; name: string; picture: string | null } | null>;
   /** opts.fileId: 그 파일을 미리 골라 둔 선택 창 (초대 링크) */
   pickSpreadsheet(opts?: { fileId?: string }): Promise<{ id: string; name: string } | null>;
@@ -22,6 +26,15 @@ export interface GoogleDeps {
   getAccessToken(forceRefresh?: boolean): Promise<string>;
   /** 사용자 클릭 안에서 같은 계정으로 다시 연결 (없으면 getAccessToken(true) 로 대신) */
   reconnect?(emailHint: string): Promise<{ email: string; name: string; picture: string | null } | null>;
+  /**
+   * 로그아웃 상태에서 로그인 서버 쿠키로 이어서 쓰기. force: 구글 로그인 화면에서 막 돌아왔어요.
+   * 만료면 GoogleError('session_expired'). 없으면 이 단계를 건너뛰어요
+   */
+  resumeServerSession?(opts?: { force?: boolean }): Promise<GoogleUserInfo | null>;
+  /** 서버가 로그인 만료 · 없음을 알리면 불러요. 구독 해제 함수를 돌려줘요 */
+  onSessionEnded?(listener: (reason: 'expired' | 'signed_out') => void): () => void;
+  /** 로그인 서버가 돌려보낸 표시 (?auth=1 · ?auth_error=) 를 읽고 주소에서 지워요 */
+  consumeAuthReturn?(): { returned: boolean; error: string | null };
 }
 
 export interface StateDeps {
@@ -36,6 +49,11 @@ export interface StateDeps {
   storage: SessionStorageLike | null;
   /** google 모드 조용한 복구를 기다리는 최대 시간(ms) */
   restoreTimeoutMs: number;
+  /**
+   * 체험 가계부를 부부 예시(월급통장 하나 · 수입 계획 · 나머지 배분 · 사람별 생활비, PLAN 4-13 · 4-14)로 만들지.
+   * 기본 true. 예전 예시(사람별 수입통장)의 숫자에 기대는 테스트는 false
+   */
+  demoCouple: boolean;
 }
 
 const defaultGoogle: GoogleDeps = {
@@ -46,7 +64,28 @@ const defaultGoogle: GoogleDeps = {
   pickSpreadsheet: googleModule.pickSpreadsheet,
   getAccessToken: googleModule.getAccessToken,
   reconnect: googleModule.reconnect,
+  resumeServerSession: googleModule.resumeServerSession,
+  onSessionEnded: googleModule.onSessionEnded,
+  consumeAuthReturn: googleModule.consumeAuthReturn,
 };
+
+export const EXPIRED_NOTICE = '로그인이 만료됐어요. 다시 로그인해 주세요';
+
+/** 로그인 서버가 돌려보낸 오류 코드 → 화면 문구 */
+export function authErrorMessage(code: string): string {
+  switch (code) {
+    case 'consent_denied':
+      return '구글 드라이브 권한을 허용해야 쓸 수 있어요. 다시 로그인해 주세요';
+    case 'state':
+      return '로그인 확인 시간이 지났어요. 다시 로그인해 주세요';
+    case 'unconfigured':
+      return '구글 로그인 서버가 아직 설정되지 않았어요';
+    case 'expired':
+      return EXPIRED_NOTICE;
+    default:
+      return '구글 로그인을 마치지 못했어요. 다시 시도해 주세요';
+  }
+}
 
 function buildDeps(partial?: Partial<StateDeps>): StateDeps {
   const google = partial?.google ?? defaultGoogle;
@@ -57,6 +96,7 @@ function buildDeps(partial?: Partial<StateDeps>): StateDeps {
     now: partial?.now ?? (() => new Date()),
     storage: partial && 'storage' in partial ? (partial.storage ?? null) : browserStorage(),
     restoreTimeoutMs: partial?.restoreTimeoutMs ?? 3000,
+    demoCouple: partial?.demoCouple ?? true,
   };
 }
 
@@ -75,9 +115,25 @@ interface SessionState {
   user: SessionUser | null;
   recentLedgers: LedgerRef[];
   activeLedgerId: string | null;
+  /** 로그인 화면에 보여 줄 안내 (로그인 만료 등) */
+  notice?: string | null;
 }
 
 const SIGNED_OUT: SessionState = { status: 'signedOut', mode: null, user: null, recentLedgers: [], activeLedgerId: null };
+
+interface Remembered {
+  email: string;
+  recentLedgers: LedgerRef[];
+  activeLedgerId: string | null;
+}
+
+function isRemembered(v: unknown): v is Remembered {
+  if (!v || typeof v !== 'object') return false;
+  const r = v as Partial<Remembered>;
+  return typeof r.email === 'string' && Array.isArray(r.recentLedgers);
+}
+
+const sameEmail = (a: string | undefined | null, b: string | undefined | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
 export const DEMO_USER: SessionUser = { email: 'minji@demo', name: '민지', picture: null };
 
@@ -152,6 +208,27 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
     [persist],
   );
 
+  /** 구글로 로그인됨: 같은 계정이면 최근 가계부를 그대로, 만료로 남겨 둔 목록이 같은 계정이면 되살려요 */
+  const signedInAs = useCallback(
+    (user: GoogleUserInfo) => {
+      const remembered = readJson<unknown>(deps.storage, REMEMBER_KEY);
+      const back = isRemembered(remembered) && sameEmail(remembered.email, user.email) ? remembered : null;
+      if (isRemembered(remembered)) removeKey(deps.storage, REMEMBER_KEY);
+      update((s) => {
+        const same = s.mode === 'google' && sameEmail(s.user?.email, user.email);
+        return {
+          status: 'signedIn',
+          mode: 'google',
+          user: { email: user.email, name: user.name, picture: user.picture },
+          recentLedgers: same ? s.recentLedgers : (back?.recentLedgers ?? []),
+          activeLedgerId: same ? s.activeLedgerId : (back?.activeLedgerId ?? null),
+          notice: null,
+        };
+      });
+    },
+    [deps, update],
+  );
+
   // 처음 불러오기
   useEffect(() => {
     let alive = true;
@@ -167,25 +244,77 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       : SIGNED_OUT;
     // 브라우저 저장소는 하이드레이션 뒤에만 읽을 수 있어 effect 안에서 한 번 반영한다.
     // 화면은 바로 띄운다. google 토큰은 첫 API 호출 때 받는다
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(restored);
-    if (!isValidPersisted(saved)) return;
+    let authReturn: { returned: boolean; error: string | null } = { returned: false, error: null };
+    try {
+      authReturn = deps.google.consumeAuthReturn?.() ?? authReturn;
+    } catch {
+      // 무시
+    }
+    const notice = authReturn.error ? authErrorMessage(authReturn.error) : null;
+    let googleOn = false;
+    try {
+      googleOn = deps.google.isGoogleConfigured();
+    } catch {
+      googleOn = false;
+    }
+    const timeout = () => new Promise<null>((resolve) => setTimeout(() => resolve(null), deps.restoreTimeoutMs));
+
+    if (!isValidPersisted(saved)) {
+      const resume = deps.google.resumeServerSession;
+      if (!googleOn || !resume) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setState({ ...restored, notice });
+        return;
+      }
+      // 구글 로그인 화면에서 돌아왔거나 예전에 로그인했으면 로그인 서버 쿠키로 이어서 써요 (팝업 없이)
+      setState({ ...SIGNED_OUT, status: 'loading', notice });
+      Promise.race([resume({ force: authReturn.returned }), timeout()])
+        .then((user) => {
+          if (!alive) return;
+          if (user) signedInAs(user);
+          else update((s) => (s.status === 'loading' ? { ...SIGNED_OUT, notice: s.notice ?? null } : s));
+        })
+        .catch((e: unknown) => {
+          if (!alive) return;
+          const expired = e instanceof Error && 'code' in e && (e as { code?: string }).code === 'session_expired';
+          update((s) => (s.status === 'loading' ? { ...SIGNED_OUT, notice: expired ? EXPIRED_NOTICE : (s.notice ?? null) } : s));
+        });
+      return () => {
+        alive = false;
+      };
+    }
+
+    setState({ ...restored, notice });
     if (saved.mode === 'google') {
-      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), deps.restoreTimeoutMs));
-      Promise.race([deps.google.restoreSession(saved.user.email).catch(() => null), timeout])
+      Promise.race([deps.google.restoreSession(saved.user.email).catch(() => null), timeout()])
         .then((user) => {
           if (!alive || !user) return;
-          update((s) =>
-            s.mode === 'google' && s.user?.email.toLowerCase() === user.email.toLowerCase()
-              ? { ...s, user: { email: user.email, name: user.name, picture: user.picture } }
-              : s,
-          );
+          const s = stateRef.current;
+          if (s.mode !== 'google') return;
+          if (sameEmail(s.user?.email, user.email)) {
+            update((x) => (x.mode === 'google' && sameEmail(x.user?.email, user.email) ? { ...x, user: { email: user.email, name: user.name, picture: user.picture } } : x));
+          } else {
+            // 로그인 서버 쿠키가 다른 계정이에요 (다른 탭에서 계정을 바꿈) → 그 계정으로
+            signedInAs(user);
+          }
         })
         .catch(() => {});
     }
     return () => {
       alive = false;
     };
+  }, [deps, update, signedInAs]);
+
+  // 서버가 로그인 만료(갱신 토큰 끝남)를 알리면 로그인 화면으로. 최근 가계부는 같은 계정으로 돌아오면 되살려요
+  useEffect(() => {
+    if (!deps.google.onSessionEnded) return;
+    return deps.google.onSessionEnded((reason) => {
+      const s = stateRef.current;
+      if (s.mode !== 'google' || !s.user) return;
+      const r: Remembered = { email: s.user.email, recentLedgers: s.recentLedgers, activeLedgerId: s.activeLedgerId };
+      writeJson(deps.storage, REMEMBER_KEY, r);
+      update(() => ({ ...SIGNED_OUT, notice: reason === 'expired' ? EXPIRED_NOTICE : '구글 로그인이 끝났어요. 다시 로그인해 주세요' }));
+    });
   }, [deps, update]);
 
   const startDemo = useCallback(async () => {
@@ -195,12 +324,13 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       try {
         ref = await deps.local.describe(DEMO_LEDGER_ID);
       } catch {
-        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
+        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple }), DEMO_LEDGER_ID);
       }
     } else {
-      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
+      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple }), DEMO_LEDGER_ID);
     }
     update((s) => ({
+      notice: null,
       status: 'signedIn',
       mode: 'demo',
       user: DEMO_USER,
@@ -209,30 +339,29 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
     }));
   }, [deps, update]);
 
-  const signInWithGoogle = useCallback(async () => {
-    const user = await deps.google.signIn();
-    update((s) => {
-      const same = s.mode === 'google' && s.user?.email.toLowerCase() === user.email.toLowerCase();
-      return {
-        status: 'signedIn',
-        mode: 'google',
-        user: { email: user.email, name: user.name, picture: user.picture },
-        recentLedgers: same ? s.recentLedgers : [],
-        activeLedgerId: same ? s.activeLedgerId : null,
-      };
-    });
-  }, [deps, update]);
+  const signInWithGoogle = useCallback(
+    async (opts?: { returnTo?: string }) => {
+      const user = await (opts ? deps.google.signIn(opts) : deps.google.signIn());
+      signedInAs(user);
+    },
+    [deps, signedInAs],
+  );
 
-  const signOut = useCallback(() => {
-    if (stateRef.current.mode === 'google') {
-      try {
-        deps.google.signOut();
-      } catch {
-        // 무시
+  const signOut = useCallback(
+    (opts?: { everywhere?: boolean }) => {
+      if (stateRef.current.mode === 'google') {
+        try {
+          if (opts?.everywhere) deps.google.signOut({ revoke: true });
+          else deps.google.signOut();
+        } catch {
+          // 무시
+        }
       }
-    }
-    update(() => SIGNED_OUT);
-  }, [deps, update]);
+      removeKey(deps.storage, REMEMBER_KEY);
+      update(() => SIGNED_OUT);
+    },
+    [deps, update],
+  );
 
   /** 구글 다시 연결 — 버튼 클릭 안에서 불러야 창이 막히지 않는다 (await 전에 요청) */
   const reconnectGoogle = useCallback(async () => {
@@ -356,6 +485,7 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       status: state.status,
       mode: state.mode,
       user: state.user,
+      notice: state.notice ?? null,
       googleAvailable,
       signInWithGoogle,
       startDemo,

@@ -55,6 +55,7 @@ function InviteSignIn({ onDismiss }: { onDismiss: () => void }) {
   return (
     <>
       <InviteTitle sub="함께 쓰는 가계부예요. 초대받은 구글 계정으로 로그인하면 바로 열려요." />
+      {session.notice ? <Banner tone="warning" title={session.notice} /> : null}
       <div className="sp-cta">
         <Button
           size="lg"

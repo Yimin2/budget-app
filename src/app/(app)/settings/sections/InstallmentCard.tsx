@@ -12,8 +12,9 @@ import {
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { DAY_OPTIONS } from '@/app/start/new/wizard';
-import { accountName, startMonthForNew } from '../helpers';
+import { accountName, startMonthForNew, accountOptions as accountOptionsOf } from '../helpers';
 import { useRunner } from '../useRunner';
+import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 
 /** 끝난 할부를 몇 달 동안 목록에 남길지 */
 const ENDED_VISIBLE_MONTHS = 2;
@@ -84,11 +85,14 @@ export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
   const month = monthOf(today);
   const year = Number(month.slice(0, 4));
   const accounts = ledger.activeAccounts;
-  const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
+  const accountOptions = accountOptionsOf(accounts);
   const categoryOptions = [{ value: '', label: '없음' }, ...ledger.activeCategories.map((c) => ({ value: c.id, label: c.name }))];
   const plans = ledger.installments.filter(
     (p) => !p.ended || compareMonth(p.endMonth, addMonths(month, -ENDED_VISIBLE_MONTHS)) >= 0,
   );
+  const keyOf = (p: InstallmentPlan) => ownerKeyOf(accounts.find((a) => a.id === p.accountId));
+  const owners = useOwnerFilter(plans.map(keyOf), ledger.data);
+  const shown = plans.filter((p) => owners.matches(keyOf(p)));
   const plan = edit ? (ledger.installments.find((p) => p.id === edit.planId) ?? null) : null;
   const viewing = viewId ? (ledger.installments.find((p) => p.id === viewId) ?? null) : null;
 
@@ -315,11 +319,13 @@ export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
         정한 회차만큼 결제일에 지출로 자동 기록되고, 마지막 회차 뒤에 저절로 끝나요. 도중에 고치면 다음 회차부터 바뀌고 지난 회차는 그대로예요.
       </p>
 
-      {plans.length === 0 ? (
+      <OwnerTabs filter={owners} label="누구 할부" />
+
+      {shown.length === 0 ? (
         <EmptyState icon="calendar" headingLevel={3} title="할부가 없어요" description="TV · 노트북처럼 나눠 내는 돈을 등록해 주세요." />
       ) : (
         <ul className="list">
-          {plans.map((p) => (
+          {shown.map((p) => (
             <li key={p.id}>
               <ListRow
                 icon="calendar"

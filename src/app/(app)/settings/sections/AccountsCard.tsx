@@ -5,7 +5,8 @@ import { formatDateKo } from '@/domain';
 import type { Account, AccountRole } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON, Badge, Button, Card, ConfirmDialog, DateInput, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
-import { ROLE_OPTIONS, ROLE_TEXT, ownerLabel } from '../helpers';
+import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
+import { ROLE_OPTIONS, ROLE_TEXT, ownerText } from '../helpers';
 import { incomeAccountName, isEmail } from '@/app/start/new/wizard';
 import { useRunner } from '../useRunner';
 
@@ -28,6 +29,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
   const [confirmDelete, setConfirmDelete] = useState<Account | null>(null);
   const accounts = ledger.activeAccounts;
   const isShared = ledger.data.settings.kind === 'shared';
+  const people = peopleOptions(ledger.data);
 
   function openNew(role: AccountRole = 'other') {
     setNameError(undefined);
@@ -83,6 +85,8 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
               openingBalance: balance,
               openingDate: draft.openingDate || prev.openingDate,
             });
+            // 한 이메일은 한 통장에만: 같은 주인 이메일인 다른 통장은 비워요 (멤버 화면의 수입통장과 같게)
+            if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, prev.id);
           },
           '통장을 저장했어요',
         )
@@ -93,10 +97,19 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             if (draft.openingDate && draft.openingDate !== created.openingDate) {
               await ledger.saveAccount({ ...created, openingDate: draft.openingDate });
             }
+            if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, created.id);
           },
           '통장을 추가했어요',
         );
     if (ok) setDraft(null);
+  }
+
+  /** 주인 이메일이 멤버면 이어진다고 알려 줘요 */
+  function ownerEmailHint(email: string): string | undefined {
+    const clean = email.trim().toLowerCase();
+    const member = clean ? ledger.data.members.find((m) => m.email.toLowerCase() === clean) : undefined;
+    if (member) return `멤버 ${member.displayName || member.email}님과 이어져요. 다른 통장에 같은 이메일이 있으면 비워요.`;
+    return isShared ? '멤버 이메일을 적으면 그 멤버와 이어져요.' : undefined;
   }
 
   async function remove(a: Account) {
@@ -129,9 +142,9 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                     <Badge size="sm" dot={false}>
                       {ROLE_TEXT[a.role]}
                     </Badge>
-                    {ownerLabel(a) ? (
+                    {ownerText(a) ? (
                       <Badge size="sm" tone="info" dot={false}>
-                        {ownerLabel(a)}
+                        {ownerText(a)}
                       </Badge>
                     ) : null}
                     <span>
@@ -204,27 +217,21 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             <Field label="역할" hint="역할에 따라 생활비·이벤트 예측·월말 처리에 쓰는 통장이 정해져요.">
               <Select value={draft.role} onChange={(v) => setDraft({ ...draft, role: v as AccountRole })} options={ROLE_OPTIONS} />
             </Field>
-            <Field
+            <PersonPicker
               label="주인"
               optional
-              hint={draft.role === 'income' ? '누구 월급이 들어오는 통장인지 적어 주세요. 가계부에 아직 안 들어온 사람도 돼요.' : '함께 쓰는 통장이면 비워 두세요.'}
-            >
-              <TextInput
-                value={draft.ownerName}
-                maxLength={20}
-                autoComplete="off"
-                onChange={(e) => setDraft({ ...draft, ownerName: e.target.value })}
-              />
-            </Field>
-            <Field label="주인 이메일" optional error={emailError}>
-              <TextInput
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                value={draft.ownerEmail}
-                onChange={(e) => setDraft({ ...draft, ownerEmail: e.target.value })}
-              />
-            </Field>
+              people={people}
+              noneLabel="함께 쓰는 통장 (주인 없음)"
+              value={{ name: draft.ownerName, email: draft.ownerEmail }}
+              onChange={(v) => setDraft({ ...draft, ownerName: v.name, ownerEmail: v.email })}
+              hint={
+                draft.role === 'income'
+                  ? '누구 월급이 들어오는 통장인지 골라 주세요. 아직 초대하지 않은 사람은 직접 입력해요.'
+                  : '사람별 생활비 · 용돈 통장이면 주인을 골라 주세요. 함께 쓰는 통장이면 비워 두세요.'
+              }
+              emailError={emailError}
+              emailHint={ownerEmailHint(draft.ownerEmail)}
+            />
             <Field label="시작 잔액">
               <MoneyInput value={draft.openingBalance} onChange={(v) => setDraft({ ...draft, openingBalance: v })} allowNegative />
             </Field>

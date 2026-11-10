@@ -578,3 +578,33 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+
+/* 매달 배분: 남은 돈은 모두 저수지로 */
+.wz-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--text);
+  cursor: pointer;
+}
+.wz-check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.wz-item .top > .wz-person {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

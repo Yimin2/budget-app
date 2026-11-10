@@ -208,7 +208,9 @@ describe('잔액과 예측 — 두 번 빠지지 않게', () => {
 describe('낸 사람과 안내 문구', () => {
   it('낸 사람 목록과 돌려받을 통장', () => {
     const d = ledger({ members: [{ email: 'g@x', displayName: '가람' }, { email: 'k@x', displayName: '친구' }] });
-    expect(claimPayers(d)).toEqual(['가람', '나래', '친구']);
+    // 나래는 통장 주인일 뿐 멤버가 아니라서 고를 수 없어요. 예전 청구의 돌려받을 통장은 그대로 찾아요
+    expect(claimPayers(d)).toEqual(['가람', '친구']);
+    expect(claimAccountFor(d, '가람')).toBe('inc-g');
     expect(claimAccountFor(d, '나래')).toBe('inc-m');
     expect(claimAccountFor(d, '친구')).toBeNull();
   });

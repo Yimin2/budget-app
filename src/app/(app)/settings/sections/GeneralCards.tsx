@@ -5,28 +5,12 @@ import { autoSettleDay, createDemoLedger, formatDateKo, localDateOf, monthOf, to
 import { DEMO_LEDGER_ID, useSession } from '@/state';
 import { LocalBackend } from '@/storage/local';
 import { ThemeToggle } from '@/theme';
-import { Avatar, Button, Card, ConfirmDialog, Field, ListRow, Select, TextInput, focusFirstInvalid } from '@/ui';
+import { Avatar, Button, Card, ConfirmDialog, Field, Select, TextInput, focusFirstInvalid } from '@/ui';
 import { LedgerKindBadge } from '../../_components/LedgerKindBadge';
 import { LedgerSwitcher } from '../../_components/LedgerSwitcher';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { spreadsheetUrl } from '../helpers';
 import { useRunner } from '../useRunner';
-
-/** 모바일 하단 메뉴 '더보기'에서 오는 바로 가기 (모바일에서만 보여요) */
-export function QuickLinks() {
-  return (
-    <Card as="section" padding="sm" className="st-mobile-only" aria-label="바로 가기">
-      <ul className="list">
-        <li>
-          <ListRow href="/expenses" icon="receipt" title="지출 내역" subtitle="기록 보기 · 고치기" />
-        </li>
-        <li>
-          <ListRow href="/members" icon="users" title="멤버" subtitle="함께 쓰는 사람 · 초대" />
-        </li>
-      </ul>
-    </Card>
-  );
-}
 
 /** 가계부 이름 (공용/개인 표시, 개인이면 연결된 공용 가계부) */
 export function LedgerNameCard({ ledger }: { ledger: ReadyLedger }) {
@@ -70,11 +54,11 @@ export function LedgerNameCard({ ledger }: { ledger: ReadyLedger }) {
         <p className="st-desc">
           {linked
             ? `${linked}에서 나에게 배분한 용돈이 매달 수입으로 들어와요.`
-            : '연결된 공용 가계부가 없어요. 용돈 수입은 통장 화면에서 직접 기록해 주세요.'}
+            : '연결된 공용 가계부가 없어요. 용돈 수입은 내역의 통장 잔액에서 직접 기록해 주세요.'}
         </p>
       ) : (
         <>
-          <p className="st-desc">함께 쓰는 사람은 멤버 화면에서 초대할 수 있어요.</p>
+          <p className="st-desc">함께 쓰는 사람은 아래 멤버 · 공유에서 초대할 수 있어요.</p>
           <SettleDayField ledger={ledger} />
         </>
       )}
@@ -108,7 +92,7 @@ export function AccountCard() {
   const session = useSession();
   const user = session.user;
   return (
-    <Card title="계정">
+    <Card id="st-account" title="계정 · 가계부 바꾸기">
       {user ? (
         <div className="st-user">
           <Avatar name={user.name || user.email} src={user.picture} />
@@ -123,7 +107,17 @@ export function AccountCard() {
         <Button variant="outline" icon="logout" onClick={() => session.signOut()}>
           로그아웃
         </Button>
+        {session.mode === 'google' ? (
+          <Button variant="ghost" onClick={() => session.signOut({ everywhere: true })}>
+            모든 기기에서 로그아웃
+          </Button>
+        ) : null}
       </div>
+      {session.mode === 'google' ? (
+        <p className="st-desc">
+          모든 기기에서 로그아웃하면 이 앱에 준 구글 권한을 거둬요. 다른 기기에서도 다시 로그인해야 하고, 가계부 시트는 그대로 남아요.
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -131,7 +125,7 @@ export function AccountCard() {
 /** 화면 테마 */
 export function DisplayCard() {
   return (
-    <Card title="화면">
+    <Card id="st-theme" title="테마">
       <ThemeToggle showLabels />
       <p className="st-desc">시스템을 고르면 기기의 밝기 설정을 따라가요.</p>
     </Card>
@@ -152,7 +146,7 @@ export function InfoCard({ ledger }: { ledger: ReadyLedger }) {
         'reset',
         async () => {
           const now = new Date();
-          await new LocalBackend().create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
+          await new LocalBackend().create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: true }), DEMO_LEDGER_ID);
           await ledger.reload();
         },
         '체험 데이터를 처음으로 되돌렸어요',

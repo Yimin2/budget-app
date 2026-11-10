@@ -34,7 +34,7 @@ describe('앱 틀 (app)/layout', () => {
     expect(screen.queryByText('홈 내용')).toBeNull();
   });
 
-  it('체험 모드: 사이드바 7개 · 하단 메뉴 5개(더보기) · 가계부 전환', async () => {
+  it('체험 모드: 메뉴 4개(홈 · 내역 · 예산 · 계획) + 가운데 + 기록 · 내 정보 버튼 → 설정 · 가계부 전환', async () => {
     nav.pathname = '/settings';
     const h = renderApp(
       <AppLayout>
@@ -46,10 +46,20 @@ describe('앱 틀 (app)/layout', () => {
     nav.router.replace.mockClear();
     expect(screen.getByText('설정 내용')).toBeTruthy();
     const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
-    expect(within(side).getAllByRole('link')).toHaveLength(7);
-    const dockLinks = within(dock).getAllByRole('link');
-    expect(dockLinks).toHaveLength(5);
-    expect(within(dock).getByRole('link', { current: 'page' }).textContent).toContain('더보기');
+    expect(within(side).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/budget', '/plan']);
+    // 하단 메뉴: 홈 · 내역 · [+] · 예산 · 계획
+    expect(within(dock).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '내역', '예산', '계획']);
+    const plus = within(dock).getByRole('button', { name: '기록' });
+    expect(plus.previousElementSibling?.textContent).toBe('내역');
+    expect(plus.nextElementSibling?.textContent).toBe('예산');
+    // 설정은 메뉴가 아니라 내 정보 버튼 (모바일 머리 · 사이드바 아래)
+    expect(within(dock).queryByRole('link', { current: 'page' })).toBeNull();
+    const profiles = screen.getAllByRole('link', { name: '내 정보와 설정' });
+    expect(profiles).toHaveLength(2);
+    for (const p of profiles) {
+      expect(p.getAttribute('href')).toBe('/settings');
+      expect(p.getAttribute('aria-current')).toBe('page');
+    }
     expect(nav.router.replace).not.toHaveBeenCalled();
 
     const trigger = screen.getByRole('button', { name: /민지·준호 가계부, 공용 가계부/ });
@@ -67,11 +77,51 @@ describe('앱 틀 (app)/layout', () => {
     fireEvent.click(trigger);
     fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: /새 가계부/ }));
     expect(nav.router.push).toHaveBeenCalledWith('/start/new');
+  });
 
-    // 로그아웃 → /start
-    fireEvent.click(screen.getAllByRole('button', { name: '로그아웃' })[0]!);
-    await waitFor(() => expect(nav.router.replace).toHaveBeenCalledWith('/start'));
-    expect(current(h).session.status).toBe('signedOut');
+  it('+ 기록: 지출 기록 · 사도 돼? · 이체 기록 중에서 골라요', async () => {
+    nav.pathname = '/history';
+    const h = renderApp(
+      <AppLayout>
+        <p>내역 내용</p>
+      </AppLayout>,
+    );
+    await startDemo(h);
+    const [dockPlus, sidePlus] = [
+      within(screen.getAllByRole('navigation', { name: '주 메뉴' })[1]!).getByRole('button', { name: '기록' }),
+      document.querySelector('.side-create') as HTMLElement,
+    ];
+    expect(sidePlus.getAttribute('aria-label')).toBe('기록');
+    expect(dockPlus.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(dockPlus);
+    let sheet = screen.getByRole('dialog', { name: '무엇을 기록할까요?' });
+    expect(dockPlus.getAttribute('aria-expanded')).toBe('true');
+    expect(within(sheet).getAllByRole('button').map((b) => b.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('지출 기록'), expect.stringContaining('사도 돼?'), expect.stringContaining('이체 기록')]),
+    );
+
+    // 지출 기록 → 지출 기록 창
+    fireEvent.click(within(sheet).getByRole('button', { name: /지출 기록/ }));
+    expect(screen.queryByRole('dialog', { name: '무엇을 기록할까요?' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: '지출 기록' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '지출 기록' })).toBeNull());
+
+    // 이체 기록 → 이체 기록 창
+    fireEvent.click(sidePlus);
+    sheet = screen.getByRole('dialog', { name: '무엇을 기록할까요?' });
+    fireEvent.click(within(sheet).getByRole('button', { name: /이체 기록/ }));
+    expect(screen.getByRole('dialog', { name: '이체 기록' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '이체 기록' })).toBeNull());
+
+    // 사도 돼? → /check
+    fireEvent.click(dockPlus);
+    fireEvent.click(within(screen.getByRole('dialog', { name: '무엇을 기록할까요?' })).getByRole('button', { name: /사도 돼\?/ }));
+    expect(nav.router.push).toHaveBeenCalledWith('/check');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(current(h).session.status).toBe('signedIn');
   });
 
   it('가계부 전환: 최근 가계부에서 고르면 바뀌어요', async () => {

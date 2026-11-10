@@ -1,5 +1,7 @@
+import type { LivingView } from '@/domain/living';
+import type { Spender } from '@/domain/household';
 import type {
-  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id,
+  Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id, IncomePlan,
   InstallmentHint, InstallmentPlan, ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer,
   Trip, TripItem, TripStatus, Verdict, Won, YearMonth,
 } from '@/domain/types';
@@ -22,11 +24,18 @@ export interface SessionApi {
   status: 'loading' | 'signedOut' | 'signedIn';
   mode: SessionMode | null;
   user: SessionUser | null;
+  /** 로그인 화면에 보여 줄 안내 (예: '로그인이 만료됐어요. 다시 로그인해 주세요'). 없으면 null */
+  notice: string | null;
   /** 구글 로그인 가능 여부 (환경 변수 설정됨) */
   googleAvailable: boolean;
-  signInWithGoogle(): Promise<void>;
+  /**
+   * 구글로 시작하기. 로그인 서버가 있으면 구글 로그인 화면으로 이동하고(돌아오면 returnTo, 기본은 지금 주소) 끝나지 않아요.
+   * 없으면 팝업 동의 창
+   */
+  signInWithGoogle(opts?: { returnTo?: string }): Promise<void>;
   startDemo(): Promise<void>;
-  signOut(): void;
+  /** everywhere: 구글에 앱 권한 철회까지 (모든 기기에서 로그아웃) */
+  signOut(opts?: { everywhere?: boolean }): void;
   /** 최근 연 가계부 목록 (브라우저 저장) */
   recentLedgers: LedgerRef[];
   activeLedger: LedgerRef | null;
@@ -99,7 +108,18 @@ export interface LedgerApi {
   reload(): Promise<void>;
 
   // 계산값 (data 가 있을 때)
+  /** 생활비 (사람별 생활비 통장이 여럿이면 모두 합친 것) */
   living: LivingStatus | null;
+  /** 생활비 통장마다의 생활비 (PLAN 4-14, 통장 순서). 통장이 하나면 한 줄 */
+  livingViews: LivingView[];
+  /** 로그인한 사람의 생활비 통장 (멤버와 이어진 통장 → 첫 생활비 통장) */
+  myLivingAccountId: Id | null;
+  /** 이 생활비 통장의 생활비 (안 주면 나). 통장이 하나뿐이면 living 과 같다 */
+  livingFor(accountId?: Id | null): LivingStatus | null;
+  /** '누가 썼나요?'에서 고를 사람 (가계부의 사람, 그 사람의 생활비 통장과 함께) */
+  spenders: Spender[];
+  /** 로그인한 사람의 spenders 키 */
+  mySpenderKey: string | null;
   balances: Record<Id, Won>;
   eventProjection: EventProjection | null;
   shortageFix: ShortageFix | null;
@@ -114,12 +134,17 @@ export interface LedgerApi {
    * "사도 돼?" 판단. living 은 생활비 항목(categoryId, null = 카테고리 없는 묶음)으로 판단해요.
    * categoryId 를 안 주면(undefined) 항목이 하나뿐일 때만 그 항목으로, 여럿이면 null
    */
-  judge(amount: Won, source: 'living' | 'event', categoryId?: Id | null, opts?: { tripId?: Id | null }): Verdict | null;
+  judge(
+    amount: Won,
+    source: 'living' | 'event',
+    categoryId?: Id | null,
+    opts?: { tripId?: Id | null; livingAccountId?: Id | null },
+  ): Verdict | null;
 
   // 청구 (개인 돈으로 내고 돌려받기)
   /** 돌려받을 돈 요약 (data 가 있을 때) */
   claims: ClaimSummary | null;
-  /** 낸 사람으로 고를 수 있는 이름 (통장 주인 · 멤버) */
+  /** 낸 사람으로 고를 수 있는 이름 (이 가계부의 멤버, 이어진 통장 주인 이름으로 한 번씩) */
   claimPayers: string[];
   /** 이 통장에서 이 금액을 개인 돈으로 내면 돌려줄 날 (청구할 수 없는 통장이면 null). expenseId: 고치는 지출 */
   previewClaimDue(accountId: Id, amount: Won, expenseId?: Id): ISODate | null;
@@ -142,7 +167,7 @@ export interface LedgerApi {
     amount: Won,
     source: 'living' | 'event',
     categoryId?: Id | null,
-    opts?: { tripId?: Id | null },
+    opts?: { tripId?: Id | null; livingAccountId?: Id | null },
   ): InstallmentHint | null;
   /** 할부 추가. 결제일이 지난 회차는 이미 낸 것으로 보고 기록하지 않아요. 할부 id 를 돌려줘요 */
   addInstallment(input: NewInstallment): Promise<Id>;
@@ -206,6 +231,10 @@ export interface LedgerApi {
   addRule(input: Omit<AllocationRule, 'id' | 'deleted'>): Promise<AllocationRule>;
   /** 적립액 변경: 기존 규칙을 지난달로 끝내고 이번 달부터 새 규칙 */
   changeRuleAmount(ruleId: Id, amount: Won): Promise<void>;
+  /** 수입 계획 추가 (PLAN 4-13). 받는 날이 지난 이번 달 회차는 바로 기록해요 */
+  addIncomePlan(input: Omit<IncomePlan, 'id' | 'deleted'>): Promise<IncomePlan>;
+  /** 수입 계획 고치기 · 지우기 (deleted). 이미 생긴 수입 기록은 그대로 */
+  saveIncomePlan(plan: IncomePlan): Promise<void>;
   saveFixed(fixed: FixedExpense): Promise<void>;
   addFixed(input: Omit<FixedExpense, 'id' | 'deleted'>): Promise<FixedExpense>;
   saveCategory(category: Category): Promise<void>;
@@ -217,7 +246,14 @@ export interface LedgerApi {
   // 월말
   decideMonthEnd(choice: 'reservoir' | 'carryover'): Promise<void>;
   // 멤버
-  inviteMember(email: string, displayName: string): Promise<void>;
+  /** 멤버 초대. incomeAccountId 를 주면 그 수입통장과 이어요 (linkMemberAccount) */
+  inviteMember(email: string, displayName: string, incomeAccountId?: Id | null): Promise<void>;
+  /**
+   * 멤버와 통장 잇기: 그 통장의 주인 이메일을 멤버 이메일로 바꾸고, 같은 이메일인 다른 통장은 비워요.
+   * accountId=null 이면 이어진 통장을 모두 풀어요
+   */
+  linkMemberAccount(email: string, accountId: Id | null): Promise<void>;
   renameLedger(name: string): Promise<void>;
+  /** 기록한 사람 이름: 멤버면 이어진 통장 주인 이름 → 표시 이름, 아니면 이메일 앞부분 */
   displayName(email: string): string;
 }

@@ -1,44 +1,49 @@
 'use client';
 
-import { useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { PageHeader } from '@/ui';
+import { HashTarget } from '../_components/HashTarget';
 import { PageSkeleton } from '../_components/PageSkeleton';
 import { RequireLedger } from '../_components/RequireLedger';
 import { AccountsCard } from './sections/AccountsCard';
 import { CategoriesCard } from './sections/CategoriesCard';
 import { FavoritesCard } from './sections/FavoritesCard';
-import { FixedCard } from './sections/FixedCard';
 import { ImportCard } from './sections/ImportCard';
-import { InstallmentCard } from './sections/InstallmentCard';
-import { LivingCard } from './sections/LivingCard';
-import { AccountCard, DisplayCard, InfoCard, LedgerNameCard, QuickLinks } from './sections/GeneralCards';
-import { RulesCard } from './sections/RulesCard';
+import { AccountCard, DisplayCard, InfoCard, LedgerNameCard } from './sections/GeneralCards';
+import { MembersCards } from './sections/MembersCard';
 
-/** 설정: 가계부 · 통장 · 매달 배분 · 생활비 예산 · 고정 지출 · 할부 · 카테고리 · 자주 쓰는 지출 · 파일에서 가져오기 · 화면 · 정보 (모바일 '더보기') */
+/**
+ * 설정 (오른쪽 위 · 사이드바 아래 내 정보 버튼): 가계부 · 통장 · 멤버 · 공유 · 카테고리 · 자주 쓰는 지출 · 파일에서 가져오기 ·
+ * 테마 · 계정(가계부 바꾸기 · 로그아웃). 돈을 나누는 설정(수입 · 배분 · 생활비 · 고정비 · 할부)은 예산 화면에 있어요
+ */
 export default function SettingsPage() {
   return (
     <>
-      <PageHeader title="설정" />
-      <QuickLinks />
+      <PageHeader title="설정" subtitle="통장 · 함께 쓰는 사람 · 기록 도우미 · 화면" />
       <RequireLedger skeleton={<PageSkeleton withHeader={false} cards={4} label="설정을 불러오는 중이에요" />}>
         {(ledger) => (
           <div className="st-grid">
             <HashTarget />
             <div className="st-col">
-              <LedgerNameCard key={`name-${ledger.ref.id}`} ledger={ledger} />
-              <AccountsCard ledger={ledger} />
-              <RulesCard ledger={ledger} />
-              <LivingCard ledger={ledger} />
-              <FixedCard ledger={ledger} />
-              <InstallmentCard ledger={ledger} />
+              <SettingsGroup id="sg-ledger" title="가계부와 통장">
+                <LedgerNameCard key={`name-${ledger.ref.id}`} ledger={ledger} />
+                <AccountsCard ledger={ledger} />
+              </SettingsGroup>
+              <SettingsGroup id="sg-members" title="멤버 · 공유">
+                <MembersCards ledger={ledger} />
+              </SettingsGroup>
             </div>
             <div className="st-col">
-              <CategoriesCard ledger={ledger} />
-              <FavoritesCard ledger={ledger} />
-              <ImportCard ledger={ledger} />
-              <DisplayCard />
-              <AccountCard />
-              <InfoCard ledger={ledger} />
+              <SettingsGroup id="sg-record" title="기록 도우미">
+                <CategoriesCard ledger={ledger} />
+                <FavoritesCard ledger={ledger} />
+                <ImportCard ledger={ledger} />
+              </SettingsGroup>
+              <SettingsGroup id="sg-app" title="화면과 계정">
+                <DisplayCard />
+                <AccountCard />
+                <InfoCard ledger={ledger} />
+              </SettingsGroup>
             </div>
           </div>
         )}
@@ -47,16 +52,14 @@ export default function SettingsPage() {
   );
 }
 
-/** '/settings#st-fixed' 처럼 들어오면 그 카드로 스크롤하고 포커스를 옮겨요 (긴 설정 화면 맨 위에 떨어지지 않게) */
-function HashTarget() {
-  useEffect(() => {
-    const id = decodeURIComponent(window.location.hash.slice(1));
-    if (!id) return;
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.scrollIntoView?.({ block: 'start' });
-    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
-    el.focus({ preventScroll: true });
-  }, []);
-  return null;
+/** 설정 묶음: 작은 제목 + 카드들 */
+function SettingsGroup({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section className="st-group" aria-labelledby={id}>
+      <h2 id={id} className="st-group-head">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
 }

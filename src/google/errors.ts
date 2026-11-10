@@ -9,6 +9,7 @@ export type GoogleErrorCode =
   | 'timeout'
   | 'not_signed_in'
   | 'account_mismatch'
+  | 'session_expired'
   | 'unknown';
 
 export const GOOGLE_ERROR_MESSAGES: Record<GoogleErrorCode, string> = {
@@ -21,6 +22,7 @@ export const GOOGLE_ERROR_MESSAGES: Record<GoogleErrorCode, string> = {
   timeout: '구글 응답이 늦어요. 잠시 뒤 다시 시도해 주세요.',
   not_signed_in: '구글 로그인이 필요해요.',
   account_mismatch: '다른 구글 계정으로 연결됐어요. 처음 로그인한 계정으로 다시 연결해 주세요.',
+  session_expired: '로그인이 만료됐어요. 다시 로그인해 주세요',
   unknown: '구글 로그인 중 문제가 생겼어요. 다시 시도해 주세요.',
 };
 

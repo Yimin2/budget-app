@@ -5,7 +5,7 @@
  */
 import type {
   AccountRole, EventStatus, FixedKind, LedgerKind, LedgerSettings, LivingSpread, MonthEndChoice, MonthEndItem, Repeat,
-  TransferKind, TransferStatus, TripItem,
+  RuleKind, TransferKind, TransferStatus, TripItem,
 } from '@/domain/types';
 import { TRIP_ITEMS, TRIP_ITEM_LABELS } from '@/domain/trips';
 import type { TableName, TableRows } from './types';
@@ -29,11 +29,12 @@ export const TAB_NAMES: Record<TableName, string> = {
   favorites: '즐겨찾기',
   members: '멤버',
   trips: '여행',
+  incomePlans: '수입계획',
 };
 
 export const TABLE_NAMES: TableName[] = [
   'accounts', 'rules', 'transfers', 'fixedExpenses', 'events', 'expenses',
-  'monthEnds', 'categories', 'favorites', 'members', 'trips',
+  'monthEnds', 'categories', 'favorites', 'members', 'trips', 'incomePlans',
 ];
 
 /** 시트 탭 순서 (설정이 맨 앞) */
@@ -149,15 +150,21 @@ const optMonth: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toYearMo
 const ts: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toTimestamp(c) ?? '' };
 const optTs: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toTimestamp(c) };
 
+/** 월말 항목 키: 사람별 생활비 통장이면 '<통장id>|<카테고리id>', 아니면 '<카테고리id>' ('' = 카테고리 없는 묶음) */
+const ITEM_SEP = '|';
+
 /**
- * 월말 항목별 남은 돈 <-> JSON 객체 {"카테고리id": 금액, "": 금액(카테고리 없는 묶음)}.
- * 빈 셀 · 읽을 수 없는 값은 null (예전 기록: 항목 구분 없음)
+ * 월말 항목별 남은 돈 <-> JSON 객체 {"카테고리id": 금액, "": 금액(카테고리 없는 묶음), "통장id|카테고리id": 금액}.
+ * 빈 셀 · 읽을 수 없는 값은 null (예전 기록: 항목 구분 없음). 통장이 없는 키는 첫 생활비 통장의 항목으로 본다
  */
 const monthEndItems: Codec = {
   enc: (v) => {
     if (!Array.isArray(v) || v.length === 0) return '';
     const obj: Record<string, number> = {};
-    for (const it of v as MonthEndItem[]) obj[it.categoryId ?? ''] = (obj[it.categoryId ?? ''] ?? 0) + it.leftover;
+    for (const it of v as MonthEndItem[]) {
+      const k = it.accountId ? `${it.accountId}${ITEM_SEP}${it.categoryId ?? ''}` : (it.categoryId ?? '');
+      obj[k] = (obj[k] ?? 0) + it.leftover;
+    }
     return JSON.stringify(obj);
   },
   dec: (c) => {
@@ -169,7 +176,10 @@ const monthEndItems: Codec = {
       for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
         const n = typeof v === 'number' ? v : toNumber(v as RawCell);
         if (n === null || !Number.isFinite(n)) continue;
-        out.push({ categoryId: k.trim() === '' ? null : k.trim(), leftover: Math.round(n) });
+        const sep = k.indexOf(ITEM_SEP);
+        const acc = sep >= 0 ? k.slice(0, sep).trim() : '';
+        const cat = (sep >= 0 ? k.slice(sep + 1) : k).trim();
+        out.push({ categoryId: cat === '' ? null : cat, leftover: Math.round(n), ...(acc ? { accountId: acc } : {}) });
       }
       return out.length > 0 ? out : null;
     } catch {
@@ -255,6 +265,8 @@ export const MONTH_END_LABELS: Record<MonthEndChoice, string> = { pending: '미�
 export const LEDGER_KIND_LABELS: Record<LedgerKind, string> = { shared: '공용', personal: '개인' };
 /** 생활비 항목 쓰는 방식. 빈 셀은 하루 (예전 생활비 한 줄도 지금처럼 하루에 나눠 써요) */
 export const SPREAD_LABELS: Record<LivingSpread, string> = { daily: '하루', monthly: '한달' };
+/** 매달 배분 방식. 빈 셀은 고정 (예전 배분은 모두 정한 금액) */
+export const RULE_KIND_LABELS: Record<RuleKind, string> = { fixed: '고정', remainder: '나머지' };
 
 const role = enumCodec(ROLE_LABELS, 'other');
 
@@ -302,6 +314,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('amount', '금액', int), c('dayOfMonth', '이체일', int),
       c('startMonth', '시작월', month), c('endMonth', '종료월', optMonth),
       c('deleted', '삭제됨', bool, ['삭제']),
+      // 방식 (PLAN 4-13). 나중에 더한 열이라 빈 칸 = 고정(정한 금액)
+      c('kind', '방식', enumCodec(RULE_KIND_LABELS, 'fixed'), ['배분방식']),
     ],
   },
   transfers: {
@@ -390,6 +404,15 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('endDate', '종료일', date, ['돌아오는날']), c('budget', '예산', int, ['총예산']),
       c('items', '항목예산', tripItems), c('memo', '메모', str),
       ...audit,
+    ],
+  },
+  incomePlans: {
+    table: 'incomePlans', tab: TAB_NAMES.incomePlans, key: 'id',
+    columns: [
+      c('id', 'id', str), c('personName', '이름', str, ['사람']), c('personEmail', '이메일', optStr),
+      c('amount', '금액', int), c('dayOfMonth', '입금일', int, ['받는날']), c('accountId', '통장', str, ['받는통장']),
+      c('startMonth', '시작월', month), c('endMonth', '종료월', optMonth), c('memo', '메모', str),
+      c('deleted', '삭제됨', bool, ['삭제']),
     ],
   },
 };

@@ -40,15 +40,46 @@ export interface Account {
   deleted: boolean;
 }
 
-/** 월배분: 매달 dayOfMonth 일에 from → to 로 amount 이체 */
+/**
+ * 월배분 방식. fixed=정한 금액 보내기, remainder=나머지 전부 보내기 (PLAN 4-13).
+ * remainder 는 그날 다른 배분이 다 나간 뒤 보내는 통장에 남은 돈을 모두 보낸다 (0 아래로는 보내지 않음)
+ */
+export type RuleKind = 'fixed' | 'remainder';
+
+/** 월배분: 매달 dayOfMonth 일에 from → to 로 amount 이체 (remainder 는 그날 남은 돈 전부) */
 export interface AllocationRule {
   id: Id;
   fromAccountId: Id;
   toAccountId: Id;
+  /** fixed 의 금액. remainder 는 쓰지 않는다 (0) */
   amount: Won;
   dayOfMonth: number; // 1..31 (말일보다 크면 말일)
   startMonth: YearMonth;
   endMonth: YearMonth | null; // null = 계속
+  /** 방식. 시트 빈 셀 · 없음 = 'fixed' (예전 시트의 배분은 모두 정한 금액) */
+  kind?: RuleKind;
+  deleted: boolean;
+}
+
+/**
+ * 수입 계획 (PLAN 4-13): 누가 · 얼마를 · 매달 며칠에 · 어느 통장으로 받는지.
+ * 함께 쓰는 월급통장 하나에 여러 사람의 월급이 들어오는 가계부에서 사람별 수입을 적는다.
+ * 그날이 되면 수입 기록(income:<계획id>:<월>)이 자동으로 생긴다
+ */
+export interface IncomePlan {
+  id: Id;
+  /** 버는 사람 이름 (예: 민지) */
+  personName: string;
+  /** 버는 사람 이메일 (선택). 빈 셀은 null */
+  personEmail: string | null;
+  amount: Won;
+  /** 받는 날 (매달 며칠, 1..31. 말일보다 크면 말일) */
+  dayOfMonth: number;
+  /** 받는 통장 (보통 함께 쓰는 월급통장) */
+  accountId: Id;
+  startMonth: YearMonth;
+  endMonth: YearMonth | null;
+  memo: string;
   deleted: boolean;
 }
 
@@ -204,6 +235,10 @@ export type MonthEndChoice = 'pending' | 'reservoir' | 'carryover';
 export interface MonthEndItem {
   categoryId: Id | null;
   leftover: Won; // 음수 가능 (넘긴 항목)
+  /**
+   * 생활비 통장 (사람별 생활비 통장, PLAN 4-14). 없으면(예전 기록) 첫 생활비 통장의 항목으로 본다
+   */
+  accountId?: Id | null;
 }
 
 /** 월말 처리. 월(month)이 키. */
@@ -274,6 +309,8 @@ export interface LedgerData {
   members: Member[];
   /** 여행 (PLAN 4-11). 예전 시트에 탭이 없으면 빈 배열 */
   trips: Trip[];
+  /** 수입 계획 (PLAN 4-13). 예전 시트에 탭이 없으면 빈 배열 */
+  incomePlans: IncomePlan[];
 }
 
 /* ---------- 계산 결과 타입 ---------- */
@@ -282,6 +319,10 @@ export interface LedgerData {
 export interface LivingItem {
   /** 예산 항목 카테고리. null = 예전 '생활비' 한 줄 또는 '기타(예산 없음)' 묶음 */
   categoryId: Id | null;
+  /** 이 항목의 생활비 통장 (사람별 생활비 통장이면 그 사람 통장) */
+  accountId?: Id | null;
+  /** 생활비 통장이 여럿일 때 합친 상태에서만: 통장 주인 이름 (예: 민지) */
+  owner?: string | null;
   name: string;
   /** UI 키트 Icon 이름 */
   icon: string;
@@ -344,6 +385,8 @@ export interface ProjectionMonth {
   installments?: Won;
   /** 그달 여행의 남은 예산 (이벤트통장만, 여행 날짜의 달에 나눔). 0 이면 생략 */
   trips?: Won;
+  /** 그달 이 통장으로 들어올 수입 계획 (아직 기록되지 않은 것). 0 이면 생략 */
+  income?: Won;
   /** 그달 여행별 남은 예산 (trips 가 있을 때) */
   tripList?: { id: Id; name: string; amount: Won }[];
   endBalance: Won;

@@ -17,8 +17,9 @@ export function sampleLedger(): LedgerData {
       { id: 'a-etc', name: '기타', role: 'other', openingBalance: -1000, openingDate: '2026-11-01', order: 6, ownerName: null, ownerEmail: null, deleted: false },
     ],
     rules: [
-      { id: 'r1', fromAccountId: 'a-inc', toAccountId: 'a-fix', amount: 2000000, dayOfMonth: 25, startMonth: '2026-11', endMonth: null, deleted: false },
-      { id: 'r2', fromAccountId: 'a-inc', toAccountId: 'a-evt', amount: 300000, dayOfMonth: 31, startMonth: '2026-01', endMonth: '2026-10', deleted: true },
+      { id: 'r1', fromAccountId: 'a-inc', toAccountId: 'a-fix', amount: 2000000, dayOfMonth: 25, startMonth: '2026-11', endMonth: null, deleted: false, kind: 'fixed' },
+      { id: 'r3', fromAccountId: 'a-inc', toAccountId: 'a-res', amount: 0, dayOfMonth: 25, startMonth: '2026-11', endMonth: null, deleted: false, kind: 'remainder' },
+      { id: 'r2', fromAccountId: 'a-inc', toAccountId: 'a-evt', amount: 300000, dayOfMonth: 31, startMonth: '2026-01', endMonth: '2026-10', deleted: true, kind: 'fixed' },
     ],
     transfers: [
       { id: 't1', date: '2026-11-25', kind: 'income', fromAccountId: null, toAccountId: 'a-inc', amount: 5000000, status: 'done', ruleId: null, memo: '월급', ...audit },
@@ -41,7 +42,7 @@ export function sampleLedger(): LedgerData {
       { id: 'x2', date: '2026-11-05', amount: 700000, accountId: 'a-fix', categoryId: null, memo: '', eventId: 'e2', fixedExpenseId: 'f1', ...audit, deleted: true, paidBy: '민지', claimAccountId: 'a-inc', claimDue: '2026-11-21', tripId: 'tr1', tripItem: 'flight' },
     ],
     monthEnds: [
-      { month: '2026-10', leftover: 52000, choice: 'reservoir', decidedBy: 'minji@example.com', decidedAt: now, items: [{ categoryId: 'c1', leftover: 55000 }, { categoryId: null, leftover: -3000 }] },
+      { month: '2026-10', leftover: 52000, choice: 'reservoir', decidedBy: 'minji@example.com', decidedAt: now, items: [{ categoryId: 'c1', leftover: 55000 }, { categoryId: null, leftover: -3000 }, { categoryId: 'c1', leftover: 1000, accountId: 'a-al' }] },
       { month: '2026-09', leftover: 0, choice: 'pending', decidedBy: null, decidedAt: null, items: null },
       { month: '2026-08', leftover: -3000, choice: 'carryover', decidedBy: 'junho@example.com', decidedAt: now, items: null },
     ],
@@ -60,6 +61,10 @@ export function sampleLedger(): LedgerData {
     trips: [
       { id: 'tr1', name: '제주 여행', startDate: '2027-02-20', endDate: '2027-02-23', budget: 900000, items: { flight: 300000, stay: 250000 }, memo: '', ...audit },
       { id: 'tr2', name: '부산', startDate: '2026-05-01', endDate: '2026-05-02', budget: 0, items: {}, memo: '메모', ...audit, deleted: true },
+    ],
+    incomePlans: [
+      { id: 'ip1', personName: '민지', personEmail: 'minji@example.com', amount: 3000000, dayOfMonth: 21, accountId: 'a-inc', startMonth: '2026-11', endMonth: null, memo: '', deleted: false },
+      { id: 'ip2', personName: '준호', personEmail: null, amount: 2000000, dayOfMonth: 31, accountId: 'a-inc', startMonth: '2026-01', endMonth: '2026-10', memo: '보너스 제외', deleted: true },
     ],
   };
 }

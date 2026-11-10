@@ -9,7 +9,8 @@ import {
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { defaultLivingDrafts, livingDraftFor, livingTotal, type LivingDraft } from '@/app/start/new/wizard';
-import { periodLabel, visibleFixed } from '../helpers';
+import { periodLabel, visibleFixed, accountNameWithOwner, accountOptions as accountOptionsOf } from '../helpers';
+import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 import { useRunner } from '../useRunner';
 
 export const SPREAD_TEXT: Record<LivingSpread, string> = { daily: '하루에 나눠 쓰기', monthly: '한 달 한도만' };
@@ -23,9 +24,11 @@ interface Draft {
   categoryId: string; // '' = 카테고리 없음 (예전 생활비 한 줄)
   amount: number | null;
   spread: LivingSpread;
+  /** 이 항목을 쓰는 생활비 통장 (사람별 생활비 통장이면 그 사람) */
+  accountId: string;
 }
 
-type Errors = Partial<Record<'category' | 'amount', string>>;
+type Errors = Partial<Record<'category' | 'amount' | 'account', string>>;
 
 /**
  * 생활비 예산: 항목(카테고리)마다 한 달 예산과 쓰는 방식(하루에 나눠 쓰기 / 한 달 한도만).
@@ -40,7 +43,10 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
 
   const month = monthOf(ledger.today);
   const data = ledger.data;
-  const rows = visibleFixed(data.fixedExpenses, month).filter((f) => f.kind === 'living');
+  const accountOrder = new Map(ledger.activeAccounts.map((a, i) => [a.id, i]));
+  const rows = visibleFixed(data.fixedExpenses, month)
+    .filter((f) => f.kind === 'living')
+    .sort((a, b) => (accountOrder.get(a.accountId) ?? 999) - (accountOrder.get(b.accountId) ?? 999));
   const catById = new Map(data.categories.map((c) => [c.id, c]));
   const categories = ledger.activeCategories.filter((c) => c.defaultAccountRole !== 'event');
   const legacy = hasLegacyLivingRow(data, month);
@@ -49,7 +55,22 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
     .filter((f) => isMonthActive(month, f.startMonth, f.endMonth))
     .reduce((s, f) => s + f.amount, 0);
   const accountId =
-    ledger.living?.livingAccountId ?? (ledger.accountByRole('fixed') ?? ledger.accountByRole('allowance') ?? ledger.activeAccounts[0])?.id ?? '';
+    ledger.myLivingAccountId ??
+    ledger.living?.livingAccountId ??
+    (ledger.accountByRole('fixed') ?? ledger.accountByRole('allowance') ?? ledger.activeAccounts[0])?.id ??
+    '';
+  // 생활비를 쓸 수 있는 통장: 고정지출 역할 통장 (사람별 생활비 통장) + 지금 예산 행이 쓰는 통장
+  const livingAccounts = ledger.activeAccounts.filter(
+    (a) => a.role === 'fixed' || a.id === accountId || rows.some((f) => f.accountId === a.id),
+  );
+  const multiAccount = livingAccounts.length > 1;
+  const accountLabel = (id: string) => accountNameWithOwner(ledger.activeAccounts, id);
+  // 사람별 생활비 통장이면 사람마다 탭 (기본: 내 생활비)
+  const keyOfAccount = (id: string) => ownerKeyOf(ledger.activeAccounts.find((a) => a.id === id));
+  const people = useOwnerFilter(livingAccounts.map((a) => ownerKeyOf(a)), data, keyOfAccount(accountId));
+  const shownRows = rows.filter((f) => people.matches(keyOfAccount(f.accountId)));
+  const newAccountId =
+    people.selected !== null ? (livingAccounts.find((a) => ownerKeyOf(a) === people.selected)?.id ?? accountId) : accountId;
   const editing = draft?.id ? data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
 
   const nameOf = (f: FixedExpense) => (f.categoryId ? (catById.get(f.categoryId)?.name ?? f.name) : f.name || '생활비');
@@ -60,20 +81,24 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
 
   function openNew() {
     setErrors({});
-    const used = new Set(rows.filter((f) => isMonthActive(month, f.startMonth, f.endMonth)).map((f) => f.categoryId));
+    const used = new Set(rows.filter((f) => f.accountId === newAccountId || !multiAccount).filter((f) => isMonthActive(month, f.startMonth, f.endMonth)).map((f) => f.categoryId));
     const first = categories.find((c) => !used.has(c.id));
-    setDraft({ id: null, categoryId: first?.id ?? '', amount: null, spread: first ? defaultSpreadFor(first.name) : 'daily' });
+    setDraft({ id: null, categoryId: first?.id ?? '', amount: null, spread: first ? defaultSpreadFor(first.name) : 'daily', accountId: newAccountId });
   }
 
   function openEdit(f: FixedExpense) {
     setErrors({});
-    setDraft({ id: f.id, categoryId: f.categoryId ?? '', amount: f.amount, spread: f.spread });
+    setDraft({ id: f.id, categoryId: f.categoryId ?? '', amount: f.amount, spread: f.spread, accountId: f.accountId });
   }
 
-  /** 같은 달에 겹치는 같은 카테고리 예산 행 (자기 자신 빼고) */
-  function duplicateOf(categoryId: string, selfId: string | null): FixedExpense | undefined {
+  /** 같은 달에 겹치는 같은 카테고리 예산 행 (자기 자신 빼고, 사람별 생활비 통장이면 같은 통장 안에서만) */
+  function duplicateOf(categoryId: string, selfId: string | null, inAccount: string): FixedExpense | undefined {
     return rows.find(
-      (f) => f.id !== selfId && (f.categoryId ?? '') === categoryId && (f.endMonth === null || f.endMonth >= month),
+      (f) =>
+        f.id !== selfId &&
+        (f.categoryId ?? '') === categoryId &&
+        (!multiAccount || f.accountId === inAccount) &&
+        (f.endMonth === null || f.endMonth >= month),
     );
   }
 
@@ -81,9 +106,9 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
     if (!draft) return;
     const next: Errors = {};
     if (!draft.id && !draft.categoryId) next.category = '항목을 골라 주세요';
-    else if (draft.categoryId && duplicateOf(draft.categoryId, draft.id)) next.category = '이미 예산이 있는 항목이에요';
+    else if (draft.categoryId && duplicateOf(draft.categoryId, draft.id, draft.accountId)) next.category = '이미 예산이 있는 항목이에요';
     if (draft.amount === null || draft.amount <= 0) next.amount = '금액을 입력해 주세요';
-    if (!accountId) next.category = next.category ?? '생활비를 쓸 통장이 없어요';
+    if (!draft.accountId) next.account = '생활비를 쓸 통장이 없어요';
     setErrors(next);
     if (Object.keys(next).length > 0) {
       focusFirstInvalid();
@@ -97,7 +122,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
           await ledger.addFixed({
             name: cat?.name ?? '생활비',
             amount: draft.amount!,
-            accountId,
+            accountId: draft.accountId,
             categoryId: draft.categoryId || null,
             dayOfMonth: null,
             kind: 'living',
@@ -116,6 +141,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
           categoryId: draft.categoryId || null,
           amount: draft.amount!,
           spread: draft.spread,
+          accountId: draft.accountId,
         });
       },
       draft.id ? '생활비 예산을 저장했어요' : '생활비 항목을 추가했어요',
@@ -183,7 +209,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
       aside={thisMonthTotal > 0 ? <span className="muted">한 달 {formatWon(thisMonthTotal)}</span> : undefined}
     >
       <p className="st-desc">
-        항목마다 한 달 예산을 정해요. 하루에 나눠 쓰는 항목은 오늘 써도 되는 돈을, 한 달 한도만 보는 항목은 이번 달 남은 돈을 알려 드려요.
+        {multiAccount ? '사람마다 생활비 통장을 고르고 ' : ''}항목마다 한 달 예산을 정해요. 하루에 나눠 쓰는 항목은 오늘 써도 되는 돈을, 한 달 한도만 보는 항목은 이번 달 남은 돈을 알려 드려요.
         예산이 없는 카테고리 지출은 &lsquo;기타(예산 없음)&rsquo;으로 모여요.
       </p>
 
@@ -193,7 +219,9 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         </Banner>
       ) : null}
 
-      {rows.length === 0 ? (
+      <OwnerTabs filter={people} label="누구 생활비" />
+
+      {shownRows.length === 0 ? (
         <EmptyState
           icon="wallet"
           headingLevel={3}
@@ -202,7 +230,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
         />
       ) : (
         <ul className="list">
-          {rows.map((f) => {
+          {shownRows.map((f) => {
             const label = periodLabel(f.startMonth, f.endMonth, month);
             return (
               <li key={f.id}>
@@ -211,6 +239,7 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                   title={nameOf(f)}
                   subtitle={
                     <span className="st-sub">
+                      {multiAccount && (!people.show || people.selected === null) ? <span>{accountLabel(f.accountId)}</span> : null}
                       <span>{SPREAD_TEXT[f.spread]}</span>
                       {f.categoryId === null ? (
                         <Badge size="sm" tone="warning">
@@ -275,6 +304,15 @@ export function LivingCard({ ledger }: { ledger: ReadyLedger }) {
                 placeholder="항목 고르기"
               />
             </Field>
+            {multiAccount ? (
+              <Field label="누구 생활비인가요?" error={errors.account} required hint="그 사람의 생활비 통장에서 쓴 돈으로 계산해요.">
+                <Select
+                  value={draft.accountId}
+                  onChange={(v) => setDraft({ ...draft, accountId: v })}
+                  options={accountOptionsOf(livingAccounts)}
+                />
+              </Field>
+            ) : null}
             <Field label="한 달 예산" error={errors.amount} required>
               <MoneyInput value={draft.amount} onChange={(v) => setDraft({ ...draft, amount: v })} data-autofocus="" />
             </Field>

@@ -53,14 +53,14 @@ describe('HomeView — 체험 가계부', () => {
     expect(within(foodRow).getByText(formatWon(food.todayAvailable!))).toBeTruthy();
     const shopRow = within(card).getByRole('progressbar', { name: '쇼핑 사용' }).closest('li') as HTMLElement;
     expect(within(shopRow).getByText('한 달 한도')).toBeTruthy();
-    expect(within(card).getByRole('link', { name: /예산 바꾸기/ }).getAttribute('href')).toBe('/settings#st-living');
+    expect(within(card).getByRole('link', { name: /예산 바꾸기/ }).getAttribute('href')).toBe('/budget#st-living');
   });
 
   it('이벤트통장 부족 알림 · 다가오는 일정 3개 · 최근 지출 5개', async () => {
     await renderHome();
     await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
     expect(screen.getByText('2027년 4월에 이벤트통장이 300,000원 모자라요')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '대처하기' }).getAttribute('href')).toBe('/events');
+    expect(screen.getByRole('link', { name: '대처하기' }).getAttribute('href')).toBe('/plan');
 
     const upcoming = screen.getByRole('list', { name: '다가오는 일정' });
     const items = within(upcoming).getAllByRole('listitem');
@@ -102,7 +102,7 @@ describe('HomeView — 새 가계부', () => {
       await h.probe.session!.createLedger({ kind: 'shared', name: '새 가계부' });
     });
     const setup = await screen.findByRole('region', { name: '생활비 예산을 정해 주세요' });
-    expect(within(setup).getByRole('link', { name: '생활비 정하기' }).getAttribute('href')).toBe('/settings#st-living');
+    expect(within(setup).getByRole('link', { name: '생활비 정하기' }).getAttribute('href')).toBe('/budget#st-living');
     expect(screen.queryByRole('region', { name: '항목별 생활비' })).toBeNull();
     expect(screen.getByText('다가오는 일정이 없어요.')).toBeTruthy();
     expect(screen.getByText(/아직 기록한 지출이 없어요/)).toBeTruthy();

@@ -7,7 +7,7 @@ import { sampleLedger } from './fixture';
 
 describe('schema', () => {
   it('탭 이름은 PLAN 5장과 같다', () => {
-    expect(ALL_TABS).toEqual(['설정', '통장', '월배분', '이체', '고정지출', '일정', '지출', '월말', '카테고리', '즐겨찾기', '멤버', '여행']);
+    expect(ALL_TABS).toEqual(['설정', '통장', '월배분', '이체', '고정지출', '일정', '지출', '월말', '카테고리', '즐겨찾기', '멤버', '여행', '수입계획']);
     expect(canonicalHeaders('transfers')).toEqual([
       'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨',
     ]);
@@ -33,7 +33,7 @@ describe('schema', () => {
     ]);
     expect(encodeRow('accounts', d.accounts[3]!)[2]).toBe('저수지');
     expect(encodeRow('monthEnds', d.monthEnds[1]!)).toEqual(['2026-09', 0, '미정', '', '', '']);
-    expect(encodeRow('monthEnds', d.monthEnds[0]!)[5]).toBe('{"c1":55000,"":-3000}');
+    expect(encodeRow('monthEnds', d.monthEnds[0]!)[5]).toBe('{"c1":55000,"":-3000,"a-al|c1":1000}');
     expect(encodeRow('fixedExpenses', d.fixedExpenses[1]!)).toContain('한달');
   });
 
@@ -206,6 +206,44 @@ describe('schema', () => {
     ]);
     expect(loose[0]).toMatchObject({ budget: 0, items: { food: 5, tour: 1000 }, deleted: false });
     expect(loose[1]).toMatchObject({ endDate: '', items: {} });
+  });
+
+  it('배분 방식 열이 없거나 비면 정한 금액으로, 수입계획 탭이 없으면 빈 표로 읽는다 (PLAN 4-13)', () => {
+    const legacy = decodeTable('rules', [
+      ['id', '출금통장', '입금통장', '금액', '이체일', '시작월', '종료월', '삭제됨'],
+      ['r1', 'a', 'b', 100000, 25, '2026-11', '', ''],
+    ]);
+    expect(legacy[0]).toMatchObject({ id: 'r1', amount: 100_000, kind: 'fixed' });
+    const withKind = decodeTable('rules', [
+      ['id', '출금통장', '입금통장', '금액', '이체일', '시작월', '방식'],
+      ['r1', 'a', 'b', '', 25, '2026-11', '나머지'],
+      ['r2', 'a', 'b', 5, 25, '2026-11', ''],
+    ]);
+    expect(withKind.map((r) => [r.kind, r.amount])).toEqual([
+      ['remainder', 0],
+      ['fixed', 5],
+    ]);
+    expect(decodeTable('incomePlans', undefined)).toEqual([]);
+    const plans = decodeTable('incomePlans', [
+      ['id', '이름', '금액', '입금일', '통장', '시작월'],
+      ['p1', '가람', '2,970,000', 21, 'inc', '2026-11'],
+    ]);
+    expect(plans[0]).toEqual({
+      id: 'p1', personName: '가람', personEmail: null, amount: 2_970_000, dayOfMonth: 21, accountId: 'inc',
+      startMonth: '2026-11', endMonth: null, memo: '', deleted: false,
+    });
+  });
+
+  it('월말 항목별: 사람별 생활비 통장 키(통장id|카테고리id)와 예전 키를 함께 읽는다', () => {
+    const rows = decodeTable('monthEnds', [
+      ['월', '남은생활비', '처리', '항목별'],
+      ['2026-10', 1000, '이월', '{"c1":500,"liv-b|c1":300,"liv-b|":200}'],
+    ]);
+    expect(rows[0]!.items).toEqual([
+      { categoryId: 'c1', leftover: 500 },
+      { categoryId: 'c1', leftover: 300, accountId: 'liv-b' },
+      { categoryId: null, leftover: 200, accountId: 'liv-b' },
+    ]);
   });
 
   it('TAB_NAMES 는 TABLE_NAMES 전부를 덮는다', () => {

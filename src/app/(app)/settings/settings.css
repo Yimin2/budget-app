@@ -38,10 +38,110 @@
   }
 }
 
-/* 모바일(<768)에서만: 하단 메뉴 '더보기' 바로 가기 */
+/* 설정 묶음: 작은 제목 + 카드들 */
+.st-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.st-group-head {
+  margin: 0;
+  padding: 0 var(--space-1);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
 @media (min-width: 768px) {
-  .st-mobile-only {
-    display: none !important;
+  .st-group {
+    gap: var(--space-4);
+  }
+}
+
+/* 예산: 차례 · 묶음 */
+.bd-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bd-index a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .bd-index a:hover {
+    background: var(--surface-subtle);
+  }
+}
+.bd-index .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--primary-subtle);
+  color: var(--primary-subtle-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.bd-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  scroll-margin-top: var(--space-6);
+}
+.bd-section:focus {
+  outline: none;
+}
+.bd-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.bd-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.bd-head p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.bd-section .card[id] {
+  scroll-margin-top: var(--space-6);
+}
+.bd-section .card[id]:focus {
+  outline: none;
+}
+.bd-section .card[id]:focus-visible {
+  outline: 2px solid var(--focus, var(--primary));
+  outline-offset: 2px;
+}
+@media (min-width: 768px) {
+  .bd-section {
+    gap: var(--space-6);
   }
 }
 
@@ -82,6 +182,27 @@
 }
 .st-summary .line strong {
   color: var(--text);
+}
+.st-payday {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0 var(--space-1);
+  list-style: none;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.st-payday li {
+  display: flex;
+  flex-direction: column;
+}
+.st-payday-warn {
+  color: var(--danger-text);
+  font-weight: 500;
 }
 .st-trail {
   display: flex;
@@ -276,6 +397,9 @@
 }
 
 /* 멤버 */
+.mb-income {
+  padding: 0 var(--space-4) var(--space-3);
+}
 .mb-steps {
   display: flex;
   flex-direction: column;

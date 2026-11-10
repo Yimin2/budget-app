@@ -2,6 +2,11 @@
 
 /** 로그인·가계부 선택 상태 {mode, user, recentLedgers, activeLedgerId} */
 export const SESSION_KEY = 'budget:session';
+/**
+ * 로그인이 만료돼 로그아웃됐을 때 남겨 두는 {email, recentLedgers, activeLedgerId}.
+ * 같은 계정으로 다시 로그인하면 최근 가계부를 되살린다. 직접 로그아웃하면 지운다
+ */
+export const REMEMBER_KEY = 'budget:session:remembered';
 /** 화면 테마. 로그아웃해도 지우지 않는다 */
 export const THEME_KEY = 'budget:theme';
 /** 체험 모드 가계부 id (LocalBackend) */

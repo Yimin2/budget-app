@@ -96,7 +96,7 @@ describe('파일에서 가져오기', () => {
     await open();
     pick({ ...FILE, version: 9 });
     expect(await screen.findByText('이 파일은 가져올 수 없어요')).toBeTruthy();
-    expect(screen.getByText(/버전 1 파일만 읽어요/)).toBeTruthy();
+    expect(screen.getByText(/버전 1 · 2 파일만 읽어요/)).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '가져오기 미리보기' })).toBeNull();
     pick('not json');
     expect(await screen.findByText(/JSON 파일인지 확인해 주세요/)).toBeTruthy();
