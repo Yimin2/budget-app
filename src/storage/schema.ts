@@ -142,6 +142,34 @@ const yesFlag: Codec = {
   dec: (c) => (toBool(c) || (typeof c === 'string' && c.trim() === '예외') ? true : undefined),
 };
 const date: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toISODate(c) ?? '' };
+/**
+ * 음력 월-일 칸 (일정 '음력', 나중에 더한 열). 쓸 때는 'MM-DD'. 읽을 때는 '8-15' · '08/15' · '8월 15일' · '음 8.15' ·
+ * 날짜('2026-08-15', 시트가 '8-15' 를 날짜로 바꾼 시리얼 숫자 포함)에서 월 · 일만. 빈 칸 · 말이 안 되는 값은 없음(양력)
+ */
+export function toLunarMonthDay(c: RawCell): string | undefined {
+  if (isBlank(c) || typeof c === 'boolean') return undefined;
+  let mo: number;
+  let d: number;
+  if (typeof c === 'number') {
+    const date = serialToDate(c);
+    mo = date.getUTCMonth() + 1;
+    d = date.getUTCDate();
+  } else {
+    const s = String(c).trim();
+    const full = /^(\d{4})\D+(\d{1,2})\D+(\d{1,2})/.exec(s);
+    const short = full ? null : /(\d{1,2})\D+(\d{1,2})/.exec(s);
+    const m = full ? [full[2], full[3]] : short ? [short[1], short[2]] : null;
+    if (!m) return undefined;
+    mo = Number(m[0]);
+    d = Number(m[1]);
+  }
+  if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 30)) return undefined;
+  return `${pad(mo)}-${pad(d)}`;
+}
+const lunarMonthDay: Codec = {
+  enc: (v) => (typeof v === 'string' ? (toLunarMonthDay(v) ?? '') : ''),
+  dec: toLunarMonthDay,
+};
 /** 빈 셀 · 날짜가 아닌 값은 null */
 const optDate: Codec = {
   enc: (v) => (v ? String(v) : ''),
@@ -492,6 +520,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('status', '상태', enumCodec(EVENT_STATUS_LABELS, 'planned')),
       c('repeat', '반복', enumCodec(REPEAT_LABELS, 'none')), c('memo', '메모', str),
       ...audit,
+      // 음력 반복 (PLAN 4-3). 나중에 더한 열이라 빈 칸 = 양력
+      c('lunar', '음력', lunarMonthDay, ['음력날짜']),
     ],
   },
   expenses: {

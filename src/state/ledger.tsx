@@ -60,14 +60,14 @@ import {
   isMonthActive,
   monthOf,
   newId,
-  nextOccurrenceDate,
+  nextEventDate,
+  seriesBaseId,
   nextOccurrenceId,
   pendingAllowanceIncome,
   pendingAutoRecords,
   pendingClaims,
   pendingMonthEnd as pendingMonthEndDomain,
   projectEventAccount,
-  seriesAnchorDay,
   suggestShortageFixes,
   summarizeClaims,
   toISODate,
@@ -190,7 +190,7 @@ function nextOrder(list: { order: number }[]): number {
 
 /** 반복 일정의 다음 회차 행 (기준 일 유지, 결정적 id). 반복이 아니면 null */
 function nextOccurrenceRow(ev: PlannedEvent, events: PlannedEvent[], s: { author: string; createdAt: string; updatedAt: string }): PlannedEvent | null {
-  const nextDate = nextOccurrenceDate(ev.date, ev.repeat, ev.repeat === 'none' ? undefined : seriesAnchorDay(events, ev));
+  const nextDate = nextEventDate(events, ev);
   if (!nextDate) return null;
   return { ...ev, id: nextOccurrenceId(ev, nextDate), date: nextDate, status: 'planned', ...s, deleted: false };
 }
@@ -1565,11 +1565,49 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         repeat: input.repeat ?? 'none',
         memo: input.memo ?? '',
         ...stamp(),
+        ...(input.lunar && (input.repeat ?? 'none') === 'yearly' ? { lunar: input.lunar } : {}),
       };
       await insertRows('events', [row], '일정을 추가하지 못했어요');
       return row;
     },
     [accountByRole, activeAccounts, insertRows, stamp],
+  );
+
+  /** 매년 일정 한 번에 등록: 결정적 id 라 다시 눌러도(함께 쓰는 사람이 동시에 눌러도) 같은 행이에요 */
+  const registerAnnualEvents = useCallback<LedgerApi['registerAnnualEvents']>(
+    async (drafts) => {
+      const { data: d } = requireData();
+      const accountId = accountByRole('event')?.id ?? accountByRole('allowance')?.id ?? activeAccounts[0]?.id;
+      if (!accountId) throw new Error('일정에 쓸 통장이 없어요. 통장을 먼저 만들어 주세요');
+      const s = stamp();
+      const rows: PlannedEvent[] = [];
+      for (const dr of drafts) {
+        if (rows.some((r) => r.id === dr.id)) continue;
+        if (d.events.some((e) => !e.deleted && seriesBaseId(e.id) === dr.id)) continue;
+        rows.push({
+          id: dr.id,
+          date: dr.date,
+          name: dr.name,
+          amount: Math.round(dr.amount),
+          accountId,
+          categoryId: dr.categoryId,
+          status: 'planned',
+          repeat: 'yearly',
+          memo: '',
+          ...s,
+          ...(dr.lunar ? { lunar: dr.lunar } : {}),
+        });
+      }
+      if (rows.length === 0) return [];
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      await mutate(
+        (cur) => ({ ...cur, events: [...cur.events.filter((e) => !byId.has(e.id)), ...rows] }),
+        (repo) => repo.upsertMany('events', rows),
+        '매년 일정을 넣지 못했어요',
+      );
+      return rows;
+    },
+    [requireData, accountByRole, activeAccounts, stamp, mutate],
   );
 
   const updateEvent = useCallback(
@@ -2478,6 +2516,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       deleteExpense,
       setExpenseExclusions,
       addEvent,
+      registerAnnualEvents,
       updateEvent,
       completeEvent,
       cancelEvent,
@@ -2522,7 +2561,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       undoRepayLoan, convertToLoan, unconvertLoan, saveSettleDay, saveDaysOff, saveDismissedRecurring, borrowReservoirClaims, convertSettledReservoirClaims, undoReservoirClaims, undoClaimPayments, cancelClaimLoans, cancelLoanTransfer, updateLoanAmount, restoreRows, installments, installmentHint, addInstallment,
       reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,
       restoreTrip, addExpense, updateExpense,
-      deleteExpense, setExpenseExclusions, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
+      deleteExpense, setExpenseExclusions, addEvent, registerAnnualEvents, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,
       applyFromReservoir, saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance, saveRule, addRule,
       changeRuleAmount, changeFixedAmount, endFixedSeries, saveFixed, addFixed, saveCategory, moveCategory, moveCategoryTo, addCategory, saveFavorite, addFavorite, recordFavorite,
       decideMonthEnd, inviteMember, linkMemberAccount, refreshSharing, renameLedger, displayName, previewImport, importFile,

@@ -204,6 +204,7 @@ function EventRow({
               <Badge size="sm" dot={false}>
                 <Icon name="repeat" size={16} />
                 {REPEAT_LABEL[event.repeat]}
+                {event.repeat === 'yearly' && event.lunar ? ' · 음력' : ''}
               </Badge>
             ) : null}
             {done ? (

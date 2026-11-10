@@ -70,14 +70,14 @@ describe('매년 돌아오는 일', () => {
   it('[괜찮아요]는 가계부 설정에 숨겨 다시 보이지 않아요', async () => {
     const h = await renderEvents();
     await act(async () => {
-      await h.probe.ledger!.addExpense({ date: '2025-12-24', amount: 80_000, accountId: 'demo-acc-event', categoryId: null, memo: '크리스마스 선물' });
+      await h.probe.ledger!.addExpense({ date: '2025-12-24', amount: 80_000, accountId: 'demo-acc-event', categoryId: null, memo: '조카 생일 선물' });
     });
     const card = await screen.findByRole('region', { name: '매년 돌아오는 일' });
     await act(async () => {
-      fireEvent.click(within(card).getByRole('button', { name: '‘크리스마스 선물’ 괜찮아요' }));
+      fireEvent.click(within(card).getByRole('button', { name: '‘조카 생일 선물’ 괜찮아요' }));
     });
-    await screen.findByText('‘크리스마스 선물’ 제안은 다시 보이지 않아요');
-    expect(h.probe.ledger!.data!.settings.dismissedRecurring).toEqual(['12|크리스마스 선물']);
+    await screen.findByText('‘조카 생일 선물’ 제안은 다시 보이지 않아요');
+    expect(h.probe.ledger!.data!.settings.dismissedRecurring).toEqual(['12|조카 생일 선물']);
     await waitFor(() => expect(screen.queryByRole('region', { name: '매년 돌아오는 일' })).toBeNull());
   });
 });

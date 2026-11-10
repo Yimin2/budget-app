@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState, type FormEvent } from 'react';
+import { formatLunarMonthDay, lunarLabel, lunarToSolar, parseLunarMonthDay, solarToLunar } from '@/domain';
 import type { Id, PlannedEvent, Repeat } from '@/domain';
 import { useLedger } from '@/state';
 import {
@@ -43,6 +44,21 @@ export interface EventDialogProps {
 }
 
 const NAME_MAX = 40;
+
+type CalendarKind = 'solar' | 'lunar';
+const CALENDAR_OPTIONS: { value: CalendarKind; label: string }[] = [
+  { value: 'solar', label: '양력' },
+  { value: 'lunar', label: '음력' },
+];
+
+/** 고른 양력 날짜의 음력 월-일 'MM-DD'. 원래 음력 값이 그 날짜와 맞으면 그대로(30일 → 29일로 줄어든 해 등) */
+function lunarFor(date: string, original?: string): string | null {
+  const l = solarToLunar(date);
+  if (!l) return null;
+  const md = parseLunarMonthDay(original);
+  if (md && lunarToSolar(l.year, md.month, md.day) === date) return formatLunarMonthDay(md.month, md.day);
+  return formatLunarMonthDay(l.month, l.day);
+}
 const MEMO_MAX = 200;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -64,6 +80,7 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
   const [amount, setAmount] = useState<number | null>(event ? event.amount : (preset?.amount ?? null));
   const [categoryId, setCategoryId] = useState<Id | null>(event?.categoryId ?? preset?.categoryId ?? null);
   const [repeat, setRepeat] = useState<Repeat>(event?.repeat ?? preset?.repeat ?? 'none');
+  const [calendar, setCalendar] = useState<CalendarKind>(event?.lunar && event.repeat === 'yearly' ? 'lunar' : 'solar');
   const [memo, setMemo] = useState(event?.memo ?? '');
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
@@ -83,6 +100,9 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
     if (!name.trim()) e.name = '일정 이름을 입력해 주세요';
     else if (name.trim().length > NAME_MAX) e.name = `이름은 ${NAME_MAX}자까지 쓸 수 있어요`;
     if (amount === null || !(amount > 0)) e.amount = '예상 금액을 입력해 주세요';
+    if (!e.date && repeat === 'yearly' && calendar === 'lunar' && !lunarFor(date, event?.lunar)) {
+      e.date = '이 날짜의 음력을 셈할 수 없어요. 양력으로 넣어 주세요';
+    }
     return e;
   }
 
@@ -97,13 +117,15 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
       return;
     }
     setSaving(true);
+    const lunar = repeat === 'yearly' && calendar === 'lunar' ? (lunarFor(date, event?.lunar) ?? undefined) : undefined;
     const clean = { date, name: name.trim(), amount: amount!, categoryId, repeat, memo: memo.trim() };
     try {
       if (event) {
-        await ledger.updateEvent({ ...event, ...clean });
+        const { lunar: _old, ...rest } = event;
+        await ledger.updateEvent({ ...rest, ...clean, ...(lunar ? { lunar } : {}) });
         toast.success(`‘${clean.name}’ 일정을 고쳤어요`);
       } else {
-        await ledger.addEvent(clean);
+        await ledger.addEvent({ ...clean, ...(lunar ? { lunar } : {}) });
         toast.success(`‘${clean.name}’ 일정을 넣었어요`);
       }
       onClose();
@@ -221,6 +243,20 @@ export function EventDialog({ event, preset, onClose, onComplete, onCancelEvent,
                 : '한 번만 있는 일정이에요'}
           </span>
         </div>
+
+        {repeat === 'yearly' ? (
+          <div className={styles.group2}>
+            <span className="label">날짜 기준</span>
+            <SegmentedControl options={CALENDAR_OPTIONS} value={calendar} onChange={setCalendar} ariaLabel="양력 또는 음력" />
+            <span className={styles.groupHint}>
+              {calendar === 'lunar'
+                ? DATE_RE.test(date) && lunarFor(date, event?.lunar)
+                  ? `${lunarLabel(lunarFor(date, event?.lunar))}이에요. 해마다 그해 양력 날짜로 바뀌어요`
+                  : '고른 날짜의 음력으로 해마다 반복해요'
+                : '해마다 같은 양력 날짜예요'}
+            </span>
+          </div>
+        ) : null}
 
         <Field label="메모" optional id={`${ids}-memo`}>
           <Textarea

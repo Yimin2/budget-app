@@ -5,6 +5,7 @@ import { autoTransferId } from './ids';
 import { projectionMonthOf, unrecordedInstallmentPayments } from './installments';
 import { firstAccountByRole } from './internal';
 import { ceilTo1000 } from './money';
+import { lunarToSolar, parseLunarMonthDay } from './holidays';
 import { tripOutflows } from './trips';
 import { ruleOccurrenceDate } from './recurring';
 import { manWon, usualForMonth, usualHistory, usualSpread } from './usual';
@@ -36,11 +37,50 @@ export function seriesAnchorDay(events: PlannedEvent[], event: PlannedEvent): nu
   return dateInMonth(monthOf(event.date), anchor) === event.date ? anchor : day;
 }
 
-/** 반복 일정의 다음 회차 날짜 (반복 없음이면 null). anchorDay 를 주면 그 일을 기준으로 말일 처리 */
-export function nextOccurrenceDate(date: ISODate, repeat: Repeat, anchorDay?: number): ISODate | null {
+/** 음력 반복 일정인지 (매년 + 음력 월-일이 바른 값) */
+export function lunarRepeatOf(event: Pick<PlannedEvent, 'repeat' | 'lunar'>): { month: number; day: number } | null {
+  return event.repeat === 'yearly' ? parseLunarMonthDay(event.lunar) : null;
+}
+
+const dayGap = (a: ISODate, b: ISODate) =>
+  Math.abs(
+    Date.UTC(Number(a.slice(0, 4)), Number(a.slice(5, 7)) - 1, Number(a.slice(8, 10))) -
+      Date.UTC(Number(b.slice(0, 4)), Number(b.slice(5, 7)) - 1, Number(b.slice(8, 10))),
+  );
+
+/** 이 양력 날짜가 어느 음력 해의 회차인지: 그 음력 월-일의 양력 날짜가 가장 가까운 해 (모르면 null) */
+function lunarYearOf(date: ISODate, md: { month: number; day: number }): number | null {
+  const y = Number(date.slice(0, 4));
+  let best: { year: number; gap: number } | null = null;
+  for (const year of [y - 1, y, y + 1]) {
+    const d = lunarToSolar(year, md.month, md.day);
+    if (!d) continue;
+    const gap = dayGap(d, date);
+    if (!best || gap < best.gap) best = { year, gap };
+  }
+  return best?.year ?? null;
+}
+
+/**
+ * 반복 일정의 다음 회차 날짜 (반복 없음이면 null). anchorDay 를 주면 그 일을 기준으로 말일 처리.
+ * lunar('MM-DD')를 주면 매년 반복을 음력으로: 다음 음력 해의 그 월-일을 양력으로 (음력 표 밖이면 양력 1년 뒤)
+ */
+export function nextOccurrenceDate(date: ISODate, repeat: Repeat, anchorDay?: number, lunar?: string | null): ISODate | null {
   if (repeat === 'none') return null;
+  const md = lunarRepeatOf({ repeat, lunar: lunar ?? undefined });
+  if (md) {
+    const year = lunarYearOf(date, md);
+    const next = year === null ? null : lunarToSolar(year + 1, md.month, md.day);
+    if (next && next > date) return next;
+  }
   const day = anchorDay ?? Number(date.slice(8, 10));
   return dateInMonth(addMonths(monthOf(date), repeat === 'monthly' ? 1 : 12), day);
+}
+
+/** 이 일정 행의 다음 회차 날짜 (기준 일 · 음력 반영). 반복이 아니면 null */
+export function nextEventDate(events: PlannedEvent[], event: PlannedEvent): ISODate | null {
+  if (event.repeat === 'none') return null;
+  return nextOccurrenceDate(event.date, event.repeat, seriesAnchorDay(events, event), event.lunar);
 }
 
 /** 다음 회차 행의 결정적 id — 다시 눌러도(재시도) 같은 행이라 중복되지 않는다 */
@@ -64,6 +104,23 @@ export function expandOccurrences(
     const start = compareMonth(eventMonth, fromMonth) > 0 ? eventMonth : fromMonth;
     if (compareMonth(start, toMonth) > 0) return [];
     return monthRange(start, toMonth).map((m) => occ(m === eventMonth ? event.date : dateInMonth(m, day)));
+  }
+  const lunar = lunarRepeatOf(event);
+  if (lunar) {
+    // 음력: 이 행의 음력 해부터 해마다 그 음력 월-일을 양력으로 (표 밖의 해는 양력 같은 날)
+    const baseYear = lunarYearOf(event.date, lunar);
+    if (baseYear !== null) {
+      const out: ReturnType<typeof occ>[] = [];
+      const endYear = Number(toMonth.slice(0, 4));
+      for (let y = baseYear; y <= endYear; y++) {
+        const shifted = dateInMonth(`${String(Number(eventMonth.slice(0, 4)) + (y - baseYear)).padStart(4, '0')}-${eventMonth.slice(5, 7)}`, day);
+        const date = y === baseYear ? event.date : (lunarToSolar(y, lunar.month, lunar.day) ?? shifted);
+        const m = monthOf(date);
+        if (compareMonth(m, eventMonth) < 0 || compareMonth(m, fromMonth) < 0 || compareMonth(m, toMonth) > 0) continue;
+        out.push(occ(date));
+      }
+      return out;
+    }
   }
   if (event.repeat === 'yearly') {
     const mm = event.date.slice(5, 7);

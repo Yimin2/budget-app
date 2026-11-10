@@ -121,3 +121,182 @@ export function isKoreanHoliday(date: ISODate): boolean {
 export function holidayTableEndingSoon(today: ISODate): boolean {
   return today >= `${HOLIDAY_YEARS.to}-10-01` || !holidayTableCovers(today);
 }
+
+/* ───────── 음력 → 양력 (설날 · 추석 · 음력 생신) ───────── */
+
+/**
+ * 음력 해 표 (2020~2040). [음력 해, 그해 음력 1월 1일의 양력 날짜, 윤달(0 = 없음), 달 길이(1 = 30일, 0 = 29일, 윤달 포함 순서)].
+ *
+ * 왜 표인가: `Intl.DateTimeFormat('ko-u-ca-dangi')`(ICU 단기 달력)는 Node 22 · 최신 Chrome · Safari · Firefox 에 있지만,
+ * ICU 데이터를 줄인 환경(small-icu 빌드 · 일부 안드로이드 웹뷰)에서는 단기 달력이 없거나 그레고리력으로 조용히 바뀌어요.
+ * 날짜가 기기마다 달라지면 안 되니 ICU dangi 로 한 번 뽑은 값을 여기 박아 두고, 테스트에서 ICU(있을 때)와
+ * 공휴일 표(한국천문연구원 날짜)로 다시 맞춰 봐요. 표 밖의 해만 ICU dangi 가 있으면 그것으로 셈하고, 없으면 모른다(null)고 해요.
+ * 윤달 생신은 평달 같은 날로 봐요. 그달이 29일까지면 30일은 29일로 써요.
+ */
+const LUNAR_TABLE: readonly (readonly [number, string, number, string])[] = [
+  [2020, '2020-01-25', 4, '1011010010101'],
+  [2021, '2021-02-12', 0, '011010101010'],
+  [2022, '2022-02-01', 0, '101011010101'],
+  [2023, '2023-01-22', 2, '0101010110101'],
+  [2024, '2024-02-10', 0, '010010110110'],
+  [2025, '2025-01-29', 6, '1010010101110'],
+  [2026, '2026-02-17', 0, '101001010111'],
+  [2027, '2027-02-07', 0, '010100100111'],
+  [2028, '2028-01-27', 5, '0110100100110'],
+  [2029, '2029-02-13', 0, '110110010011'],
+  [2030, '2030-02-03', 0, '010110101010'],
+  [2031, '2031-01-23', 3, '1010101101010'],
+  [2032, '2032-02-11', 0, '100101101101'],
+  [2033, '2033-01-31', 11, '0100101011101'],
+  [2034, '2034-02-19', 0, '010010101110'],
+  [2035, '2035-02-08', 0, '101001001101'],
+  [2036, '2036-01-28', 6, '1101001001101'],
+  [2037, '2037-02-15', 0, '110100100101'],
+  [2038, '2038-02-04', 0, '110101010010'],
+  [2039, '2039-01-24', 5, '1101101010100'],
+  [2040, '2040-02-12', 0, '101101101010'],
+];
+
+/** 음력 표가 다루는 해 */
+export const LUNAR_YEARS = { from: 2020, to: 2040 } as const;
+
+/** 음력 월 · 일 (윤달이면 leap) */
+export interface LunarDate {
+  year: number;
+  month: number;
+  day: number;
+  leap: boolean;
+}
+
+const LUNAR_DAY_MS = 86_400_000;
+const isoToUtc = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
+const utcToIso = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+/** 음력 한 해의 달들 (순서대로 월 · 윤달 · 길이 · 1일의 UTC 시각) */
+function lunarMonths(year: number): { month: number; leap: boolean; length: number; start: number }[] | null {
+  const row = LUNAR_TABLE.find((r) => r[0] === year);
+  if (!row) return null;
+  const [, newYear, leapMonth, lengths] = row;
+  const out: { month: number; leap: boolean; length: number; start: number }[] = [];
+  let start = isoToUtc(newYear);
+  for (let i = 0; i < lengths.length; i++) {
+    // 윤달은 그 평달 바로 뒤 (예: 윤6월 = 7번째 달)
+    const leap = leapMonth > 0 && i === leapMonth;
+    const month = leapMonth > 0 && i >= leapMonth ? (leap ? leapMonth : i) : i + 1;
+    const length = lengths[i] === '1' ? 30 : 29;
+    out.push({ month, leap, length, start });
+    start += length * LUNAR_DAY_MS;
+  }
+  return out;
+}
+
+let dangiFormatter: Intl.DateTimeFormat | null | undefined;
+/** ICU 단기 달력 (없거나 그레고리력으로 바뀌면 null) */
+function dangi(): Intl.DateTimeFormat | null {
+  if (dangiFormatter !== undefined) return dangiFormatter;
+  try {
+    const f = new Intl.DateTimeFormat('en-u-ca-dangi', { timeZone: 'UTC', year: 'numeric', month: 'numeric', day: 'numeric' });
+    const ok = f.resolvedOptions().calendar === 'dangi' && lunarPartsOf(f, Date.UTC(2026, 1, 17))?.day === 1;
+    dangiFormatter = ok ? f : null;
+  } catch {
+    dangiFormatter = null;
+  }
+  return dangiFormatter;
+}
+
+function lunarPartsOf(f: Intl.DateTimeFormat, t: number): LunarDate | null {
+  const parts = f.formatToParts(new Date(t));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  const monthText = get('month');
+  const month = parseInt(monthText, 10);
+  const day = parseInt(get('day'), 10);
+  const year = parseInt(get('relatedYear') || get('year'), 10);
+  if (!Number.isFinite(month) || !Number.isFinite(day) || !Number.isFinite(year)) return null;
+  return { year, month, day, leap: /bis|leap|윤/i.test(monthText) };
+}
+
+/**
+ * 음력 → 양력. 그해 그달에 없는 30일은 29일로. 윤달(leap)은 그해에 윤달이 없으면 평달로.
+ * 표 밖의 해는 ICU 단기 달력으로 셈하고, 그것도 없으면 null
+ */
+export function lunarToSolar(year: number, month: number, day: number, leap = false): string | null {
+  if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 30) return null;
+  const months = lunarMonths(year);
+  if (months) {
+    const target = months.find((m) => m.month === month && m.leap === leap) ?? months.find((m) => m.month === month && !m.leap);
+    if (!target) return null;
+    return utcToIso(target.start + (Math.min(day, target.length) - 1) * LUNAR_DAY_MS);
+  }
+  const f = dangi();
+  if (!f) return null;
+  // 양력 (year-1)-12 ~ (year+1)-02 사이에서 찾는다 (설날은 양력 1월 하순 ~ 2월 하순)
+  const from = Date.UTC(year, 0, 1);
+  let best: string | null = null;
+  for (let t = from; t < Date.UTC(year + 1, 2, 1); t += LUNAR_DAY_MS) {
+    const p = lunarPartsOf(f, t);
+    if (!p || p.year !== year || p.month !== month || p.leap !== leap) continue;
+    if (p.day <= day) best = utcToIso(t);
+    else break;
+  }
+  if (best === null && leap) return lunarToSolar(year, month, day, false);
+  return best;
+}
+
+/** 양력 → 음력 (표 밖이면 ICU 단기 달력, 그것도 없으면 null) */
+export function solarToLunar(date: string): LunarDate | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const t = isoToUtc(date);
+  const y = Number(date.slice(0, 4));
+  for (const year of [y, y - 1]) {
+    const months = lunarMonths(year);
+    if (!months) continue;
+    for (const m of months) {
+      if (t >= m.start && t < m.start + m.length * LUNAR_DAY_MS) {
+        return { year, month: m.month, day: Math.round((t - m.start) / LUNAR_DAY_MS) + 1, leap: m.leap };
+      }
+    }
+  }
+  const f = dangi();
+  return f ? lunarPartsOf(f, t) : null;
+}
+
+/** 그해 설날 (음력 1월 1일) */
+export function seollalDate(year: number): string | null {
+  return lunarToSolar(year, 1, 1);
+}
+
+/** 그해 추석 (음력 8월 15일) */
+export function chuseokDate(year: number): string | null {
+  return lunarToSolar(year, 8, 15);
+}
+
+/** 음력 월-일 칸 값 'MM-DD' */
+export function formatLunarMonthDay(month: number, day: number): string {
+  return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** 'MM-DD' → 월 · 일 (말이 안 되면 null) */
+export function parseLunarMonthDay(text: string | null | undefined): { month: number; day: number } | null {
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec((text ?? '').trim());
+  if (!m) return null;
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 30) return null;
+  return { month, day };
+}
+
+/** '음력 8월 15일' */
+export function lunarLabel(text: string | null | undefined): string {
+  const md = parseLunarMonthDay(text);
+  return md ? `음력 ${md.month}월 ${md.day}일` : '';
+}
+
+/** 음력 월 · 일이 이 양력 날짜 이후(포함) 처음 오는 양력 날짜 */
+export function nextLunarOccurrence(month: number, day: number, onOrAfter: string): string | null {
+  const y = Number(onOrAfter.slice(0, 4));
+  for (const year of [y - 1, y, y + 1]) {
+    const d = lunarToSolar(year, month, day);
+    if (d && d >= onOrAfter) return d;
+  }
+  return null;
+}

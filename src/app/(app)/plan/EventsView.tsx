@@ -7,10 +7,9 @@ import {
   formatMonthKo,
   formatWon,
   manWon,
-  nextOccurrenceDate,
+  nextEventDate,
   nextOccurrenceId,
   projectWithExclusions,
-  seriesAnchorDay,
   usualSpendingInsight,
 } from '@/domain';
 import type { Category, EventProjection, ExclusionDraft, Id, PlannedEvent, UsualInsight } from '@/domain';
@@ -31,6 +30,7 @@ import {
 } from '@/ui';
 import { RequireLedger, SettlementCard, type ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
+import { AnnualCard } from './AnnualCard';
 import { CompleteDialog } from './CompleteDialog';
 import { EventDialog, type EventPreset } from './EventDialog';
 import { EventLists } from './EventLists';
@@ -80,8 +80,7 @@ export function EventsView() {
     setBusyId(event.id);
     // 반복 일정은 이번 회차만 취소되고 다음 회차가 생겨요. 되돌리면 그 다음 회차도 지워요
     const events = ledger.data?.events ?? [];
-    const nextDate =
-      event.repeat === 'none' ? null : nextOccurrenceDate(event.date, event.repeat, seriesAnchorDay(events, event));
+    const nextDate = nextEventDate(events, event);
     const nextExisted = nextDate ? events.some((e) => e.id === nextOccurrenceId(event, nextDate) && !e.deleted) : false;
     try {
       await ledger.cancelEvent(event.id);
@@ -243,6 +242,7 @@ function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAdd
           {!tried && projection.shortages.length > 0 ? (
             <ShortagePanel projection={projection} fix={ledger.shortageFix} today={today} />
           ) : null}
+          <AnnualCard data={data} today={today} onEdit={onEdit} />
           <RecurringCard data={data} today={today} categories={data.categories} />
         </>
       ) : (

@@ -1,5 +1,6 @@
 import type { LivingView } from '@/domain/living';
 import type { Spender } from '@/domain/household';
+import type { AnnualDraft } from '@/domain/annual';
 import type {
   Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id, IncomePlan,
   InstallmentHint, InstallmentPlan, ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer,
@@ -96,6 +97,8 @@ export interface NewEvent {
   categoryId?: Id | null;
   repeat?: PlannedEvent['repeat'];
   memo?: string;
+  /** 음력 반복 'MM-DD' (매년일 때만) */
+  lunar?: string;
 }
 
 /** 선택된 가계부의 데이터·계산값·행동 */
@@ -285,6 +288,8 @@ export interface LedgerApi {
   setExpenseExclusions(changes: { id: Id; excluded: boolean }[]): Promise<number>;
   // 일정
   addEvent(input: NewEvent): Promise<PlannedEvent>;
+  /** 매년 일정 한 번에 등록 (PLAN 4-3). 이미 있는 시리즈는 건너뛰고 새로 넣은 행을 돌려줘요 */
+  registerAnnualEvents(drafts: AnnualDraft[]): Promise<PlannedEvent[]>;
   updateEvent(event: PlannedEvent): Promise<void>;
   /** 실제 금액으로 완료: 지출 기록 + 상태 done + 반복이면 다음 회차 생성 */
   completeEvent(id: Id, actualAmount: Won, date?: ISODate): Promise<void>;
