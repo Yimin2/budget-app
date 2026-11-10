@@ -345,6 +345,13 @@ AUTH_COOKIE_SECRET=openssl rand -base64 32 로 만든 값
 - 미리보기에서 구글 로그인까지 확인해야 할 때만 그 브랜치의 고정 주소를 원본에 추가해요. 아래 5단계의 API 키 웹사이트 제한에도 같은 주소를 넣고, 리디렉션 URI에도 `https://<그 주소>/api/auth/callback`을 넣어요.
 - 그 밖의 미리보기는 **체험 모드**로 확인하면 돼요. 구글 설정 없이 모든 화면을 볼 수 있어요.
 
+**실서비스(Production)를 다른 주소로 열면**
+
+- Production 배포는 `budget-app-<팀 이름>.vercel.app` · `budget-app-git-main-<팀 이름>.vercel.app` 같은 다른 주소로도 열려요. 그런데 구글 원본 · API 키 제한에는 실서비스 주소만 있어서, 그 주소에서는 로그인이 막혀요.
+- 그래서 앱이 이런 주소로 열리면 같은 경로 · 같은 쿼리 그대로 `https://budget-app-mocha-pi.vercel.app`으로 옮겨요(308, `next.config.ts`의 redirects, 본체 `src/server/canonicalHost.ts`).
+- 미리보기 배포 · `localhost` · 실서비스 주소 자체는 옮기지 않아요. 그래서 `/api/auth/callback` 같은 로그인 흐름은 그대로예요.
+- 실서비스 주소를 바꾸면(예: 내 도메인 연결) Vercel 환경 변수 `SITE_HOST`에 새 주소(예: `budget.example.com`)를 **Production**에 넣고 다시 배포해요. 비우면 `budget-app-mocha-pi.vercel.app`이에요. 구글 원본 · 리디렉션 URI · API 키 제한도 새 주소로 바꿔요.
+
 ### 5. API 키 만들기 (파일 선택 창용)
 
 1. **API 및 서비스** → **사용자 인증 정보** → **사용자 인증 정보 만들기** → **API 키**를 눌러요.

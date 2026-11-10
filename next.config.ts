@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { canonicalHostRedirects } from './src/server/canonicalHost';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -8,6 +9,8 @@ const nextConfig: NextConfig = {
    */
   async redirects() {
     return [
+      // Production 배포를 다른 주소(별칭)로 열면 실서비스 주소로 308 (미리보기 · 로컬은 없음)
+      ...canonicalHostRedirects({ VERCEL_ENV: process.env.VERCEL_ENV, SITE_HOST: process.env.SITE_HOST }),
       { source: '/expenses', destination: '/history', permanent: false },
       { source: '/accounts', destination: '/history?tab=accounts', permanent: false },
       { source: '/events', destination: '/plan', permanent: false },
