@@ -508,6 +508,113 @@
   }
 }
 
+
+/* 카테고리 정리: 줄 오른쪽 정리 버튼 · 같은 자리 정리 칸 · 안 쓴 카테고리 제안 · 숨긴 카테고리 */
+.st-cat-more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.st-cat-more:hover,
+.st-cat-more[aria-expanded='true'] {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+.st-cat-more:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.st-cat-more:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.st-tidy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-2) 44px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  min-width: 0;
+}
+@media (max-width: 479px) {
+  .st-tidy {
+    margin-left: 0;
+  }
+}
+.st-tidy-q {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+.st-tidy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.st-tidy-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  background: var(--primary-subtle);
+  color: var(--primary-subtle-text);
+  font-size: 14px;
+  line-height: 22px;
+}
+.st-tidy-preview p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.st-tidy-preview .muted {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.st-cat-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius-md);
+  background: var(--info-subtle);
+  color: var(--info-text);
+  font-size: 14px;
+  line-height: 22px;
+}
+.st-cat-suggest p {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
+.st-cat-suggest .muted {
+  color: var(--text-muted);
+}
+.st-cats-hidden .st-cat-row {
+  padding-right: var(--space-1);
+}
+.st-cats-hidden .st-cat-row > .btn {
+  flex: none;
+}
+
 /* 생활비 쓰는 날 */
 .st-check {
   display: flex;

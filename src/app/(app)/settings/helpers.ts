@@ -2,7 +2,7 @@
 import {
   addMonths, compareMonth, dateInMonth, formatMan, formatMonthKo, isMonthActive, isRemainderRule, monthOf, paydayPlans, plannedIncome, ruleAmountIn,
 } from '@/domain';
-import type { Account, AccountRole, AllocationRule, FixedExpense, ISODate, LedgerData, Won, YearMonth } from '@/domain/types';
+import type { Account, AccountRole, Category, AllocationRule, FixedExpense, ISODate, LedgerData, Won, YearMonth } from '@/domain/types';
 
 export const ROLE_TEXT: Record<AccountRole, string> = {
   income: '수입',
@@ -263,4 +263,15 @@ export function startMonthHint(today: ISODate, day: number | null): string | und
   const month = monthOf(today);
   if (dateInMonth(month, day) >= today) return undefined;
   return `이번 달 ${Number(dateInMonth(month, day).slice(8, 10))}일은 지나서 ${formatMonthKo(addMonths(month, 1))}부터 기록해요`;
+}
+
+/**
+ * 카테고리 고르기 목록 ('없음' + 숨기지 않은 카테고리, 순서대로). 숨긴 카테고리는 빠지지만, 지금 고른 값(keep)이면 남겨요
+ */
+export function categorySelectOptions(active: Category[], keep: (string | null | undefined)[] = []): { value: string; label: string }[] {
+  const keepSet = new Set(keep.filter((x): x is string => !!x));
+  return [
+    { value: '', label: '없음' },
+    ...active.filter((c) => c.hidden !== true || keepSet.has(c.id)).map((c) => ({ value: c.id, label: c.hidden ? `${c.name} (숨김)` : c.name })),
+  ];
 }

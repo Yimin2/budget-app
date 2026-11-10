@@ -12,7 +12,7 @@ import {
 } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { DAY_OPTIONS } from '@/app/start/new/wizard';
-import { accountName, startMonthForNew, accountOptions as accountOptionsOf } from '../helpers';
+import { accountName, startMonthForNew, accountOptions as accountOptionsOf, categorySelectOptions } from '../helpers';
 import { useRunner } from '../useRunner';
 import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 
@@ -86,7 +86,7 @@ export function InstallmentCard({ ledger }: { ledger: ReadyLedger }) {
   const year = Number(month.slice(0, 4));
   const accounts = ledger.activeAccounts;
   const accountOptions = accountOptionsOf(accounts);
-  const categoryOptions = [{ value: '', label: '없음' }, ...ledger.activeCategories.map((c) => ({ value: c.id, label: c.name }))];
+  const categoryOptions = categorySelectOptions(ledger.activeCategories, [draft?.categoryId, edit?.categoryId]);
   const plans = ledger.installments.filter(
     (p) => !p.ended || compareMonth(p.endMonth, addMonths(month, -ENDED_VISIBLE_MONTHS)) >= 0,
   );

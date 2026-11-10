@@ -7,6 +7,7 @@ import { useLedger } from '@/state';
 import { Badge, Button, DateInput, Dialog, Field, Select, TextInput, useToast, focusFirstInvalid } from '@/ui';
 import { ClaimFields } from '../_components/ClaimFields';
 import { SpenderField } from '../_components/SpenderField';
+import { CategoryPicker } from '../_components/CategoryPicker';
 import { accountIdForCategory, accountIdForSource, errorMessage, expenseTitle, type Source } from './selectors';
 import styles from './home.module.css';
 import { accountOptions } from '../settings/helpers';
@@ -150,13 +151,12 @@ export function RecordSheet({ amount, source, categoryId, tripId = null, spender
         <Field label="날짜" error={dateError} required>
           <DateInput value={date} onChange={setDate} />
         </Field>
-        <Field label="카테고리" optional>
-          <Select
-            value={category}
-            onChange={changeCategory}
-            options={[{ value: '', label: '고르지 않기' }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
-          />
-        </Field>
+        <fieldset className={styles.sheetFieldset}>
+          <legend className="label">
+            카테고리 <span className="opt-text">(선택)</span>
+          </legend>
+          <CategoryPicker value={category || null} onChange={(id) => changeCategory(id ?? '')} accountId={accountId || null} disabled={saving} />
+        </fieldset>
         <Field label="내용" optional>
           <TextInput value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 운동화" maxLength={100} enterKeyHint="done" />
         </Field>

@@ -14,7 +14,7 @@ import type { ReadyLedger } from '../../_components/RequireLedger';
 import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
 import { OwnerTabs, ownerKeyOf, useOwnerFilter } from './OwnerTabs';
 import { DAY_OPTIONS, isEmail } from '@/app/start/new/wizard';
-import { accountNameWithOwner, accountOptions as accountOptionsOf, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
+import { accountNameWithOwner, accountOptions as accountOptionsOf, categorySelectOptions, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
 import { useRunner } from '../useRunner';
 
 /** 생활비 항목 예산은 생활비 예산 카드(LivingCard), 할부는 할부 카드(InstallmentCard)에서 다뤄요 */
@@ -111,7 +111,7 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   const isShared = ledger.data.settings.kind === 'shared';
   const accountOptions = accountOptionsOf(accounts);
   const people = peopleOptions(ledger.data);
-  const categoryOptions = [{ value: '', label: '없음' }, ...ledger.activeCategories.map((c) => ({ value: c.id, label: c.name }))];
+  const categoryOptions = categorySelectOptions(ledger.activeCategories, [draft?.categoryId]);
   const editing = draft?.id ? ledger.data.fixedExpenses.find((f) => f.id === draft.id) : undefined;
   const editingRows = editing ? (series.get(billSeriesId(editing.id)) ?? [editing]) : [];
   // 사람별로 나눠 보기: 용돈은 받는 사람, 고정비는 나가는 통장 주인

@@ -11,6 +11,7 @@ export * from './claims';
 export * from './people';
 export * from './members';
 export * from './categories';
+export * from './categoryMerge';
 export * from './income';
 export * from './household';
 export * from './installments';

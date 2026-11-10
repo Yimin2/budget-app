@@ -10,6 +10,7 @@ import type { TripInput } from '@/domain/trips';
 import type { InstallmentInput, InstallmentPatch } from '@/domain/installments';
 import type { ImportFile, ImportPlan } from '@/domain/importFile';
 import type { Settlement } from '@/domain/settlement';
+import type { CategoryMergePlan } from '@/domain/categoryMerge';
 import type { LedgerRef } from '@/storage/types';
 import type { DirectOpenResult, InviteOpenResult } from './invite';
 
@@ -161,6 +162,10 @@ export interface LedgerApi {
   pendingMonthEnd: PendingMonthEnd | null;
   activeAccounts: Account[];
   activeCategories: Category[];
+  /** 고르는 목록(기록 창 · 사도 돼? 칩 · 설정의 카테고리 고르기)에 보일 카테고리: 지우지 않고 숨기지 않은 것, 순서대로 */
+  pickableCategories: Category[];
+  /** 최근 90일 카테고리마다 쓴 점수 (가까울수록 무겁게). 기록 창의 자주 쓴 카테고리 6개에 써요 */
+  categoryScores: Map<Id, number>;
   /** 그 역할의 첫 통장 (순서대로). 수입통장은 사람마다 있을 수 있어 incomeAccounts 도 봐요 */
   accountByRole(role: Account['role']): Account | null;
   /** 수입 역할 통장 모두 (사람별 수입통장, 순서대로) */
@@ -348,6 +353,14 @@ export interface LedgerApi {
   /** 끌어 놓기: 순서의 toIndex 번째(0부터)로 옮기고 바뀐 행을 한 번에 저장해요 (먼저 화면에, 실패하면 되돌림). 못 옮기면 false */
   moveCategoryTo(id: Id, toIndex: number): Promise<boolean>;
   addCategory(input: Omit<Category, 'id' | 'deleted' | 'order'>): Promise<Category>;
+  /** 카테고리 숨기기 · 다시 보기 (여럿 한 번에, 바뀐 행만 저장). 바꾼 개수 */
+  setCategoriesHidden(ids: Id[], hidden: boolean): Promise<number>;
+  /**
+   * 카테고리 합치기: source 의 지출 · 생활비 예산 · 고정비 · 자주 쓰는 지출 · 일정을 target 으로 옮기고 source 를 지운 것으로 표시해요.
+   * 표마다 한 번에 저장하고, 다시 해도 같아요. 돌려준 plan 으로 undoCategoryMerge 하면 되돌려요
+   */
+  mergeCategory(sourceId: Id, targetId: Id): Promise<CategoryMergePlan>;
+  undoCategoryMerge(plan: CategoryMergePlan): Promise<void>;
   saveFavorite(favorite: Favorite): Promise<void>;
   addFavorite(input: Omit<Favorite, 'id' | 'deleted' | 'order'>): Promise<Favorite>;
   /** 즐겨찾기 한 번에 기록 */

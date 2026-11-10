@@ -17,10 +17,29 @@ async function renderCard() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
   const card = await screen.findByRole('region', { name: '매년 일정 한 번에 등록' });
+  fireEvent.click(within(card).getByRole('button', { name: '매년 일정 한 번에 등록 펼치기' }));
   return { h, card };
 }
 
 describe('매년 일정 한 번에 등록', () => {
+  it('처음에는 접힌 요약 한 줄만, [펼치기]로 같은 자리에서 체크 목록을 펼치고 [접기]로 접어요', async () => {
+    const h = makeHarness();
+    render(<EventsView />, { wrapper: h.Wrapper });
+    const card = await screen.findByRole('region', { name: '매년 일정 한 번에 등록' });
+    // 체험 가계부의 결혼기념일(매년)은 이미 등록됨
+    expect(within(card).getByTestId('annual-summary').textContent).toBe('등록됨 1개');
+    expect(within(card).queryByRole('checkbox', { name: /설날/ })).toBeNull();
+    expect(within(card).queryByRole('button', { name: '등록하기' })).toBeNull();
+    const toggle = within(card).getByRole('button', { name: '매년 일정 한 번에 등록 펼치기' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy();
+    expect(within(card).getByRole('checkbox', { name: /설날/ })).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: '매년 일정 한 번에 등록 접기' }));
+    expect(within(card).queryByRole('checkbox', { name: /설날/ })).toBeNull();
+  });
+
   it('체크하고 금액을 넣어 등록하면 매년 반복 예정 일정이 되고, 그 줄은 등록됨 + 고치기로 바뀌어요', async () => {
     const { h, card } = await renderCard();
     // 체험 가계부의 결혼기념일(매년)은 이미 등록됨

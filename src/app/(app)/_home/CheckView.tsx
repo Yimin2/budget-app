@@ -82,7 +82,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
         ? livingItems[0]
         : undefined;
   // 예산을 아직 정하지 않은 생활비 카테고리 — 고르면 생활비 전체 기준으로 판단해요
-  const { activeCategories } = ledger;
+  const { pickableCategories: activeCategories } = ledger;
   const unbudgetedCategories: Category[] = useMemo(() => {
     if (!living || !hasLivingBudget(living)) return [];
     const budgeted = new Set(livingItems.map((i) => i.categoryId));
@@ -92,7 +92,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
     itemKey !== null && itemKey.startsWith('cat:') && unbudgetedCategories.some((c) => `cat:${c.id}` === itemKey) ? itemKey.slice(4) : null;
   const pickedLooseCat = pickedLooseCatId ? (unbudgetedCategories.find((c) => c.id === pickedLooseCatId) ?? null) : null;
   const needItem = source === 'living' && !livingMissing && !selectedItem && !pickedLooseCat;
-  const eventCategories = hasEventAccount ? ledger.activeCategories.filter((c) => sourceForCategory(c) === 'event') : [];
+  const eventCategories = hasEventAccount ? ledger.pickableCategories.filter((c) => sourceForCategory(c) === 'event') : [];
   const activeTrips = hasEventAccount ? ledger.trips.filter((t) => t.phase !== 'past') : [];
   const pickedTrip = source === 'event' ? (activeTrips.find((t) => t.trip.id === tripId) ?? null) : null;
   const pickedTripId = pickedTrip?.trip.id ?? null;
