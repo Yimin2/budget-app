@@ -10,7 +10,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => nav.router, usePathname: ()
 
 import BudgetPage from '../budget/page';
 import SettingsPage from './page';
-import { card as headingCard, openOut, openRules } from '../budget/budgetTestUtils';
+import { accountCard, card as headingCard, openIncoming, openOut, pickOwner } from '../budget/budgetTestUtils';
 
 /** 설정과 예산을 한 번에 (예전 설정 화면 테스트를 그대로 써요) */
 function Pages() {
@@ -24,9 +24,8 @@ function Pages() {
 
 afterEach(cleanup);
 
-/** 제목으로 카드 찾기. 예산 화면은 접힌 칸을 펼쳐서 (8-3: 배분은 [배분 고치기], 고정비 · 할부 · 생활비는 통장 카드 안) */
+/** 제목으로 카드 찾기. 예산 화면은 접힌 칸을 펼쳐서 (8-3: 배분은 통장 카드 들어오는 돈 줄, 고정비 · 할부 · 생활비는 통장 카드 안) */
 function card(title: string): HTMLElement {
-  if (title === '매달 배분' || title === '수입 계획') openRules();
   if (title === '고정 지출') return openOut('고정지출통장', '고정비');
   if (title === '할부') return openOut('고정지출통장', '할부');
   if (title === '생활비 예산') return openOut('고정지출통장', '생활비 예산');
@@ -51,13 +50,12 @@ describe('설정 화면', () => {
     }
     // 설정 화면의 예산 카드는 예산 화면에만 있어요
 
-    // 사람별 수입통장마다 배분 합계 = 그 사람 수입 → 경고 없음
-    const rules = card('매달 배분');
-    const minji = within(rules).getByRole('group', { name: '민지 수입통장 배분' });
-    expect(within(minji).getByText('이번 달 배분 합계').nextSibling?.textContent).toBe('3,000,000원');
-    const junho = within(rules).getByRole('group', { name: '준호 수입통장 배분' });
-    expect(within(junho).getByText('이번 달 배분 합계').nextSibling?.textContent).toBe('2,000,000원');
-    expect(within(rules).queryByText(/수입보다/)).toBeNull();
+    // 사람별 수입통장마다 보내는 배분 합 = 그 사람 수입 → 경고 없음
+    pickOwner('민지');
+    expect(within(accountCard('민지 수입통장')).getByTestId('income-sent').textContent).toBe('매달 배분으로 보내는 돈 300만');
+    pickOwner('준호');
+    expect(within(accountCard('준호 수입통장')).getByTestId('income-sent').textContent).toBe('매달 배분으로 보내는 돈 200만');
+    expect(screen.queryByText(/수입보다/)).toBeNull();
     expect(screen.getByRole('radiogroup', { name: '화면 테마' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '로그아웃' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '체험 데이터 처음으로 되돌리기' })).toBeTruthy();
@@ -78,14 +76,13 @@ describe('설정 화면', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(current(h).ledger.data!.favorites.find((f) => f.name === '택시')).toMatchObject({ amount: 12_000, deleted: false });
 
-    // 매달 배분: 이벤트 적립 30만 → 35만
-    const rules = card('매달 배분');
-    fireEvent.click(within(rules).getByRole('button', { name: /수입통장.* → 이벤트통장/ }));
-    dialog = screen.getByRole('dialog', { name: '매달 배분 고치기' });
-    fireEvent.change(within(dialog).getByLabelText('금액'), { target: { value: '350000' } });
-    expect(within(dialog).getByText(/새 금액을 적용해요/)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // 매달 배분: 이벤트 적립 30만 → 35만 (이벤트통장 카드 들어오는 돈 줄에서 그 자리 고치기)
+    pickOwner('함께');
+    const editor = openIncoming('이벤트통장', /수입통장에서/);
+    fireEvent.change(within(editor).getByLabelText('금액'), { target: { value: '350000' } });
+    expect(within(editor).getByText(/새 금액을 적용해요/)).toBeTruthy();
+    fireEvent.click(within(editor).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(document.getElementById(editor.id)).toBeNull());
     const eventRules = current(h).ledger.data!.rules.filter((r) => !r.deleted && r.toAccountId === 'demo-acc-event');
     expect(eventRules.map((r) => r.amount)).toContain(350_000);
 
@@ -124,14 +121,15 @@ describe('설정 화면', () => {
   it('한 사람 수입통장만 넘치면 그 통장 이름으로 경고해요', async () => {
     const h = renderApp(<Pages />);
     await startDemo(h);
-    const rules = card('매달 배분');
-    fireEvent.click(within(rules).getByRole('button', { name: /준호 수입통장.* → 고정지출통장/ }));
-    const dialog = screen.getByRole('dialog', { name: '매달 배분 고치기' });
-    fireEvent.change(within(dialog).getByLabelText('금액'), { target: { value: '1000000' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(await within(card('매달 배분')).findByText('준호 수입통장에서 보내는 돈이 수입보다 200,000원 많아요')).toBeTruthy();
-    expect(within(card('매달 배분')).queryByText(/민지 수입통장에서 보내는/)).toBeNull();
+    pickOwner('함께');
+    const editor = openIncoming('고정지출통장', /^\d+일 · 준호 수입통장에서/);
+    fireEvent.change(within(editor).getByLabelText('금액'), { target: { value: '1000000' } });
+    fireEvent.click(within(editor).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(document.getElementById(editor.id)).toBeNull());
+    pickOwner('준호');
+    expect(await within(accountCard('준호 수입통장')).findByText('준호 수입통장에서 보내는 돈이 수입보다 200,000원 많아요')).toBeTruthy();
+    pickOwner('민지');
+    expect(within(accountCard('민지 수입통장')).queryByText(/수입보다/)).toBeNull();
     expect(current(h).ledger.data).not.toBeNull();
   });
 

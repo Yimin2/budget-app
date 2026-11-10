@@ -71,24 +71,16 @@ describe('예산 — 월급날 돈 흐름 (8-3)', () => {
     expect(labels).toContain(`저수지 남는 돈 ${formatMan(rest)}`);
   });
 
-  it('[배분 고치기]를 누르면 같은 자리에 수입 계획과 매달 배분이 펼쳐지고, #st-rules 로 들어오면 펼친 채예요', async () => {
-    let h = renderApp(<BudgetPage />, { couple: true });
-    await startDemo(h);
-    expect(screen.queryByRole('heading', { level: 2, name: '매달 배분' })).toBeNull();
-    const btn = screen.getByRole('button', { name: '수입 계획과 매달 배분 배분 고치기' });
-    expect(btn.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByRole('heading', { level: 2, name: '매달 배분' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: '수입 계획' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '수입 계획과 매달 배분 접기' }));
-    expect(screen.queryByRole('heading', { level: 2, name: '매달 배분' })).toBeNull();
-    cleanup();
-
+  it('흐름 그림은 보기만: [배분 고치기] 단추와 펼친 목록이 없고, #st-rules 로 들어오면 처음 탭 생활비 통장의 들어오는 돈으로 가요', async () => {
     window.location.hash = '#st-rules';
-    h = renderApp(<BudgetPage />, { couple: true });
+    const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
-    await waitFor(() => expect(screen.getByRole('heading', { level: 2, name: '매달 배분' })).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /배분 고치기|배분 보기/ })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: '매달 배분' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: '수입 계획' })).toBeNull();
+    const target = document.getElementById('st-rules')!;
+    expect(target.getAttribute('aria-label')).toBe('생활비(민지) 들어오는 돈');
+    await waitFor(() => expect(document.activeElement).toBe(target));
   });
 });
 
@@ -111,7 +103,12 @@ describe('예산 — 통장별 들어오는 돈 · 나가는 돈 (8-3)', () => {
     const need = windowNeed(data, 'demo-acc-living-minji', dateInMonth(month, 21), 21);
     expect(m).toMatchObject({ bills: need.bills, installments: need.installments, living: need.living, outgoingTotal: need.total, incomingTotal: 900_000 });
     const minji = accountCard('생활비(민지)');
-    expect(within(minji).getByTestId('incoming-summary').textContent).toBe('21일 90만');
+    expect(within(minji).getByTestId('incoming-summary').textContent).toBe('한 달 90만');
+    // 들어오는 돈 줄: 날짜 · 보내는 통장 · 금액 · 방식 (누르면 그 자리에서 고쳐요)
+    const inRows = within(minji).getAllByTestId('incoming-row');
+    expect(inRows).toHaveLength(1);
+    expect(inRows[0]!.tagName).toBe('BUTTON');
+    expect(inRows[0]!.textContent).toBe('21일 · 월급통장에서매달 같은 금액90만');
     expect(within(minji).getByTestId('outgoing-total').textContent).toMatch(new RegExp(`^${formatMan(need.total).replace('.', '\\.')} · `));
     const outs = within(minji).getAllByTestId('out-row').map((r) => r.querySelector('p')?.textContent);
     expect(outs).toEqual([`고정비 · 3건${formatMan(need.bills)}`, `할부${formatMan(0)}`, `생활비 예산${formatMan(need.living)}`]);
@@ -123,7 +120,17 @@ describe('예산 — 통장별 들어오는 돈 · 나가는 돈 (8-3)', () => {
 
     // 함께 탭: 이벤트 · 저수지 · 저축투자 (들어오는 돈만, 21일 · 25일 남는 돈 전부는 두 번)
     fireEvent.click(within(tabs).getByRole('radio', { name: '함께' }));
-    expect(within(accountCard('저수지통장')).getByTestId('incoming-summary').textContent).toBe('21일 90만 (남는 돈 전부) · 25일 105만 (남는 돈 전부)');
+    expect(within(accountCard('저수지통장')).getByTestId('incoming-summary').textContent).toBe('한 달 195만');
+    expect(within(accountCard('저수지통장')).getAllByTestId('incoming-row').map((r) => r.textContent)).toEqual([
+      '21일 · 월급통장에서남는 돈 전부90만',
+      '25일 · 월급통장에서남는 돈 전부105만',
+    ]);
+    // 월급통장 카드: 들어오는 돈 = 수입 계획, 보내는 배분 합
+    const salary = accountCard('월급통장');
+    expect(within(salary).getByTestId('incoming-summary').textContent).toBe('한 달 600만');
+    expect(within(salary).getAllByTestId('income-row').map((r) => r.textContent)).toEqual(['21일 · 민지수입 계획320만', '25일 · 준호수입 계획280만']);
+    expect(within(salary).getByTestId('income-sent').textContent).toBe('매달 배분으로 보내는 돈 405만 · 남는 돈 전부 → 저수지');
+    expect(within(salary).queryByText(/수입보다/)).toBeNull();
     expect(within(accountCard('이벤트통장')).getByTestId('outgoing-total').textContent).toBe('나가는 고정 지출이 없어요');
   });
 
