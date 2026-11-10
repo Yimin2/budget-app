@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  isValidDate,
   addMonths,
   adjustmentDelta,
   allBalances,
@@ -782,6 +783,18 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         (d) => ({ ...d, settings: { ...d.settings, settleDay: value } }),
         (r) => r.updateSettings({ settleDay: value }),
         '정산일을 저장하지 못했어요',
+      );
+    },
+    [mutate],
+  );
+
+  const saveDaysOff = useCallback<LedgerApi['saveDaysOff']>(
+    async (days) => {
+      const value = [...new Set(days.filter((d) => isValidDate(d)))].sort();
+      await mutate(
+        (d) => ({ ...d, settings: { ...d.settings, daysOff: value } }),
+        (r) => r.updateSettings({ daysOff: value }),
+        '쉬는 날을 저장하지 못했어요',
       );
     },
     [mutate],
@@ -1684,6 +1697,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       settleClaims,
       unsettleClaims,
       saveSettleDay,
+      saveDaysOff,
       installments,
       installmentHint,
       addInstallment,
@@ -1737,7 +1751,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       status, error, needsReconnect, ref, data, today, savingCount, reload, living, livingViews, myLivingId, livingFor, spenders,
       mySpender, addIncomePlan, saveIncomePlan, balances, eventProjection, shortageFix,
       pendingMonthEnd, activeAccounts, activeCategories, accountByRole, incomeAccounts, judge, claims, claimPayers,
-      previewClaimDue, settleClaims, unsettleClaims, saveSettleDay, installments, installmentHint, addInstallment,
+      previewClaimDue, settleClaims, unsettleClaims, saveSettleDay, saveDaysOff, installments, installmentHint, addInstallment,
       reviseInstallment, prepayInstallment, endInstallment, deleteInstallment, trips, addTrip, updateTrip, deleteTrip,
       restoreTrip, addExpense, updateExpense,
       deleteExpense, addEvent, updateEvent, completeEvent, cancelEvent, deleteEvent, applyIncreaseMonthly,

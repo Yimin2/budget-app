@@ -229,3 +229,62 @@ describe('할부 안내 문구', () => {
     expect(judgeInstallment({ source: 'living', living: shop, categoryId: 'shop' }, 600_000)!.message).toMatch(/쇼핑은 한 달/);
   });
 });
+
+describe('judgeLiving — 쓰는 날 · 주 N회 (PLAN 4-4)', () => {
+  const lunchRow = (p: Partial<LivingItem> = {}): LivingItem => ({
+    categoryId: 'lunch', name: '직장식비', icon: 'utensils', spread: 'daily', base: 250_000, monthBudget: 250_000, carryIn: 0,
+    spent: 31_000, spentToday: 0, remaining: 219_000, dailyBudget: 14_600, todayAvailable: 14_600, unbudgeted: false,
+    schedule: { days: [1, 2, 3, 4, 5], skipHolidays: true, perWeek: null },
+    useDay: { today: true, daysLeft: 15, daysAfterToday: 14, next: null },
+    ...p,
+  });
+  const dineRow = (w: Partial<NonNullable<LivingItem['weekly']>> = {}, p: Partial<LivingItem> = {}): LivingItem => ({
+    categoryId: 'dine', name: '외식', icon: 'utensils', spread: 'daily', base: 160_000, monthBudget: 160_000, carryIn: 0,
+    spent: 20_000, spentToday: 0, remaining: 140_000, dailyBudget: 20_000, todayAvailable: 20_000, unbudgeted: false,
+    schedule: { days: null, skipHolidays: false, perWeek: 2 },
+    weekly: { perWeek: 2, usedThisWeek: 0, usedToday: false, leftThisWeek: 2, usesLeft: 7, perUse: 20_000, ...w },
+    ...p,
+  });
+
+  it('쓰는 날: 오늘 몫 안이면 ok, 남은 돈 안이면 남은 쓰는 날로 나눈 warn', () => {
+    const s = withItems([lunchRow()]);
+    expect(judgeLiving(s, 'lunch', 14_600).signal).toBe('ok');
+    const warn = judgeLiving(s, 'lunch', 37_000);
+    expect(warn.signal).toBe('warn');
+    // (219,000 − 37,000) ÷ 내일부터 남은 쓰는 날 14일 = 13,000
+    expect(warn.message).toBe('사면 다음 쓰는 날부터 직장식비에 하루 13,000원씩 쓸 수 있어요');
+    expect(judgeLiving(s, 'lunch', 300_000).signal).toBe('bad');
+  });
+
+  it('쉬는 날: 오늘 몫이 0원이라 사면 warn 이고 그렇다고 알려요', () => {
+    const s = withItems([
+      lunchRow({ dailyBudget: 0, todayAvailable: 0, useDay: { today: false, daysLeft: 11, daysAfterToday: 11, next: { date: '2026-11-16', amount: 19_900 } } }),
+    ]);
+    const v = judgeLiving(s, 'lunch', 8_000);
+    expect(v.signal).toBe('warn');
+    expect(v.message).toBe('오늘은 쓰는 날이 아니에요. 사면 다음 쓰는 날부터 직장식비에 하루 19,100원씩 쓸 수 있어요');
+  });
+
+  it('주 N회: 한 번에 쓸 돈 안이면 ok, 남은 돈 안이면 warn, 넘으면 bad', () => {
+    const s = withItems([dineRow()]);
+    expect(judgeLiving(s, 'dine', 20_000)).toMatchObject({ signal: 'ok', message: '한 번에 쓸 외식 예산 안이에요' });
+    const warn = judgeLiving(s, 'dine', 50_000);
+    expect(warn.signal).toBe('warn');
+    // (140,000 − 50,000) ÷ 남은 6회 = 15,000
+    expect(warn.message).toBe('사면 남은 6회에 한 번 15,000원씩 쓸 수 있어요');
+    expect(judgeLiving(s, 'dine', 150_000).signal).toBe('bad');
+  });
+
+  it('주 N회를 이번 주에 다 썼으면 적은 금액도 warn (다음 주에 다시)', () => {
+    const s = withItems([dineRow({ usedThisWeek: 2, leftThisWeek: 0, usesLeft: 5 }, { todayAvailable: 0, dailyBudget: 0 })]);
+    const v = judgeLiving(s, 'dine', 10_000);
+    expect(v.signal).toBe('warn');
+    expect(v.message).toBe('이번 주 외식 2회를 다 썼어요');
+    expect(v.when).toBe('다음 주 월요일부터 다시 쓸 수 있어요');
+  });
+
+  it('쓰는 날이 끝나 한 달 한도만처럼 보는 항목은 한 달 한도 판단', () => {
+    const s = withItems([lunchRow({ spread: 'monthly', dailyBudget: null, todayAvailable: null, useDay: undefined, noDaysLeft: true })], 3);
+    expect(judgeLiving(s, 'lunch', 100_000).message).toBe('이번 달 직장식비 한도 안이에요');
+  });
+});

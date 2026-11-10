@@ -301,6 +301,50 @@ export const RULE_KIND_LABELS: Record<RuleKind, string> = { fixed: '고정', rem
 
 const role = enumCodec(ROLE_LABELS, 'other');
 
+/* 생활비 쓰는 날 (PLAN 4-1). 나중에 더한 열이라 빈 칸 = 매일 · 공휴일 포함 · 주 N회 없음 (없는 값으로 읽는다) */
+const DAY_CHARS = ['일', '월', '화', '수', '목', '금', '토'];
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+function sortedDays(v: unknown): number[] | null {
+  if (!Array.isArray(v)) return null;
+  const set = new Set(v.filter((d): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6));
+  if (set.size === 0 || set.size === 7) return null;
+  return [...set].sort((a, b) => a - b);
+}
+/** 쓰는날: 매일 | 평일 | 주말 | 요일:월화수목금. 빈 칸 · 매일 · 모르는 값 = 매일 */
+export const useDaysCodec: Codec = {
+  enc: (v) => {
+    const days = sortedDays(v);
+    if (!days) return '';
+    const key = days.join(',');
+    if (key === '1,2,3,4,5') return '평일';
+    if (key === '0,6') return '주말';
+    return `요일:${WEEK_ORDER.filter((d) => days.includes(d)).map((d) => DAY_CHARS[d]).join('')}`;
+  },
+  dec: (c) => {
+    if (isBlank(c)) return undefined;
+    const s = String(c).replace(/\s/g, '');
+    if (s === '평일') return [1, 2, 3, 4, 5];
+    if (s === '주말') return [0, 6];
+    const m = /^요일[:：]?(.+)$/.exec(s);
+    if (!m) return undefined;
+    const days = [...m[1]!].map((ch) => DAY_CHARS.indexOf(ch)).filter((d) => d >= 0);
+    return sortedDays(days) ?? undefined;
+  },
+};
+/** 공휴일빼기: 예 / 아니오. 빈 칸 = 없음(아니오) */
+export const skipHolidaysCodec: Codec = {
+  enc: (v) => (v === true ? '예' : v === false ? '아니오' : ''),
+  dec: (c) => (isBlank(c) ? undefined : toBool(c)),
+};
+/** 주N회: 1~7. 빈 칸 · 그 밖의 값 = 없음 */
+export const perWeekCodec: Codec = {
+  enc: (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 7 ? v : ''),
+  dec: (c) => {
+    const n = toNumber(c);
+    return n !== null && n >= 1 && n <= 7 ? n : undefined;
+  },
+};
+
 /* ---------- 탭 정의 ---------- */
 
 export interface ColumnDef {
@@ -373,6 +417,9 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('installmentNo', '할부회차', optInt, ['시작회차']), c('installmentCount', '할부개월', optInt, ['전체회차']),
       // 메모. 나중에 더한 열이라 빈 칸 = 메모 없음 (없는 값으로 읽는다)
       c('memo', '메모', { enc: str.enc, dec: (cell) => (isBlank(cell) ? undefined : String(cell).trim()) }),
+      // 생활비 쓰는 날 (PLAN 4-1). 나중에 더한 열이라 빈 칸 = 매일 (예전 계산과 같다)
+      c('useDays', '쓰는날', useDaysCodec), c('skipHolidays', '공휴일빼기', skipHolidaysCodec),
+      c('perWeek', '주N회', perWeekCodec, ['주몇회']),
     ],
   },
   events: {
@@ -598,6 +645,18 @@ export const SETTINGS_DEFS: SettingDef[] = [
       dec: (c) => {
         const n = toNumber(c);
         return n !== null && n >= 1 && n <= 31 ? n : null;
+      },
+    },
+  },
+  // 쉬는 날 (회사 휴무 등). 'YYYY-MM-DD' 를 쉼표로. 빈 값 = 없음
+  {
+    field: 'daysOff',
+    key: '쉬는날',
+    codec: {
+      enc: (v) => (Array.isArray(v) ? [...new Set(v.filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort().join(',') : ''),
+      dec: (c) => {
+        if (isBlank(c)) return undefined;
+        return [...new Set(String(c).split(/[,\s]+/).map((x) => toISODate(x.trim())).filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
       },
     },
   },

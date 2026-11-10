@@ -100,10 +100,58 @@ describe('schema', () => {
     const rows = decodeTable('fixedExpenses', [['id', '메모'], ['f1', ''], ['f2', ' 관리비 포함 ']]);
     expect(rows.map((r) => r.memo)).toEqual([undefined, '관리비 포함']);
     const headers = canonicalHeaders('fixedExpenses');
-    expect(headers[headers.length - 1]).toBe('메모');
+    const memoAt = headers.indexOf('메모');
+    expect(memoAt).toBeGreaterThan(headers.indexOf('할부개월'));
     const enc = encodeRow('fixedExpenses', { ...rows[1]!, name: 'x' });
-    expect(enc[enc.length - 1]).toBe('관리비 포함');
-    expect(encodeRow('fixedExpenses', rows[0]!).at(-1)).toBe('');
+    expect(enc[memoAt]).toBe('관리비 포함');
+    expect(encodeRow('fixedExpenses', rows[0]!)[memoAt]).toBe('');
+  });
+
+  it('생활비 쓰는 날 열(쓰는날 · 공휴일빼기 · 주N회)이 없거나 비면 매일로 읽고, 값은 왕복한다 (PLAN 4-1)', () => {
+    const old = decodeTable('fixedExpenses', [['id', '이름', '종류', '나눠쓰기'], ['a', '식비', '생활비', '하루']]);
+    expect(old[0]!.useDays).toBeUndefined();
+    expect(old[0]!.skipHolidays).toBeUndefined();
+    expect(old[0]!.perWeek).toBeUndefined();
+    const rows = decodeTable('fixedExpenses', [
+      ['id', '쓰는날', '공휴일빼기', '주N회'],
+      ['b', '', '', ''],
+      ['c', '평일', '예', ''],
+      ['d', '주말', '아니오', ''],
+      ['e', '요일:월수금', '', ''],
+      ['f', '매일', '', 2],
+      ['g', '요일 : 토일', 'y', '9'],
+      ['h', '이상한값', '', '0'],
+    ]);
+    expect(rows.map((r) => [r.useDays, r.skipHolidays, r.perWeek])).toEqual([
+      [undefined, undefined, undefined],
+      [[1, 2, 3, 4, 5], true, undefined],
+      [[0, 6], false, undefined],
+      [[1, 3, 5], undefined, undefined],
+      [undefined, undefined, 2],
+      [[0, 6], true, undefined],
+      [undefined, undefined, undefined],
+    ]);
+    const headers = canonicalHeaders('fixedExpenses');
+    const at = (h: string) => headers.indexOf(h);
+    const enc = (p: object) => encodeRow('fixedExpenses', { ...rows[0]!, ...p });
+    expect(enc({})[at('쓰는날')]).toBe('');
+    expect(enc({})[at('공휴일빼기')]).toBe('');
+    expect(enc({})[at('주N회')]).toBe('');
+    expect(enc({ useDays: [5, 1, 2, 3, 4] })[at('쓰는날')]).toBe('평일');
+    expect(enc({ useDays: [6, 0] })[at('쓰는날')]).toBe('주말');
+    expect(enc({ useDays: [0, 3, 1] })[at('쓰는날')]).toBe('요일:월수일');
+    expect(enc({ useDays: [0, 1, 2, 3, 4, 5, 6] })[at('쓰는날')]).toBe('');
+    expect(enc({ skipHolidays: true })[at('공휴일빼기')]).toBe('예');
+    expect(enc({ skipHolidays: false })[at('공휴일빼기')]).toBe('아니오');
+    expect(enc({ perWeek: 3 })[at('주N회')]).toBe(3);
+    expect(enc({ perWeek: 8 })[at('주N회')]).toBe('');
+  });
+
+  it('설정 쉬는날: 쉼표로 적은 날짜, 빈 값은 없음', () => {
+    expect(decodeSettings([['키', '값'], ['쉬는날', '']]).settings.daysOff).toBeUndefined();
+    expect(decodeSettings([['쉬는날', '2026-11-20, 2026-11-13,2026-11-20,엉뚱']]).settings.daysOff).toEqual(['2026-11-13', '2026-11-20']);
+    const rows = encodeSettings({ ...decodeSettings([]).settings, daysOff: ['2026-12-31', '2026-12-24'] });
+    expect(rows.find((r) => r[0] === '쉬는날')?.[1]).toBe('2026-12-24,2026-12-31');
   });
 
   it('할부 열(할부회차 · 할부개월)이 없거나 비면 null 로 읽고, 종류 할부를 읽는다', () => {

@@ -1,5 +1,8 @@
 import { account, emptyLedger, expense, fixed } from './_fixtures';
-import { computeLiving, defaultSpreadFor, findLivingItem, hasLegacyLivingRow, hasLivingBudget, LIVING_ETC_NAME, livingLeftover, livingLeftoverItems } from './living';
+import {
+  computeLiving, defaultSpreadFor, findLivingItem, hasLegacyLivingRow, hasLivingBudget, LIVING_ETC_NAME, livingDayNote, livingLeftover,
+  livingLeftoverItems, previewLivingItem, schedulePreviewText,
+} from './living';
 import type { Category, Expense, LedgerData } from './types';
 
 const fixedAcc = account('fixed');
@@ -214,5 +217,118 @@ describe('per-item living', () => {
 
   it('defaultSpreadFor: 식비·카페·교통 daily, others monthly', () => {
     expect(['식비', '카페', '교통', '쇼핑', '의료'].map(defaultSpreadFor)).toEqual(['daily', 'daily', 'daily', 'monthly', 'monthly']);
+  });
+});
+
+describe('쓰는 날 (평일 · 공휴일 빼기 · 주 N회)', () => {
+  const cats: Category[] = [
+    { id: 'lunch', name: '직장식비', icon: 'utensils', defaultAccountRole: 'fixed', order: 0, deleted: false },
+    { id: 'dine', name: '외식', icon: 'utensils', defaultAccountRole: 'fixed', order: 1, deleted: false },
+    { id: 'cafe', name: '카페', icon: 'coffee', defaultAccountRole: 'fixed', order: 2, deleted: false },
+  ];
+  const ledger = (extra: Expense[] = [], daysOff?: string[]): LedgerData => {
+    const d = emptyLedger({
+      accounts: [fixedAcc, eventAcc],
+      categories: cats,
+      fixedExpenses: [
+        fixed({ kind: 'living', name: '직장식비', amount: 250_000, accountId: fixedAcc.id, categoryId: 'lunch', useDays: [1, 2, 3, 4, 5], skipHolidays: true }),
+        fixed({ kind: 'living', name: '외식', amount: 160_000, accountId: fixedAcc.id, categoryId: 'dine', perWeek: 2 }),
+        fixed({ kind: 'living', name: '카페', amount: 60_000, accountId: fixedAcc.id, categoryId: 'cafe' }),
+      ],
+      expenses: [
+        expense({ date: '2026-11-03', amount: 31_000, accountId: fixedAcc.id, categoryId: 'lunch' }),
+        expense({ date: '2026-11-04', amount: 20_000, accountId: fixedAcc.id, categoryId: 'dine' }),
+        ...extra,
+      ],
+    });
+    return daysOff ? { ...d, settings: { ...d.settings, daysOff } } : d;
+  };
+
+  it('평일 · 공휴일 빼기: 남은 219,000원 ÷ 남은 평일 15일 = 하루 14,600원', () => {
+    const s = computeLiving(ledger(), '2026-11-10');
+    const lunch = findLivingItem(s, 'lunch')!;
+    expect(lunch.remaining).toBe(219_000);
+    expect(lunch.useDay).toEqual({ today: true, daysLeft: 15, daysAfterToday: 14, next: null });
+    expect(lunch.dailyBudget).toBe(14_600);
+    expect(lunch.todayAvailable).toBe(14_600);
+    expect(lunch.schedule).toEqual({ days: [1, 2, 3, 4, 5], skipHolidays: true, perWeek: null });
+  });
+
+  it('쉬는 날(회사 휴무)을 넣으면 그날도 빼요', () => {
+    const lunch = findLivingItem(computeLiving(ledger([], ['2026-11-13']), '2026-11-10'), 'lunch')!;
+    expect(lunch.useDay!.daysLeft).toBe(14);
+    expect(lunch.dailyBudget).toBe(15_600);
+  });
+
+  it('토요일: 직장식비는 오늘 0원이고 다음 쓰는 날을 알려요. 주말에 쓴 돈도 이번 달 남은 돈에서 빠져요', () => {
+    const s = computeLiving(ledger([expense({ date: '2026-11-14', amount: 9_000, accountId: fixedAcc.id, categoryId: 'lunch' })]), '2026-11-14');
+    const lunch = findLivingItem(s, 'lunch')!;
+    expect(lunch.remaining).toBe(210_000);
+    expect(lunch.dailyBudget).toBe(0);
+    expect(lunch.todayAvailable).toBe(0);
+    expect(lunch.useDay).toEqual({ today: false, daysLeft: 11, daysAfterToday: 11, next: { date: '2026-11-16', amount: 19_000 } });
+    expect(livingDayNote(lunch, '2026-11-14')).toBe('오늘은 쓰는 날이 아니에요 · 다음: 월요일 19,000원');
+    // 전체 오늘 써도 되는 돈에는 직장식비 0원
+    const cafe = findLivingItem(s, 'cafe')!;
+    const dine = findLivingItem(s, 'dine')!;
+    expect(s.todayAvailable).toBe(cafe.todayAvailable! + dine.todayAvailable!);
+  });
+
+  it('이번 달에 쓰는 날이 더 없으면 남은 돈은 한 달 한도만처럼 봐요', () => {
+    const lunch = findLivingItem(computeLiving(ledger([], ['2026-11-30']), '2026-11-28'), 'lunch')!;
+    expect(lunch.spread).toBe('monthly');
+    expect(lunch.noDaysLeft).toBe(true);
+    expect(lunch.dailyBudget).toBeNull();
+    expect(lunch.todayAvailable).toBeNull();
+    expect(lunch.remaining).toBe(219_000);
+    expect(livingDayNote(lunch, '2026-11-28')).toBe('이번 달은 쓰는 날이 끝났어요');
+  });
+
+  it('주 2회: 이번 주 남은 2회 · 앞으로 5회 → 한 번에 20,000원', () => {
+    const s = computeLiving(ledger(), '2026-11-10');
+    const dine = findLivingItem(s, 'dine')!;
+    expect(dine.remaining).toBe(140_000);
+    expect(dine.weekly).toEqual({ perWeek: 2, usedThisWeek: 0, usedToday: false, leftThisWeek: 2, usesLeft: 7, perUse: 20_000 });
+    expect(dine.todayAvailable).toBe(20_000);
+    expect(livingDayNote(dine, '2026-11-10')).toBe('이번 주 남은 2회 · 한 번에 20,000원');
+  });
+
+  it('주 2회를 이번 주에 다 쓰면 오늘 0원, 같은 날 두 번 쓴 건 한 번으로 세요', () => {
+    const s = computeLiving(
+      ledger([
+        expense({ date: '2026-11-09', amount: 10_000, accountId: fixedAcc.id, categoryId: 'dine' }),
+        expense({ date: '2026-11-09', amount: 5_000, accountId: fixedAcc.id, categoryId: 'dine' }),
+        expense({ date: '2026-11-11', amount: 25_000, accountId: fixedAcc.id, categoryId: 'dine' }),
+      ]),
+      '2026-11-12',
+    );
+    const dine = findLivingItem(s, 'dine')!;
+    expect(dine.weekly).toMatchObject({ usedThisWeek: 2, leftThisWeek: 0, usesLeft: 5, perUse: 20_000 });
+    expect(dine.todayAvailable).toBe(0);
+    expect(livingDayNote(dine, '2026-11-12')).toBe('이번 주는 다 썼어요');
+  });
+
+  it('미리 보기 글: 쓰는 날 · 주 N회 · 매일', () => {
+    const s = computeLiving(ledger(), '2026-11-10');
+    expect(schedulePreviewText(findLivingItem(s, 'lunch')!, '2026-11-10')).toBe('11월 남은 쓰는 날 15일 → 하루 14,600원');
+    expect(schedulePreviewText(findLivingItem(s, 'dine')!, '2026-11-10')).toBe('이번 주 남은 2회 · 한 번에 20,000원');
+    expect(schedulePreviewText(findLivingItem(s, 'cafe')!, '2026-11-10')).toBe('11월 남은 21일 → 하루 2,800원');
+    const d = ledger();
+    const row = { ...d.fixedExpenses[2]!, useDays: [1, 3, 5] };
+    expect(schedulePreviewText(previewLivingItem(d, '2026-11-10', row)!, '2026-11-10')).toBe('11월 남은 쓰는 날 9일 → 하루 6,600원');
+  });
+
+  it('예전 행(쓰는 날 칸 없음 · 매일로 적힘)은 예전과 똑같이 계산해요', () => {
+    const before = computeLiving(planExample(), '2026-11-10');
+    const explicit = planExample();
+    explicit.fixedExpenses = explicit.fixedExpenses.map((f) => ({ ...f, useDays: null, skipHolidays: false, perWeek: null }));
+    const after = computeLiving(explicit, '2026-11-10');
+    expect(after).toEqual(before);
+    expect(after.items[0]!.useDay).toBeUndefined();
+    expect(after.items[0]!.schedule).toBeUndefined();
+    // 한 달 한도만 항목은 쓰는 날 칸이 있어도 보지 않아요
+    const monthly = planExample();
+    monthly.fixedExpenses = monthly.fixedExpenses.map((f) => ({ ...f, spread: 'monthly' as const, perWeek: 2 }));
+    expect(computeLiving(monthly, '2026-11-10').items[0]!.weekly).toBeUndefined();
   });
 });

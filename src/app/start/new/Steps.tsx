@@ -303,7 +303,7 @@ export function StepLiving(props: {
         <Icon name="info" size={16} />
         <span>
           {accountName ?? '고정지출통장'}에서 써요. 하루에 나눠 쓰는 항목은 홈에 &lsquo;오늘 써도 되는 돈&rsquo;으로, 한 달 한도만 보는 항목은
-          이번 달 남은 돈으로 보여요.
+          이번 달 남은 돈으로 보여요. 평일에만 쓰는 식비나 주 2회 외식은 시작한 뒤 예산에서 쓰는 날을 정할 수 있어요.
         </span>
       </p>
       {rows.length > 0 ? (

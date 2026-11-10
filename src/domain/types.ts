@@ -121,6 +121,18 @@ export type FixedKind = 'bill' | 'living' | 'allowance' | 'installment';
  */
 export type LivingSpread = 'daily' | 'monthly';
 
+/**
+ * 하루에 나눠 쓰는 생활비 항목의 '쓰는 날' (PLAN 4-1).
+ * - days: 쓰는 요일 (0=일 … 6=토, 오름차순). null = 매일
+ * - skipHolidays: 공휴일과 설정의 쉬는 날은 빼기
+ * - perWeek: 주 N회 (1~7). 있으면 days · skipHolidays 대신 이번 주(월~일) 남은 횟수로 나눠요
+ */
+export interface LivingSchedule {
+  days: number[] | null;
+  skipHolidays: boolean;
+  perWeek: number | null;
+}
+
 export interface FixedExpense {
   id: Id;
   name: string;
@@ -139,6 +151,14 @@ export interface FixedExpense {
    * 시트 빈 셀은 'daily' (예전 시트의 생활비 한 줄도 지금처럼 하루에 나눠 쓴다)
    */
   spread: LivingSpread;
+  /**
+   * living · daily 만: 쓰는 요일 (0=일 … 6=토). 시트 '쓰는날' 빈 셀 · 없음 = 매일 (예전 계산과 같다)
+   */
+  useDays?: number[] | null;
+  /** living · daily 만: 공휴일 · 쉬는 날 빼기. 시트 '공휴일빼기' 빈 셀 = 아니오 */
+  skipHolidays?: boolean;
+  /** living · daily 만: 주 N회 (1~7). 시트 '주N회' 빈 셀 = 없음 (쓰는 날로 나눠요) */
+  perWeek?: number | null;
   startMonth: YearMonth;
   endMonth: YearMonth | null;
   /**
@@ -304,6 +324,8 @@ export interface LedgerSettings {
    * 청구 정산일(매달 며칠). null · 없음 = 자동: 수입통장 → 이벤트통장 매달 배분의 이체일, 그것도 없으면 21일 (PLAN 4-9)
    */
   settleDay?: number | null;
+  /** 쉬는 날 (회사 휴무 등, 'YYYY-MM-DD'). '공휴일 빼기' 항목은 이 날도 빼요. 설정 키 '쉬는날', 빈 값 = 없음 */
+  daysOff?: ISODate[];
 }
 
 export interface LedgerData {
@@ -352,6 +374,32 @@ export interface LivingItem {
   todayAvailable: Won | null;
   /** 예산 행 없이 지출·이월만 있는 '기타(예산 없음)' 묶음 */
   unbudgeted: boolean;
+  /** 하루에 나눠 쓰기로 정한 항목의 쓰는 날 (매일이 아닐 때만) */
+  schedule?: LivingSchedule;
+  /**
+   * 쓰는 날(요일 · 공휴일 빼기) 항목만: 오늘이 쓰는 날인지 · 오늘 포함 남은 쓰는 날 수 · 내일부터 남은 쓰는 날 수 ·
+   * 쉬는 날이면 다음 쓰는 날과 그날 하루 예산
+   */
+  useDay?: { today: boolean; daysLeft: number; daysAfterToday: number; next: { date: ISODate; amount: Won } | null };
+  /** 주 N회 항목만 */
+  weekly?: LivingWeekly;
+  /** 쓰는 날 · 횟수가 이번 달에 더 없어 한 달 한도만처럼 보는 항목 (spread 는 'monthly' 로 바뀐다) */
+  noDaysLeft?: boolean;
+}
+
+/** 주 N회 항목의 이번 주 · 이번 달 횟수 (PLAN 4-1) */
+export interface LivingWeekly {
+  perWeek: number;
+  /** 이번 주(월~일, 이번 달 안) 쓴 날 수 (오늘 포함) */
+  usedThisWeek: number;
+  /** 오늘 이미 썼는지 */
+  usedToday: boolean;
+  /** 이번 주 남은 횟수 (오늘 쓴 것은 뺀 뒤) */
+  leftThisWeek: number;
+  /** 이번 달 남은 횟수 (오늘 쓴 것은 오늘 몫으로 하나 센다) */
+  usesLeft: number;
+  /** 한 번에 쓸 돈 (100원 내림, 0 아래면 0) */
+  perUse: Won;
 }
 
 export interface LivingStatus {

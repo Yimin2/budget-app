@@ -157,6 +157,8 @@ export interface LedgerApi {
   unsettleClaims(expenseIds: Id[]): Promise<void>;
   /** 정산일(매달 며칠). null = 자동 (수입통장 → 이벤트통장 배분 이체일, 없으면 21일) */
   saveSettleDay(day: number | null): Promise<void>;
+  /** 쉬는 날 목록 (회사 휴무 등). '공휴일 빼기' 생활비 항목은 이 날도 빼요 (PLAN 4-1) */
+  saveDaysOff(days: ISODate[]): Promise<void>;
 
   // 할부
   /** 할부 상태 (진행 중 먼저) */

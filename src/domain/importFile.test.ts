@@ -353,6 +353,58 @@ describe('budget-import v2', () => {
     expect(again.summary.find((l) => l.key === 'incomePlans')).toMatchObject({ added: 0, existing: 2 });
   });
 
+  it('생활비 쓰는 날(useDays · skipHolidays · perWeek)은 v2 의 선택 칸이고, 비우면 예전 행과 같아요', () => {
+    const raw = sampleV2();
+    const fx = raw.fixedExpenses as Record<string, unknown>[];
+    fx.push(
+      { key: 'lunch', name: '직장식비', amount: 220_000, account: 'liv-a', kind: 'living', spread: 'daily', useDays: 'weekdays', skipHolidays: true, startMonth: '2026-11' },
+      { key: 'dine', name: '외식', amount: 160_000, account: 'liv-b', kind: 'living', spread: 'daily', perWeek: 2, startMonth: '2026-11' },
+      { key: 'gym', name: '운동', amount: 40_000, account: 'liv-b', kind: 'living', spread: 'daily', useDays: ['MON', 'wed', 'fri'], startMonth: '2026-11' },
+    );
+    const f = parsed(raw);
+    expect(f.fixedExpenses.map((x) => [x.key, x.useDays, x.skipHolidays, x.perWeek])).toEqual([
+      ['dues-a', null, false, null],
+      ['dues-b', null, false, null],
+      ['food-a', null, false, null],
+      ['food-b', null, false, null],
+      ['lunch', [1, 2, 3, 4, 5], true, null],
+      ['dine', null, false, 2],
+      ['gym', [1, 3, 5], false, null],
+    ]);
+    const plan = planImport(base(), f, CTX);
+    expect(plan.errors).toEqual([]);
+    const row = (key: string) => plan.rows.fixedExpenses.find((x) => x.id === importRowId('couple-1', 'fx', key))!;
+    expect(row('food-a')).not.toHaveProperty('useDays');
+    expect(row('food-a')).not.toHaveProperty('skipHolidays');
+    expect(row('food-a')).not.toHaveProperty('perWeek');
+    expect(row('lunch')).toMatchObject({ useDays: [1, 2, 3, 4, 5], skipHolidays: true });
+    expect(row('dine')).toMatchObject({ perWeek: 2 });
+    expect(row('dine')).not.toHaveProperty('useDays');
+  });
+
+  it('쓰는 날 칸: 틀린 값은 막고, v1 에 쓰면 버전을 올리라고 알려요', () => {
+    const raw = sampleV2();
+    (raw.fixedExpenses as Record<string, unknown>[]).push(
+      { key: 'bad1', name: '가', amount: 1_000, account: 'liv-a', kind: 'living', useDays: ['월'], startMonth: '2026-11' },
+      { key: 'bad2', name: '나', amount: 1_000, account: 'liv-a', kind: 'living', perWeek: 8, startMonth: '2026-11' },
+      { key: 'bad3', name: '다', amount: 1_000, account: 'liv-a', kind: 'living', skipHolidays: 'yes', startMonth: '2026-11' },
+    );
+    const r = parseImportFile(JSON.stringify(raw));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors).toEqual([
+        expect.stringContaining("(bad1): 'useDays' 칸을 확인해 주세요"),
+        expect.stringContaining("(bad2): 'perWeek' 칸을 확인해 주세요"),
+        expect.stringContaining("(bad3): 'skipHolidays' 칸을 확인해 주세요"),
+      ]);
+    }
+    const v1 = sample();
+    (v1.fixedExpenses as Record<string, unknown>[])[1]!.perWeek = 2;
+    const r1 = parseImportFile(JSON.stringify(v1));
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.errors).toEqual([expect.stringContaining("'perWeek' 는 버전 2")]);
+  });
+
   it('같은 통장 · 같은 날의 나머지 배분이 둘이면 막아요', () => {
     const raw = sampleV2();
     (raw.rules as Record<string, unknown>[]).push({ key: 'rest21b', from: 'salary', to: 'event', kind: 'remainder', dayOfMonth: 21, startMonth: '2026-11' });

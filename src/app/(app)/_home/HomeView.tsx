@@ -2,7 +2,10 @@
 
 import Link from 'next/link';
 import { useId, useMemo, useState } from 'react';
-import { ledgerPeople, formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, withSubject } from '@/domain';
+import {
+  ledgerPeople, formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord, livingDayNote, scheduleLabel,
+  withSubject,
+} from '@/domain';
 import type { Favorite, LivingItem, LivingStatus, LivingView } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import {
@@ -281,6 +284,7 @@ function itemTone(i: LivingItem): 'primary' | 'warning' | 'danger' {
 }
 
 function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner?: string | null }) {
+  const { today } = useLedger();
   const heading = useCardTitle(owner ? `항목별 생활비 · ${owner}` : '항목별 생활비');
   return (
     <Card
@@ -300,9 +304,9 @@ function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner
               <span className={styles.itemName}>
                 <Icon name={isIconName(i.icon) ? i.icon : 'dots'} size={20} />
                 <span className={styles.itemText}>{i.name}</span>
-                {i.spread === 'daily' ? (
+                {i.spread === 'daily' || i.noDaysLeft ? (
                   <Badge size="sm" tone="brand" dot={false}>
-                    하루씩
+                    {(i.schedule && scheduleLabel(i.schedule)) || '하루씩'}
                   </Badge>
                 ) : null}
               </span>
@@ -329,7 +333,9 @@ function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner
                 {formatNumber(i.spent)} / {formatWon(i.monthBudget)}
                 {i.carryIn !== 0 ? ` · 이월 ${formatWon(i.carryIn)}` : ''}
               </span>
-              {i.todayAvailable !== null ? (
+              {livingDayNote(i, today) && !(i.weekly?.usedToday) ? (
+                <span>{livingDayNote(i, today)}</span>
+              ) : i.todayAvailable !== null ? (
                 <DailyLine spent={i.spentToday} available={i.todayAvailable} />
               ) : (
                 <span>{i.unbudgeted ? '예산 없음' : '한 달 한도'}</span>
