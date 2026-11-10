@@ -20,13 +20,22 @@ async function renderEvents() {
 }
 
 describe('EventsView — 체험 가계부', () => {
+  it('돌려받을 돈 카드: 이벤트 화면에도 보이고, 이번 달 예측에 돌려줄 돈이 들어가요', async () => {
+    const h = await renderEvents();
+    const card = screen.getByRole('region', { name: '돌려받을 돈' });
+    expect(card.textContent).toContain('민지 300,000원 · 준호 24,000원');
+    const thisMonth = h.probe.ledger!.eventProjection!.months[0]!;
+    expect(thisMonth.claims).toBe(300_000);
+  });
+
   it('불러오는 동안 뼈대, 다 불러오면 잔액 · 매달 적립 · 12개월 막대 · 부족 알림', async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
     expect(screen.getByText('일정을 불러오는 중이에요')).toBeTruthy();
 
     const summary = await screen.findByRole('region', { name: '이벤트통장 잔액' });
-    expect(within(summary).getByText('900,000원')).toBeTruthy();
+    // 시작 600,000 + 적립 300,000 − 제주 여행 숙소 예약금 150,000
+    expect(within(summary).getByText('750,000원')).toBeTruthy();
     expect(within(summary).getByText('300,000원')).toBeTruthy();
     expect(within(summary).getByText('1개월')).toBeTruthy();
 
@@ -105,7 +114,8 @@ describe('EventsView — 체험 가계부', () => {
   it('다가오는 일정은 달별로, 반복 · 작성자 · 카테고리를 함께 보여요', async () => {
     await renderEvents();
     const upcoming = screen.getByRole('region', { name: '다가오는 일정' });
-    expect(within(upcoming).getByText('8건 · 2,800,000원')).toBeTruthy();
+    // 제주 여행은 일정이 아닌 여행으로 따로 보여요
+    expect(within(upcoming).getByText('7건 · 1,900,000원')).toBeTruthy();
     expect(within(upcoming).getByRole('heading', { level: 3, name: '2027년 1월' })).toBeTruthy();
     const jan = within(upcoming).getByRole('list', { name: '2027년 1월' });
     expect(within(jan).getByText('명절 부모님 용돈')).toBeTruthy();
@@ -192,24 +202,52 @@ describe('EventsView — 체험 가계부', () => {
   it('일정을 눌러 고치고, 지우기는 한 번 더 물어요', async () => {
     const h = await renderEvents();
     const upcoming = screen.getByRole('region', { name: '다가오는 일정' });
-    fireEvent.click(within(upcoming).getByRole('button', { name: /제주 여행/ }));
+    fireEvent.click(within(upcoming).getByRole('button', { name: /지수 결혼식/ }));
     let dialog = await screen.findByRole('dialog', { name: '일정 고치기' });
     const amount = within(dialog).getByLabelText(/예상 금액/) as HTMLInputElement;
-    expect(amount.value).toBe('900,000');
+    expect(amount.value).toBe('300,000');
     fireEvent.change(amount, { target: { value: '700000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장하기' }));
-    await screen.findByText('‘제주 여행’ 일정을 고쳤어요');
-    expect(h.probe.ledger!.data!.events.find((e) => e.name === '제주 여행')!.amount).toBe(700_000);
+    await screen.findByText('‘지수 결혼식’ 일정을 고쳤어요');
+    expect(h.probe.ledger!.data!.events.find((e) => e.name === '지수 결혼식')!.amount).toBe(700_000);
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    fireEvent.click(within(upcoming).getByRole('button', { name: /제주 여행/ }));
+    fireEvent.click(within(upcoming).getByRole('button', { name: /지수 결혼식/ }));
     dialog = await screen.findByRole('dialog', { name: '일정 고치기' });
     fireEvent.click(within(dialog).getByRole('button', { name: '지우기' }));
     const confirm = await screen.findByRole('dialog', { name: '일정을 지울까요?' });
     fireEvent.click(within(confirm).getByRole('button', { name: '지우기' }));
-    await screen.findByText('‘제주 여행’ 일정을 지웠어요');
-    expect(h.probe.ledger!.data!.events.find((e) => e.name === '제주 여행')!.deleted).toBe(true);
-    await waitFor(() => expect(within(upcoming).queryByText('제주 여행')).toBeNull());
+    await screen.findByText('‘지수 결혼식’ 일정을 지웠어요');
+    expect(h.probe.ledger!.data!.events.find((e) => e.name === '지수 결혼식')!.deleted).toBe(true);
+    await waitFor(() => expect(within(upcoming).queryByText('지수 결혼식')).toBeNull());
+  });
+
+  it('여행 카드: 다가오는 여행의 쓴 돈 · 남은 예산, 누르면 여행 화면으로 가요', async () => {
+    const h = await renderEvents();
+    const card = screen.getByRole('region', { name: '여행' });
+    const link = within(card).getByRole('link', { name: /제주 여행/ });
+    expect(link.getAttribute('href')).toBe('/events/trips?id=demo-trip-jeju');
+    expect(link.textContent).toContain('450,000원 / 900,000원');
+    expect(link.textContent).toContain('남은 예산 450,000원');
+    // 링크 이름은 짧게 한 번씩만: 막대는 화면 읽기에서 숨기고 숫자는 이름에 한 번
+    expect(within(card).queryByRole('progressbar')).toBeNull();
+    expect(link.getAttribute('aria-label')).toMatch(/^제주 여행, .+, 900,000원 중 450,000원 썼어요, 남은 예산 450,000원$/);
+    // 남은 예산은 여행 달 예측에 '여행 남은 예산'으로 들어가요
+    const feb = h.probe.ledger!.eventProjection!.months.find((m) => m.tripList?.length)!;
+    expect(feb.trips).toBe(450_000);
+
+    fireEvent.click(within(card).getByRole('button', { name: '여행 추가' }));
+    const dialog = await screen.findByRole('dialog', { name: '여행 추가' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '추가하기' }));
+    expect(await within(dialog).findByText('여행 이름을 입력해 주세요')).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText(/이름/), { target: { value: '오사카' } });
+    fireEvent.change(within(dialog).getByLabelText(/항공/), { target: { value: '400000' } });
+    expect(within(dialog).getByText('총예산을 비우면 항목 합 400,000원을 예산으로 잡아요')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '추가하기' }));
+    await screen.findByText('‘오사카’ 여행을 추가했어요');
+    const added = h.probe.ledger!.trips.find((t) => t.trip.name === '오사카')!;
+    expect(added.budget).toBe(400_000);
+    expect(within(card).getByRole('link', { name: /오사카/ })).toBeTruthy();
   });
 
   it('일정이 하나도 없으면 예시와 함께 빈 상태를 보여요', async () => {

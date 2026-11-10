@@ -5,8 +5,9 @@
  */
 import type {
   AccountRole, EventStatus, FixedKind, LedgerKind, LedgerSettings, LivingSpread, MonthEndChoice, MonthEndItem, Repeat,
-  TransferKind, TransferStatus,
+  TransferKind, TransferStatus, TripItem,
 } from '@/domain/types';
+import { TRIP_ITEMS, TRIP_ITEM_LABELS } from '@/domain/trips';
 import type { TableName, TableRows } from './types';
 
 /** 시트에 쓰는 셀 값. 빈 셀은 '' */
@@ -27,11 +28,12 @@ export const TAB_NAMES: Record<TableName, string> = {
   categories: '카테고리',
   favorites: '즐겨찾기',
   members: '멤버',
+  trips: '여행',
 };
 
 export const TABLE_NAMES: TableName[] = [
   'accounts', 'rules', 'transfers', 'fixedExpenses', 'events', 'expenses',
-  'monthEnds', 'categories', 'favorites', 'members',
+  'monthEnds', 'categories', 'favorites', 'members', 'trips',
 ];
 
 /** 시트 탭 순서 (설정이 맨 앞) */
@@ -176,6 +178,53 @@ const monthEndItems: Codec = {
   },
 };
 
+/* 여행 항목 (코드 ↔ 한글: 항공 · 숙박 · 교통 · 식비 · 투어 · 쇼핑 · 기타) */
+const TRIP_ITEM_CODES = TRIP_ITEMS;
+function tripItemOf(raw: string): TripItem | null {
+  const k = raw.replace(/\s/g, '');
+  if (!k) return null;
+  for (const code of TRIP_ITEM_CODES) if (code === k.toLowerCase() || TRIP_ITEM_LABELS[code] === k) return code;
+  return null;
+}
+
+/** 지출의 여행 항목. 빈 셀 · 모르는 값은 null (기타로 센다) */
+const tripItem: Codec = {
+  enc: (v) => (typeof v === 'string' && v in TRIP_ITEM_LABELS ? TRIP_ITEM_LABELS[v as TripItem] : ''),
+  dec: (c) => (isBlank(c) ? null : tripItemOf(String(c))),
+};
+
+/**
+ * 여행 항목별 예산 <-> JSON {"항공": 600000, "숙박": 400000}. 읽을 때는 코드 키(flight)도 받는다.
+ * 빈 셀 · 읽을 수 없는 값은 {} (항목 예산 없음)
+ */
+const tripItems: Codec = {
+  enc: (v) => {
+    if (!v || typeof v !== 'object') return '';
+    const obj: Record<string, number> = {};
+    for (const code of TRIP_ITEM_CODES) {
+      const n = (v as Record<string, unknown>)[code];
+      if (typeof n === 'number' && Number.isFinite(n) && n > 0) obj[TRIP_ITEM_LABELS[code]] = Math.round(n);
+    }
+    return Object.keys(obj).length > 0 ? JSON.stringify(obj) : '';
+  },
+  dec: (c) => {
+    const out: Partial<Record<TripItem, number>> = {};
+    if (isBlank(c) || typeof c !== 'string') return out;
+    try {
+      const parsed: unknown = JSON.parse(c);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return out;
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        const code = tripItemOf(k);
+        const n = typeof v === 'number' ? Math.round(v) : toNumber(v as RawCell);
+        if (code && n !== null && Number.isFinite(n) && n > 0) out[code] = n;
+      }
+    } catch {
+      // 읽을 수 없는 값은 항목 예산 없음
+    }
+    return out;
+  },
+};
+
 /** 코드값 <-> 한글 표시값. 읽을 때는 한글·코드 둘 다 받는다 */
 function enumCodec<T extends string>(labels: Record<T, string>, fallback: T): Codec {
   const reverse = new Map<string, T>();
@@ -199,7 +248,7 @@ export const ROLE_LABELS: Record<AccountRole, string> = {
 };
 export const TRANSFER_KIND_LABELS: Record<TransferKind, string> = { income: '수입', transfer: '이체', adjustment: '조정' };
 export const TRANSFER_STATUS_LABELS: Record<TransferStatus, string> = { done: '완료', planned: '예정' };
-export const FIXED_KIND_LABELS: Record<FixedKind, string> = { bill: '일반', living: '생활비', allowance: '용돈' };
+export const FIXED_KIND_LABELS: Record<FixedKind, string> = { bill: '일반', living: '생활비', allowance: '용돈', installment: '할부' };
 export const EVENT_STATUS_LABELS: Record<EventStatus, string> = { planned: '예정', done: '완료', canceled: '취소' };
 export const REPEAT_LABELS: Record<Repeat, string> = { none: '없음', monthly: '매월', yearly: '매년' };
 export const MONTH_END_LABELS: Record<MonthEndChoice, string> = { pending: '미정', reservoir: '저수지', carryover: '이월' };
@@ -275,6 +324,10 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('targetEmail', '대상', optStr), c('startMonth', '시작월', month), c('endMonth', '종료월', optMonth),
       c('spread', '나눠쓰기', enumCodec(SPREAD_LABELS, 'daily'), ['쓰는방식']),
       c('deleted', '삭제됨', bool, ['삭제']),
+      // 할부. 나중에 더한 열이라 빈 칸 = 1회차부터 · 전체 회차는 종료월로
+      c('installmentNo', '할부회차', optInt, ['시작회차']), c('installmentCount', '할부개월', optInt, ['전체회차']),
+      // 메모. 나중에 더한 열이라 빈 칸 = 메모 없음 (없는 값으로 읽는다)
+      c('memo', '메모', { enc: str.enc, dec: (cell) => (isBlank(cell) ? undefined : String(cell).trim()) }),
     ],
   },
   events: {
@@ -297,6 +350,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       // 청구(돌려받기). 나중에 더한 열이라 빈 칸 = 보통 지출
       c('paidBy', '낸사람', optStr, ['청구자']), c('claimAccountId', '돌려받을통장', optStr),
       c('claimDue', '정산일', optDate, ['돌려줄날']),
+      // 여행(PLAN 4-11). 나중에 더한 열이라 빈 칸 = 여행 아님 · 항목은 기타
+      c('tripId', '여행id', optStr), c('tripItem', '여행항목', tripItem),
     ],
   },
   monthEnds: {
@@ -327,6 +382,15 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
   members: {
     table: 'members', tab: TAB_NAMES.members, key: 'email',
     columns: [c('email', '이메일', str), c('displayName', '표시이름', str, ['이름'])],
+  },
+  trips: {
+    table: 'trips', tab: TAB_NAMES.trips, key: 'id',
+    columns: [
+      c('id', 'id', str), c('name', '이름', str), c('startDate', '시작일', date, ['떠나는날']),
+      c('endDate', '종료일', date, ['돌아오는날']), c('budget', '예산', int, ['총예산']),
+      c('items', '항목예산', tripItems), c('memo', '메모', str),
+      ...audit,
+    ],
   },
 };
 
@@ -380,6 +444,11 @@ export function decodeRow<T extends TableName>(table: T, mapping: (ColumnDef | n
   for (const col of schema.columns) obj[col.field] = col.codec.dec(cells.get(col));
   const key = obj[schema.key];
   if (key === null || key === undefined || String(key).trim() === '') return null;
+  // 할부를 모르는 예전 앱이 열린 채 그 행을 고치면 종류가 '일반'으로 덮인다 (모르는 할부 열은 남는다).
+  // 할부개월이 적힌 행은 할부로 읽는다 — 일반 고정 지출에는 이 칸을 쓰지 않는다
+  if (table === 'fixedExpenses' && obj.kind === 'bill' && typeof obj.installmentCount === 'number' && obj.installmentCount >= 1) {
+    obj.kind = 'installment';
+  }
   return obj as unknown as TableRows[T];
 }
 

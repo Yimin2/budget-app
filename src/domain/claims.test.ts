@@ -73,6 +73,13 @@ describe('새 청구의 정산일', () => {
     expect(computeClaimDue(d, { accountId: 'event', amount: 90_000, expenseId: 'c1' }, TODAY)).toBe(TODAY);
   });
 
+  it('보통 지출을 청구로 바꿀 때 그 지출이 잔액에서 빠진 채로 세지 않는다', () => {
+    // 시작 100,000 − 보통 지출 60,000 = 40,000 이지만, 청구가 되면 이 지출은 잔액을 줄이지 않는다 → 100,000 으로 감당
+    const d = ledger({ expenses: [expense({ id: 'x1', date: TODAY, amount: 60_000, accountId: 'event' })] });
+    expect(accountBalance(d, 'event', TODAY)).toBe(40_000);
+    expect(computeClaimDue(d, { accountId: 'event', amount: 60_000, expenseId: 'x1' }, TODAY)).toBe(TODAY);
+  });
+
   it('고정지출통장(생활비) 지출은 잔액과 상관없이 다음 월급날', () => {
     expect(computeClaimDue(ledger(), { accountId: 'fixed', amount: 10_000 }, TODAY)).toBe('2026-11-21');
   });

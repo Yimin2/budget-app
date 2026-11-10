@@ -62,7 +62,7 @@ export function ClaimFields({ accountId, amount, paidBy, onChange, expense, sett
         <span>
           <strong>개인 돈으로 냈어요</strong>
           <span id={`${uid}-hint`} className={styles.checkHint}>
-            {settled ? '이미 돌려줬어요' : '함께 쓰는 통장에서 나중에 돌려받아요'}
+            {settled ? '이미 돌려줬어요' : '나중에 정산일에 돌려받아요'}
           </span>
         </span>
       </label>

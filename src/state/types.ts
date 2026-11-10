@@ -1,7 +1,11 @@
 import type {
   Account, AllocationRule, Category, ClaimSummary, EventProjection, Expense, Favorite, FixedExpense, Id,
-  ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer, Verdict, Won, YearMonth,
+  InstallmentHint, InstallmentPlan, ISODate, LedgerData, LivingStatus, PendingMonthEnd, PlannedEvent, ShortageFix, Transfer,
+  Trip, TripItem, TripStatus, Verdict, Won, YearMonth,
 } from '@/domain/types';
+import type { TripInput } from '@/domain/trips';
+import type { InstallmentInput, InstallmentPatch } from '@/domain/installments';
+import type { ImportFile, ImportPlan } from '@/domain/importFile';
 import type { LedgerRef } from '@/storage/types';
 
 export type SessionMode = 'google' | 'demo';
@@ -46,7 +50,26 @@ export interface NewExpense {
    * 이벤트통장 · 고정지출통장 지출만 돼요
    */
   paidBy?: string | null;
+  /** 여행에 쓴 돈이면 여행 id (PLAN 4-11). 통장은 실제로 나간 통장 그대로 */
+  tripId?: Id | null;
+  /** 여행 항목 (항공 · 숙박 …). 비우면 기타 */
+  tripItem?: TripItem | null;
 }
+/** 새 여행 · 여행 고치기 (PLAN 4-11): 이름 · 떠나는 날 · 돌아오는 날 · 총예산 · 항목 예산(선택) */
+export type NewTrip = TripInput;
+/** 새 할부 (PLAN 4-10): 이름 · 총액 또는 매달 금액 · 개월 · 첫 달 · 결제일 · 통장 · 카테고리 */
+export type NewInstallment = InstallmentInput;
+
+/**
+ * 할부 고치기. fromMonth(기본: 아직 내지 않은 다음 회차의 달)부터 적용하고 지난 회차는 그대로 둬요.
+ * monthly · remaining 을 안 주면 지금 그대로. name 은 모든 회차 이름에
+ */
+export interface InstallmentChange extends InstallmentPatch {
+  monthly?: Won;
+  remaining?: number;
+  fromMonth?: YearMonth;
+}
+
 export interface NewEvent {
   date: ISODate;
   name: string;
@@ -85,7 +108,7 @@ export interface LedgerApi {
    * "사도 돼?" 판단. living 은 생활비 항목(categoryId, null = 카테고리 없는 묶음)으로 판단해요.
    * categoryId 를 안 주면(undefined) 항목이 하나뿐일 때만 그 항목으로, 여럿이면 null
    */
-  judge(amount: Won, source: 'living' | 'event', categoryId?: Id | null): Verdict | null;
+  judge(amount: Won, source: 'living' | 'event', categoryId?: Id | null, opts?: { tripId?: Id | null }): Verdict | null;
 
   // 청구 (개인 돈으로 내고 돌려받기)
   /** 돌려받을 돈 요약 (data 가 있을 때) */
@@ -103,6 +126,52 @@ export interface LedgerApi {
   unsettleClaims(expenseIds: Id[]): Promise<void>;
   /** 정산일(매달 며칠). null = 자동 (수입통장 → 이벤트통장 배분 이체일, 없으면 21일) */
   saveSettleDay(day: number | null): Promise<void>;
+
+  // 할부
+  /** 할부 상태 (진행 중 먼저) */
+  installments: InstallmentPlan[];
+  /** 큰 금액이면 "12개월 할부면 매달 ○원"과 그 금액이 맞는지 (생활비 항목 예산 · 이벤트통장 예측 기준). 아니면 null */
+  /** opts.tripId: 사도 돼?에서 고른 여행 (judge 와 같게 회차를 그 여행에 묶어 본다) */
+  installmentHint(
+    amount: Won,
+    source: 'living' | 'event',
+    categoryId?: Id | null,
+    opts?: { tripId?: Id | null },
+  ): InstallmentHint | null;
+  /** 할부 추가. 결제일이 지난 회차는 이미 낸 것으로 보고 기록하지 않아요. 할부 id 를 돌려줘요 */
+  addInstallment(input: NewInstallment): Promise<Id>;
+  /** 도중에 고치기: 다음 회차부터(또는 fromMonth 부터) 새 금액 · 남은 회차. 지난 회차와 자동 기록은 그대로 */
+  reviseInstallment(planId: Id, change: InstallmentChange): Promise<void>;
+  /**
+   * 미리 갚기: 지출(id prepay:…)을 남기고, 다음 회차부터 남은 금액을 줄여 다시 짜요.
+   * keep='monthly' 는 매달 금액 그대로 회차를 줄이고, 'months' 는 회차 그대로 매달 금액을 줄여요
+   */
+  prepayInstallment(planId: Id, input: { amount: Won; keep: 'monthly' | 'months'; date?: ISODate }): Promise<void>;
+  /** 그만 내기: 다음 회차부터 기록하지 않아요 */
+  endInstallment(planId: Id): Promise<void>;
+  /** 할부 지우기 (모든 행). 이미 자동 기록된 지출은 남아요 */
+  deleteInstallment(planId: Id): Promise<void>;
+
+  // 여행 (이벤트통장에서 나가는 여행 예산)
+  /** 여행 상태 (여행 중 → 다가오는 여행 → 지난 여행) */
+  trips: TripStatus[];
+  /** 여행 추가. 여행 id 를 돌려줘요 */
+  addTrip(input: NewTrip): Promise<Trip>;
+  /** 여행 고치기 (이름 · 날짜 · 예산 · 항목 예산). 묶은 지출은 그대로 */
+  updateTrip(id: Id, input: NewTrip): Promise<void>;
+  /** 여행 지우기 (삭제됨). 묶은 지출은 남고 예측에서만 빠져요 */
+  deleteTrip(id: Id): Promise<void>;
+  /** 지운 여행 되살리기 */
+  restoreTrip(id: Id): Promise<void>;
+
+  // 파일에서 가져오기 (PLAN 4-12)
+  /** 가져오기 미리보기: 무엇이 몇 개 더해지고 무엇을 합치는지 (쓰지 않아요). data 가 없으면 null */
+  previewImport(file: ImportFile): ImportPlan | null;
+  /**
+   * 가져오기: 지금 데이터로 계획을 다시 만들어 써요 (문제가 있으면 쓰지 않고 오류). 쓴 계획을 돌려줘요.
+   * 행 id 가 파일의 source · key 로 정해져 같은 파일을 다시 가져와도 행이 늘지 않아요
+   */
+  importFile(file: ImportFile): Promise<ImportPlan>;
 
   // 지출
   addExpense(input: NewExpense): Promise<Expense>;

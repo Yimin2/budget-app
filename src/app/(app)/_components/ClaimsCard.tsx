@@ -4,7 +4,7 @@ import { useId, useState } from 'react';
 import { formatDateKo, formatShortDate, formatWon } from '@/domain';
 import type { LedgerData, PendingClaim } from '@/domain/types';
 import { useLedger } from '@/state';
-import { Button, Card, Money, cx, useToast } from '@/ui';
+import { Button, Card, Icon, Money, cx, presenceClass, usePresence, useToast } from '@/ui';
 import styles from './claims.module.css';
 
 interface PayerGroup {
@@ -58,9 +58,11 @@ export function ClaimsCard({ className }: { className?: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const claims = ledger.claims;
   const data = ledger.data;
+  const groups = claims ? groupByPayer(claims.dueNow) : [];
+  // 보냈어요를 누르면 그 줄이 접히며 빠져요 (되돌리면 옆에서 다시 들어와요)
+  const duePresence = usePresence(groups, (g) => g.payer);
   if (!claims || !data || claims.total <= 0) return null;
 
-  const groups = groupByPayer(claims.dueNow);
   const people = claims.byPayer.map((p) => `${p.name} ${formatWon(p.amount)}`).join(' · ');
   const later = claims.pending.filter((c) => !c.dueNow);
   const nextLater = later[0]?.due ?? null;
@@ -107,12 +109,12 @@ export function ClaimsCard({ className }: { className?: string }) {
         ) : null}
       </p>
 
-      {groups.length > 0 ? (
+      {duePresence.length > 0 ? (
         <>
           <h3 className={styles.dueTitle}>오늘 돌려줄 돈</h3>
           <ul className={styles.dueList}>
-            {groups.map((g) => (
-              <li key={g.payer} className={styles.dueRow}>
+            {duePresence.map(({ item: g, key, state }) => (
+              <li key={key} className={cx(styles.dueRow, presenceClass(state))} inert={state === 'leave' || undefined}>
                 <span className={styles.dueText}>
                   <strong>
                     {g.payer}에게 {formatWon(g.amount)}
@@ -137,17 +139,20 @@ export function ClaimsCard({ className }: { className?: string }) {
 
       {later.length > 0 ? (
         <details className={styles.more}>
-          <summary>정산일을 기다리는 {later.length}건 보기</summary>
+          <summary>
+            <span>정산일을 기다리는 {later.length}건 보기</span>
+            <Icon name="chevron-down" size={20} className={styles.moreChev} />
+          </summary>
           <ul className={styles.moreList}>
             {later.map((c) => (
               <li key={c.expense.id}>
-                <span>
+                <span className={styles.moreTitle}>
                   {claimTitle(data, c)}
                   <span className={styles.moreMeta}>
                     {formatShortDate(c.expense.date)} · {c.payer} · {formatDateKo(c.due, false)}에 돌려줘요
                   </span>
                 </span>
-                <span>{formatWon(c.amount)}</span>
+                <span className={styles.moreAmount}>{formatWon(c.amount)}</span>
               </li>
             ))}
           </ul>

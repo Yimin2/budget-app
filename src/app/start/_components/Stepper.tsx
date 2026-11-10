@@ -16,7 +16,7 @@ export function Stepper({ steps, current, className }: StepperProps) {
         return (
           <li key={label} className={cx('wz-step', state)} aria-current={state === 'now' ? 'step' : undefined}>
             <span className="c" aria-hidden>
-              {state === 'done' ? <Icon name="check" size={16} strokeWidth={2.4} /> : i + 1}
+              {state === 'done' ? <Icon name="check" size={16} strokeWidth={2.4} className="mo-check" /> : i + 1}
             </span>
             <span className="l">
               {label}

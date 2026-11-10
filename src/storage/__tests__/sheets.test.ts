@@ -128,7 +128,7 @@ describe('SheetsBackend.create', () => {
     expect(create!.auth).toBe('Bearer token');
     expect(values!.url.pathname).toBe('/v4/spreadsheets/sheet-1/values:batchUpdate');
     expect(values!.body.valueInputOption).toBe('RAW');
-    expect(values!.body.data).toHaveLength(11);
+    expect(values!.body.data).toHaveLength(12);
     expect(g.tabs.get('통장')![0]).toEqual(canonicalHeaders('accounts'));
     expect(g.tabs.get('설정')![0]).toEqual(['키', '값']);
   });
@@ -196,7 +196,7 @@ describe('SheetsRepository', () => {
     const write = g.calls.find((c) => c.method === 'POST')!;
     expect(decodeURIComponent(write.url.pathname)).toBe('/v4/spreadsheets/sheet-1/values:batchUpdate');
     expect(write.body.valueInputOption).toBe('RAW');
-    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A3:O3"]);
+    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A3:Q3"]);
     expect(g.tabs.get('지출')![2]![2]).toBe(99);
     expect(g.tabs.get('지출')![1]![0]).toBe('y0');
   });
@@ -401,8 +401,8 @@ describe('검증된 결함 회귀', () => {
     const repo = backend.open(ref);
     await repo.upsert('expenses', { ...sampleLedger().expenses[0]!, date: '2026-12-01' });
     const write = g.calls.at(-1)!;
-    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A2:O2"]);
-    expect(g.tabs.get('지출')![1]![15]).toBe('=LEFT(B2,7)');
+    expect(write.body.data.map((d: any) => d.range)).toEqual(["'지출'!A2:Q2"]);
+    expect(g.tabs.get('지출')![1]![17]).toBe('=LEFT(B2,7)');
   });
 
   it('불러온 뒤 열 순서가 바뀌어도 insert 는 새 머리글 순서로 쓴다', async () => {
@@ -416,6 +416,25 @@ describe('검증된 결함 회귀', () => {
     const got = (await repo.load()).expenses.find((e) => e.id === 'e-new')!;
     expect(got.date).toBe('2026-11-09');
     expect(got.amount).toBe(4500);
+  });
+
+  it('나중에 더한 탭(여행)이 없는 예전 가계부는 불러올 때 한 번 만들어, 다음부터는 batchGet 한 번으로 읽는다', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    g.tabs.delete('여행');
+    const repo = backend.open(ref);
+    await repo.load();
+    expect(g.tabs.get('여행')).toEqual([canonicalHeaders('trips')]);
+    const before = g.calls.length;
+    const data = await repo.load();
+    expect(data.trips).toEqual([]);
+    expect(g.calls.length - before).toBe(1);
+  });
+
+  it('가계부가 아닌 파일에는 탭을 만들지 않는다', async () => {
+    const { g, backend } = setup({ Sheet1: [['a', 'b']] });
+    await expect(backend.open(ref).load()).rejects.toThrow(MESSAGES.notLedger);
+    expect([...g.tabs.keys()]).toEqual(['Sheet1']);
   });
 
   it('없던 탭을 다른 사람이 먼저 만들었어도 insert 가 된다', async () => {

@@ -10,10 +10,12 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from 'react';
+import Link from 'next/link';
 import { formatShortDate, formatWon, monthOf } from '@/domain';
 import type { EventProjection, ISODate, ProjectionMonth, YearMonth } from '@/domain';
 import { Button, Card, Icon, cx, useMediaQuery } from '@/ui';
 import { barsGeometry, compactWon, initialMonth, monthDetailRows, monthLabel } from './selectors';
+import { tripHref } from './trips/selectors';
 import styles from './events.module.css';
 
 export interface ProjectionCardProps {
@@ -310,7 +312,7 @@ function MonthDetail({
           <dd className={short ? styles.bad : undefined}>{formatWon(month.endBalance)}</dd>
         </div>
       </dl>
-      {month.events.length > 0 ? (
+      {month.events.length > 0 || (month.tripList?.length ?? 0) > 0 ? (
         <ul className={styles.detailEvents} aria-label={`${monthLabel(month.month, today)} 예정 일정`}>
           {month.events.map((e, i) => (
             <li key={`${e.id}@${e.date}@${i}`}>
@@ -320,6 +322,16 @@ function MonthDetail({
                 {e.date < today ? <span className="sr-only"> (날짜 지남)</span> : null}
               </span>
               <span className={styles.a}>{formatWon(e.amount)}</span>
+            </li>
+          ))}
+          {(month.tripList ?? []).map((t) => (
+            <li key={`trip:${t.id}`}>
+              <span className={styles.d}>여행</span>
+              <span className={styles.n}>
+                <Link href={tripHref(t.id)}>{t.name}</Link>
+                <span className="sr-only"> 남은 예산</span>
+              </span>
+              <span className={styles.a}>{formatWon(t.amount)}</span>
             </li>
           ))}
         </ul>

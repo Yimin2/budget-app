@@ -77,8 +77,11 @@ export interface Transfer {
   deleted: boolean;
 }
 
-/** bill=일반 고정비, living=생활비 항목 예산(한 달 금액, 지출로 기록하지 않음), allowance=용돈 */
-export type FixedKind = 'bill' | 'living' | 'allowance';
+/**
+ * bill=일반 고정비, living=생활비 항목 예산(한 달 금액, 지출로 기록하지 않음), allowance=용돈,
+ * installment=할부 (정해진 회차만큼 결제일에 자동 기록되고 마지막 회차 뒤 저절로 끝남, PLAN 4-10)
+ */
+export type FixedKind = 'bill' | 'living' | 'allowance' | 'installment';
 
 /**
  * 생활비 항목을 쓰는 방식.
@@ -107,6 +110,15 @@ export interface FixedExpense {
   spread: LivingSpread;
   startMonth: YearMonth;
   endMonth: YearMonth | null;
+  /**
+   * 할부(installment)만: 이 행 시작월의 회차 번호. 빈 셀(null · 없음)이면 1.
+   * 한 할부는 id 가 '<할부id>' · '<할부id>@<월>' 인 행 여럿으로 나뉠 수 있다 (도중에 바꾸면 그달부터 새 행, 지난 행은 그대로)
+   */
+  installmentNo?: number | null;
+  /** 할부만: 전체 회차 수 (예: 24). 빈 셀이면 종료월로 정한다 */
+  installmentCount?: number | null;
+  /** 메모 (선택, 예: 가져온 파일의 설명). 시트 빈 셀은 '' */
+  memo?: string;
   deleted: boolean;
 }
 
@@ -149,6 +161,37 @@ export interface Expense {
   claimAccountId?: Id | null;
   /** 청구: 돌려줄 날 (정산일). 빈 셀이면 지출 날짜 기준 다음 정산일로 본다 */
   claimDue?: ISODate | null;
+  /**
+   * 여행(PLAN 4-11)에 쓴 지출이면 여행 id. 통장은 실제로 나간 통장 그대로 (예전 기록은 저수지일 수도 있음).
+   * 시트 빈 셀은 null
+   */
+  tripId?: Id | null;
+  /** 여행 항목 (항공 · 숙박 …). 빈 셀은 null = 기타로 센다 */
+  tripItem?: TripItem | null;
+  author: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  deleted: boolean;
+}
+
+/** 여행 항목 (세부 예산). 항공 · 숙박 · 교통 · 식비 · 투어 · 쇼핑 · 기타 */
+export type TripItem = 'flight' | 'stay' | 'transport' | 'food' | 'tour' | 'shopping' | 'other';
+
+/**
+ * 여행 (PLAN 4-11). 여행 예산은 늘 이벤트통장에서 나간다.
+ * 날짜가 다른 지출(몇 달 전 항공권, 여행 중 식비)을 tripId 로 묶는다. 쓰지 않은 남은 예산은 이벤트통장 예측에 들어간다
+ */
+export interface Trip {
+  id: Id;
+  name: string;
+  startDate: ISODate;
+  /** 끝나는 날 (시작일보다 앞이면 시작일로 본다) */
+  endDate: ISODate;
+  /** 총예산. 0 이면 항목 예산 합 */
+  budget: Won;
+  /** 항목별 예산 (선택). 없는 항목은 예산 없음 */
+  items: Partial<Record<TripItem, Won>>;
+  memo: string;
   author: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -229,6 +272,8 @@ export interface LedgerData {
   categories: Category[];
   favorites: Favorite[];
   members: Member[];
+  /** 여행 (PLAN 4-11). 예전 시트에 탭이 없으면 빈 배열 */
+  trips: Trip[];
 }
 
 /* ---------- 계산 결과 타입 ---------- */
@@ -295,6 +340,12 @@ export interface ProjectionMonth {
   scheduledSpending?: Won;
   /** 그달 돌려줄 청구 (아직 안 돌려준 개인 돈 지출, 정산일 기준. 지난 정산일은 이번 달). 0 이면 생략 */
   claims?: Won;
+  /** 그달 이 통장에서 나갈 할부 (아직 자동 기록되지 않은 회차). 0 이면 생략 */
+  installments?: Won;
+  /** 그달 여행의 남은 예산 (이벤트통장만, 여행 날짜의 달에 나눔). 0 이면 생략 */
+  trips?: Won;
+  /** 그달 여행별 남은 예산 (trips 가 있을 때) */
+  tripList?: { id: Id; name: string; amount: Won }[];
   endBalance: Won;
   events: { id: Id; name: string; date: ISODate; amount: Won }[];
 }
@@ -363,4 +414,97 @@ export interface ClaimSummary {
   dueNow: PendingClaim[];
   /** 아직 안 돌려준 청구 모두, 정산일 순 */
   pending: PendingClaim[];
+}
+
+/** 할부 한 회차 (PLAN 4-10) */
+export interface InstallmentPayment {
+  month: YearMonth;
+  /** 결제일 (말일보다 크면 말일) */
+  date: ISODate;
+  /** 회차 번호 (1부터) */
+  number: number;
+  amount: Won;
+  /** 이 회차를 기록하는 고정지출 행 id */
+  rowId: Id;
+  accountId: Id;
+  /** 결제일이 오늘이거나 지났는지 (낸 회차) */
+  paid: boolean;
+}
+
+/** 할부 하나의 상태 (행 여럿을 묶은 것) */
+export interface InstallmentPlan {
+  /** 할부 id (첫 행 id. 나뉜 행은 '<할부id>@<월>') */
+  id: Id;
+  name: string;
+  /** 다음 회차(끝났으면 마지막 회차) 행의 통장 · 카테고리 · 결제일 */
+  accountId: Id;
+  categoryId: Id | null;
+  dayOfMonth: number;
+  /** 이 할부의 행 (지우지 않은 것, 시작월 순) */
+  rows: FixedExpense[];
+  /** 기록하는 회차 (앞서 낸 회차는 빠짐) */
+  payments: InstallmentPayment[];
+  /** 1회차의 달 (앞서 낸 회차까지 거슬러 올라간 달) */
+  firstMonth: YearMonth;
+  /** 전체 회차 수 */
+  count: number;
+  /** 낸 회차 수 (앞서 낸 회차 포함) */
+  paidCount: number;
+  remainingCount: number;
+  /** 남은 회차 금액 합 */
+  remainingAmount: Won;
+  /** 다음 회차 (없으면 null = 다 냄) */
+  next: InstallmentPayment | null;
+  /** 마지막 회차 (첫 회차 전에 그만뒀으면 null) */
+  last: InstallmentPayment | null;
+  /** 마지막으로 회차가 있는 달 (회차가 하나도 없으면 첫 행 시작월의 앞 달) */
+  endMonth: YearMonth;
+  /** 다음 회차 금액 (끝났으면 마지막 회차 금액) */
+  monthly: Won;
+  ended: boolean;
+}
+
+/** "사도 돼?"의 할부 안내 (큰 금액일 때) */
+export interface InstallmentHint {
+  months: number;
+  /** 매달 금액 (원 단위 내림, 나머지는 첫 회차에) */
+  monthly: Won;
+  /** 첫 회차 달 (다음 달) */
+  firstMonth: YearMonth;
+  fits: boolean;
+  message: string;
+}
+
+/** 여행 항목 하나의 상태 */
+export interface TripItemStatus {
+  item: TripItem;
+  /** 항목 예산 (없으면 null) */
+  budget: Won | null;
+  spent: Won;
+  /** budget − spent (예산 없으면 null, 음수 가능) */
+  remaining: Won | null;
+}
+
+/** 여행 하나의 상태 (PLAN 4-11) */
+export interface TripStatus {
+  trip: Trip;
+  /** 총예산 (0 이면 항목 예산 합) */
+  budget: Won;
+  /** 이 여행에 묶은 지출 합 (통장 상관없이, 지운 것 제외) */
+  spent: Won;
+  /** budget − spent (음수 가능 = 넘음) */
+  remaining: Won;
+  /** 이벤트통장이 아닌 통장(예: 저수지)에서 나간 돈 */
+  spentElsewhere: Won;
+  /** 예산이 있거나 쓴 돈이 있는 항목 (항목 순서) */
+  items: TripItemStatus[];
+  /** 항목 예산 합 */
+  itemBudgetTotal: Won;
+  /** 묶은 지출 (날짜순) */
+  expenses: Expense[];
+  phase: 'upcoming' | 'ongoing' | 'past';
+  /** 시작까지 남은 날 (upcoming 만, 아니면 null) */
+  daysUntil: number | null;
+  /** 이벤트통장 예측에 넣는 남은 예산 (달별). 끝난 여행 · 남은 예산 0 은 빈 배열 */
+  projected: { month: YearMonth; amount: Won }[];
 }

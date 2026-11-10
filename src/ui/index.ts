@@ -26,3 +26,7 @@ export { Avatar, AvatarGroup, initialsOf, type AvatarProps } from './Avatar';
 export { PageHeader, type PageHeaderProps } from './PageHeader';
 export { AppShell, FocusShell, isNavActive, type AppShellProps, type FocusShellProps, type NavItem } from './AppShell';
 export { useMediaQuery, WIDE_QUERY } from './useMediaQuery';
+export {
+  MOTION_MS, motionAllowed, useMotionAllowed, useAnimatedNumber, usePresence, presenceClass, useChanged,
+  type PresenceItem, type PresenceState,
+} from './motion';

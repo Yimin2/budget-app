@@ -38,13 +38,25 @@ function verdictTitle() {
 }
 
 describe('CheckView — 사도 돼?', () => {
+  it('큰 금액이면 12개월 할부 매달 금액과 맞는지 함께 알려 줘요', async () => {
+    await renderCheck({ initialAmount: 100_000 });
+    fireEvent.click(screen.getByRole('button', { name: '쇼핑' }));
+    await screen.findByRole('heading', { level: 2, name: /괜찮아요|가능하지만|비추천/ });
+    expect(screen.queryByText(/개월 할부면/)).toBeNull();
+    fireEvent.change(amountInput(), { target: { value: '600000' } });
+    expect(await screen.findByText('12개월 할부면 매달 50,000원이에요. 한 달 쇼핑 예산 60,000원 안이에요')).toBeTruthy();
+    fireEvent.change(amountInput(), { target: { value: '1200000' } });
+    expect(await screen.findByText('12개월 할부면 매달 100,000원이에요. 한 달 쇼핑 예산보다 40,000원 많아요')).toBeTruthy();
+  });
+
   it('금액이 없으면 안내만 보이고 [샀어요]를 누를 수 없어요', async () => {
     await renderCheck();
     expect(screen.getByText('어디에 쓸지 골라 주세요')).toBeTruthy();
-    expect(screen.getByText('오늘 써도 되는 돈 10,500원')).toBeTruthy();
+    // 체험 예시: 어제 준호가 개인 돈으로 낸 마트 장보기 24,000원도 식비에 들어가 있어요
+    expect(screen.getByText('오늘 써도 되는 돈 8,300원')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '식비' }));
     expect(screen.getByText('금액을 넣으면 바로 알려 드려요')).toBeTruthy();
-    expect(screen.getByText('오늘 식비에 써도 되는 돈 10,600원')).toBeTruthy();
+    expect(screen.getByText('오늘 식비에 써도 되는 돈 8,400원')).toBeTruthy();
     expect((screen.getByRole('button', { name: /샀어요/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole('link', { name: '안 살래요' }).getAttribute('href')).toBe('/');
   });
@@ -64,13 +76,13 @@ describe('CheckView — 사도 돼?', () => {
     await waitFor(() => expect(verdictTitle()).toBe('괜찮아요'));
     expect(screen.getByText('오늘 식비 예산 안이에요')).toBeTruthy();
 
-    fireEvent.change(amountInput(), { target: { value: '100,000' } });
+    fireEvent.change(amountInput(), { target: { value: '70,000' } });
     await waitFor(() => expect(verdictTitle()).toBe('가능하지만'));
-    expect(screen.getByText('사면 내일부터 식비에 하루 1,700원씩 쓸 수 있어요')).toBeTruthy();
+    expect(screen.getByText('사면 내일부터 식비에 하루 2,300원씩 쓸 수 있어요')).toBeTruthy();
 
     fireEvent.change(amountInput(), { target: { value: '150000' } });
     await waitFor(() => expect(verdictTitle()).toBe('비추천'));
-    expect(screen.getByText('이번 달 식비 예산을 32,600원 넘어요')).toBeTruthy();
+    expect(screen.getByText('이번 달 식비 예산을 56,600원 넘어요')).toBeTruthy();
     expect((screen.getByRole('button', { name: /샀어요/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -150,6 +162,24 @@ describe('CheckView — 사도 돼?', () => {
     await waitFor(() => expect(h.probe.ledger!.data!.expenses.find((e) => e.id === row.id)?.deleted).toBe(true));
   });
 
+  it('개인 돈으로 냈어요: 낸 사람을 고르면 언제 돌려주는지 보여 주고 기록해요', async () => {
+    const h = await renderCheck({ initialAmount: 50_000, initialSource: 'event' });
+    fireEvent.click(screen.getByRole('button', { name: /샀어요/ }));
+    const dialog = await screen.findByRole('dialog', { name: '지출로 기록할게요' });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
+    const payer = within(dialog).getByLabelText(/누가 냈나요/) as HTMLSelectElement;
+    expect(payer.value).toBe('민지'); // 체험 모드 사용자
+    fireEvent.change(payer, { target: { value: '준호' } });
+    // 이벤트통장 잔액 900,000 − 다른 청구 300,000 이 50,000 을 감당해요 → 오늘
+    expect(within(dialog).getByText('준호에게 50,000원, 오늘 돌려주세요')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
+    });
+    await screen.findByText(/기록했어요 · 준호에게 50,000원, 오늘 돌려주세요/);
+    const row = h.probe.ledger!.data!.expenses.find((e) => e.paidBy === '준호' && e.amount === 50_000)!;
+    expect(row).toMatchObject({ accountId: 'demo-acc-event', claimAccountId: 'demo-acc-income-junho', claimDue: '2026-11-20' });
+  });
+
   it('이벤트통장으로 사면 이벤트통장에 기록해요', async () => {
     const h = await renderCheck({ initialAmount: 50_000, initialSource: 'event' });
     fireEvent.click(screen.getByRole('button', { name: /샀어요/ }));
@@ -160,6 +190,28 @@ describe('CheckView — 사도 돼?', () => {
     });
     await screen.findByText('지출 50,000원 기록했어요');
     expect(h.probe.ledger!.data!.expenses.some((e) => e.accountId === 'demo-acc-event' && e.amount === 50_000)).toBe(true);
+  });
+
+  it('여행을 고르면 여행 남은 예산으로 판단하고, 기록하면 여행에 묶여요', async () => {
+    const h = await renderCheck({ initialAmount: 100_000 });
+    fireEvent.click(screen.getByRole('button', { name: '제주 여행' }));
+    expect(screen.getByRole('radio', { name: '이벤트통장으로' }).getAttribute('aria-checked')).toBe('true');
+    // 여행 남은 예산 안이라 이미 예측에 있던 돈: 4월 부족은 그대로 300,000원 (여행 없이 보면 400,000원)
+    expect(await screen.findByText('사면 2027년 4월에 300,000원 모자라요')).toBeTruthy();
+    expect(screen.getByText('제주 여행 남은 예산').nextElementSibling?.textContent).toBe('350,000원');
+    fireEvent.click(screen.getByRole('button', { name: '제주 여행' }));
+    expect(await screen.findByText('사면 2027년 4월에 400,000원 모자라요')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '제주 여행' }));
+    await screen.findByText('사면 2027년 4월에 300,000원 모자라요');
+    fireEvent.click(screen.getByRole('button', { name: /샀어요/ }));
+    const dialog = await screen.findByRole('dialog', { name: '지출로 기록할게요' });
+    expect(within(dialog).getByText('제주 여행')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
+    });
+    await screen.findByText(/100,000원 기록했어요/);
+    const added = h.probe.ledger!.data!.expenses.find((e) => e.amount === 100_000 && e.tripId === 'demo-trip-jeju');
+    expect(added?.accountId).toBe('demo-acc-event');
   });
 });
 

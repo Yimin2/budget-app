@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { useId, useState } from 'react';
-import { formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget } from '@/domain';
+import { formatDateKo, formatNumber, formatShortDate, formatWon, hasLivingBudget, isAutoFixedRecord } from '@/domain';
 import type { Account, Favorite, LivingItem, LivingStatus } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import {
   AvatarGroup, Avatar, Badge, Banner, Button, Card, Chip, ChipGroup, Icon, ListRow, Money, PageHeader, ProgressBar,
-  useToast, cx, ACCOUNT_ROLE_ICON, useMediaQuery, WIDE_QUERY, isIconName,
+  useToast, cx, ACCOUNT_ROLE_ICON, useMediaQuery, WIDE_QUERY, isIconName, usePresence, presenceClass,
 } from '@/ui';
 import { ClaimsCard, LedgerSwitcher } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
@@ -110,7 +110,7 @@ function TodayCard({ living }: { living: LivingStatus }) {
       <h2 id={titleId} className={styles.heroLabel}>
         {hasDaily ? '오늘 써도 되는 돈' : '이번 달 남은 생활비'}
       </h2>
-      <Money amount={Math.max(0, hasDaily ? living.todayAvailable : living.remaining)} hero as="p" style={{ margin: 0 }} />
+      <Money amount={Math.max(0, hasDaily ? living.todayAvailable : living.remaining)} hero animate as="p" style={{ margin: 0 }} />
       {hasDaily && living.items.length > 1 ? <p className={styles.heroNote}>{dailyNames} 합계</p> : null}
       {over ? (
         <p className={styles.over}>
@@ -189,7 +189,7 @@ function LivingItemsCard({ living }: { living: LivingStatus }) {
                   <span className={styles.bad}>{formatWon(-i.remaining)} 넘음</span>
                 ) : (
                   <>
-                    <span className={styles.itemCap}>남은 돈</span> <Money amount={i.remaining} className={styles.amountCell} />
+                    <span className={styles.itemCap}>남은 돈</span> <Money amount={i.remaining} animate className={styles.amountCell} />
                   </>
                 )}
               </span>
@@ -312,7 +312,7 @@ function FavoriteChips({ favorites }: { favorites: Favorite[] }) {
 function EventAccountCard() {
   const ledger = useLedger();
   const projection = ledger.eventProjection;
-  const events = upcomingEvents(projection, ledger.today, 3);
+  const events = upcomingEvents(projection, ledger.today, 3, ledger.trips);
   const heading = useCardTitle('이벤트통장');
 
   if (!projection || projection.accountId === null) {
@@ -348,8 +348,11 @@ function EventAccountCard() {
               <ListRow
                 leadText={formatShortDate(e.date)}
                 title={e.name}
+                href={e.tripId ? `/events/trips?id=${encodeURIComponent(e.tripId)}` : undefined}
                 subtitle={
-                  e.overdue ? (
+                  e.tripId ? (
+                    '여행 · 남은 예산'
+                  ) : e.overdue ? (
                     <span className={styles.overdue}>
                       <Icon name="alert-triangle" size={16} />
                       날짜가 지났어요
@@ -383,6 +386,8 @@ function RecentExpenses() {
   const categoryById = new Map(data.categories.map((c) => [c.id, c]));
   const heading = useCardTitle('최근 지출');
   const memberIndex = (email: string) => data.members.findIndex((m) => m.email.toLowerCase() === email.toLowerCase());
+  // 새 기록은 옆에서 들어오고, 밀려나거나 지운 기록은 접히며 빠져요
+  const presence = usePresence(rows, (e) => e.id);
 
   return (
     <Card
@@ -399,7 +404,7 @@ function RecentExpenses() {
         <p className={styles.emptyLine}>아직 기록한 지출이 없어요. 사도 돼? 화면이나 자주 쓰는 지출로 기록해 보세요.</p>
       ) : (
         <ul className={cx('list', styles.listTop)}>
-          {rows.map((e) => {
+          {presence.map(({ item: e, key, state }) => {
             const who = ledger.displayName(e.author);
             const account = accountById.get(e.accountId);
             const category = e.categoryId ? categoryById.get(e.categoryId) : undefined;
@@ -407,10 +412,10 @@ function RecentExpenses() {
               formatShortDate(e.date),
               category?.name,
               account && account.role !== 'fixed' && account.role !== 'allowance' ? account.name : undefined,
-              e.fixedExpenseId ? '자동 기록' : undefined,
+              isAutoFixedRecord(e) ? '자동 기록' : undefined,
             ].filter(Boolean);
             return (
-              <li key={e.id}>
+              <li key={key} className={presenceClass(state)} inert={state === 'leave' || undefined}>
                 <ListRow
                   leading={<Avatar name={who} size="sm" alt={memberIndex(e.author) !== 0} />}
                   title={expenseTitle(e, data.categories)}

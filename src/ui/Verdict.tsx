@@ -59,8 +59,9 @@ export function VerdictCard({ verdict, children, live = true, headingLevel = 2, 
       data-signal={verdict.signal}
     >
       <div className="head">
-        <SignalIcon signal={verdict.signal} />
-        <div className="txt">
+        {/* 신호가 바뀌면 동그라미와 제목을 새로 그려 다시 나타나는 움직임을 보여요 (key) */}
+        <SignalIcon key={`icon-${verdict.signal}`} signal={verdict.signal} />
+        <div className="txt" key={`txt-${verdict.signal}`}>
           <H className="title">{verdict.title || SIGNAL_LABEL[verdict.signal]}</H>
           <p className="msg">{verdict.message}</p>
         </div>

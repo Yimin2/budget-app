@@ -1,6 +1,7 @@
 import { accountBalance } from './balances';
 import { isClaimSettled, summarizeClaims } from './claims';
 import { createDefaultLedger, createDemoLedger } from './defaults';
+import { installmentPlans } from './installments';
 import { projectEventAccount, suggestShortageFixes } from './events';
 import { computeLiving } from './living';
 import { pendingMonthEnd } from './monthEnd';
@@ -94,6 +95,21 @@ describe('createDemoLedger', () => {
       expect(projectEventAccount(d, today).shortages).toEqual(projectEventAccount(plain, today).shortages);
       expect(computeLiving(d, today).todayAvailable).toBeGreaterThan(0);
       expect(computeLiving(d, today).items.some((i) => i.unbudgeted)).toBe(false);
+    });
+  }
+
+  for (const [today, paid, recorded] of [['2026-11-04', 15, 0], ['2026-11-09', 16, 1], ['2027-01-31', 16, 1]] as const) {
+    it(`TV 할부 (체험 모드) on ${today}: ${paid}/24회차`, () => {
+      const plain = createDemoLedger(today, NOW);
+      const d = createDemoLedger(today, NOW, { installments: true });
+      const plan = installmentPlans(d, today)[0]!;
+      expect(plan).toMatchObject({ name: 'TV 할부', count: 24, paidCount: paid, remainingCount: 24 - paid, remainingAmount: (24 - paid) * 100_000 });
+      // 통장 시작 전 회차는 기록하지 않고, 그 뒤 회차만 고정지출통장에서 나간다
+      expect(d.expenses.filter((e) => e.fixedExpenseId?.startsWith('demo-installment-tv'))).toHaveLength(recorded);
+      expect(accountBalance(d, byRole(d, 'fixed').id, today)).toBe(accountBalance(plain, byRole(plain, 'fixed').id, today) - recorded * 100_000);
+      // 고정지출통장 할부라 생활비 · 이벤트 예측은 그대로
+      expect(computeLiving(d, today).remaining).toBe(computeLiving(plain, today).remaining);
+      expect(projectEventAccount(d, today).shortages).toEqual(projectEventAccount(plain, today).shortages);
     });
   }
 

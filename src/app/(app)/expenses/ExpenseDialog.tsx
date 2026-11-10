@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
-import { canClaimOnAccount, formatDateKo, formatShortDate, formatWon, isClaimSettled } from '@/domain';
-import type { Category, Expense, Id, ISODate } from '@/domain/types';
+import {
+  TRIP_ITEMS, TRIP_ITEM_ICONS, TRIP_ITEM_LABELS, canClaimOnAccount, formatDateKo, formatShortDate, formatWon, isAutoFixedRecord,
+  isClaimSettled, linkableTrips, tripItemForCategory, tripPeriodText,
+} from '@/domain';
+import type { Category, Expense, Id, ISODate, TripItem } from '@/domain/types';
 import { useLedger } from '@/state';
 import {
   Badge, Banner, Button, Chip, ChipGroup, DateInput, Dialog, Field, Icon, isIconName, MoneyInput, Select, TextInput, useToast, focusFirstInvalid,
@@ -15,7 +18,7 @@ export interface ExpenseDialogProps {
   /** 고칠 지출. 없으면 새로 기록해요 */
   expense?: Expense | null;
   /** 새로 기록할 때 미리 채울 값 */
-  initial?: { date?: ISODate; accountId?: Id | null; categoryId?: Id | null };
+  initial?: { date?: ISODate; accountId?: Id | null; categoryId?: Id | null; tripId?: Id | null; tripItem?: TripItem | null };
   onClose: () => void;
   /** 기록 · 고치기 · 지우기가 끝나면 (창은 스스로 닫혀요) */
   onDone?: (expense: Expense, action: 'added' | 'updated' | 'deleted') => void;
@@ -58,6 +61,10 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     return list;
   }, [ledger.activeAccounts, data, expense]);
   const events = useMemo(() => (data ? linkableEvents(data, expense?.eventId ?? null) : []), [data, expense]);
+  const trips = useMemo(
+    () => (data ? linkableTrips(data, ledger.today, expense?.tripId ?? initial?.tripId ?? null) : []),
+    [data, ledger.today, expense, initial?.tripId],
+  );
 
   const startCategory = expense ? expense.categoryId : (initial?.categoryId ?? null);
   const [amount, setAmount] = useState<number | null>(expense?.amount ?? null);
@@ -74,14 +81,16 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
   const [memo, setMemo] = useState(expense?.memo ?? '');
   const [eventId, setEventId] = useState<string>(expense?.eventId ?? '');
   const [markDone, setMarkDone] = useState(true);
+  const [tripId, setTripId] = useState<string>(expense?.tripId ?? initial?.tripId ?? '');
+  const [tripItem, setTripItem] = useState<TripItem | null>(
+    expense ? (expense.tripItem ?? null) : (initial?.tripItem ?? (initial?.tripId ? tripItemForCategory(categories.find((c) => c.id === startCategory)?.name) : null)),
+  );
+  const [tripItemTouched, setTripItemTouched] = useState(editing || !!initial?.tripItem);
   const [paidBy, setPaidBy] = useState<string | null>(expense?.paidBy?.trim() ? expense.paidBy.trim() : null);
   const claimSettled = !!expense && !!data && isClaimSettled(data, expense.id);
-  // 청구할 수 없는 통장으로 바꾸면 저장할 때 낸 사람을 비워요 (이미 돌려준 청구는 그대로)
-  const effectivePaidBy = claimSettled
-    ? (expense?.paidBy ?? null)
-    : paidBy !== null && data && canClaimOnAccount(data, accountId)
-      ? paidBy.trim()
-      : null;
+  // 이미 돌려준 청구는 그대로. 청구할 수 없는 통장이면 저장하지 않고 통장을 다시 고르게 해요 (조용히 청구를 빼지 않게)
+  const effectivePaidBy = claimSettled ? (expense?.paidBy ?? null) : paidBy !== null ? paidBy.trim() : null;
+  const claimOnWrongAccount = !claimSettled && paidBy !== null && !!accountId && !!data && !canClaimOnAccount(data, accountId);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState<'save' | 'delete' | null>(null);
   const [step, setStep] = useState<'form' | 'confirm'>('form');
@@ -98,13 +107,16 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
 
   function pickCategory(id: Id | null) {
     setCategoryId(id);
+    if (tripId && !tripItemTouched) setTripItem(tripItemForCategory(categories.find((c) => c.id === id)?.name));
     if (accountTouched) return;
     const next = accountForCategory(categories.find((c) => c.id === id), ledger.activeAccounts, livingId);
     if (next) setAccountId(next);
   }
 
+  /** 일정과 여행은 하나만 연결해요 (둘 다 연결하면 예측에서 두 번 빠져요) */
   function pickEvent(id: string) {
     setEventId(id);
+    if (id) setTripId('');
     const ev = events.find((e) => e.id === id);
     if (!ev || editing) return;
     if (amount === null) setAmount(ev.amount);
@@ -113,11 +125,22 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     if (!accountTouched && ev.accountId && ledger.activeAccounts.some((a) => a.id === ev.accountId)) setAccountId(ev.accountId);
   }
 
+  /** 여행을 고르면 (새 기록이고 통장을 직접 고르지 않았으면) 이벤트통장으로, 항목은 카테고리로 짐작해요 */
+  function pickTrip(id: string) {
+    setTripId(id);
+    if (!id) return;
+    setEventId('');
+    if (!tripItemTouched) setTripItem(tripItemForCategory(selectedCategory?.name));
+    const eventAccount = ledger.accountByRole('event');
+    if (!editing && !accountTouched && eventAccount) setAccountId(eventAccount.id);
+  }
+
   function validate(): boolean {
     const next: Errors = {};
     if (amount === null || amount <= 0) next.amount = '금액을 입력해 주세요';
     if (!isISODate(date)) next.date = '날짜를 골라 주세요';
     if (!accountId) next.account = '어느 통장에서 나갔는지 골라 주세요';
+    else if (claimOnWrongAccount) next.account = '개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 골라 주세요';
     if (effectivePaidBy !== null && !effectivePaidBy) next.payer = '누가 냈는지 골라 주세요';
     setErrors(next);
     if (Object.keys(next).length > 0) focusFirstInvalid();
@@ -138,8 +161,10 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           categoryId,
           accountId,
           memo: memo.trim(),
-          eventId: eventId || null,
+          eventId: tripId ? null : eventId || null,
           paidBy: effectivePaidBy,
+          tripId: tripId || null,
+          tripItem: tripId ? tripItem : null,
         };
         await ledger.updateExpense(next);
         toast.success('지출을 고쳤어요');
@@ -153,11 +178,13 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
         accountId,
         categoryId,
         memo: memo.trim(),
-        eventId: eventId || null,
+        eventId: tripId ? null : eventId || null,
         paidBy: effectivePaidBy,
+        tripId: tripId || null,
+        tripItem: tripId ? tripItem : null,
       });
       let completed = false;
-      if (eventId && markDone) {
+      if (eventId && !tripId && markDone) {
         try {
           await ledger.completeEvent(eventId, 0, date);
           completed = true;
@@ -245,7 +272,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           </>
         }
       >
-        {expense.fixedExpenseId ? (
+        {isAutoFixedRecord(expense) ? (
           <p className={styles.note}>매달 자동으로 기록된 고정 지출이에요. 지워도 다음 달 기록은 그대로 생겨요.</p>
         ) : (
           <p className={styles.note}>지운 기록은 잔액과 생활비 계산에서 빠져요.</p>
@@ -278,7 +305,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
       }
     >
       <form id={formId} className={styles.form} onSubmit={save} noValidate>
-        {expense?.fixedExpenseId ? (
+        {expense && isAutoFixedRecord(expense) ? (
           <Banner tone="info" title="매달 자동으로 기록된 고정 지출이에요">
             여기서 고쳐도 다음 달 기록은 설정의 금액으로 생겨요.
           </Banner>
@@ -354,7 +381,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
             paidBy={claimSettled ? (expense?.paidBy ?? null) : paidBy}
             onChange={(v) => {
               setPaidBy(v);
-              if (errors.payer) setErrors((x) => ({ ...x, payer: undefined }));
+              if (errors.payer || errors.account) setErrors((x) => ({ ...x, payer: undefined, account: undefined }));
             }}
             expense={expense}
             settled={claimSettled}
@@ -367,10 +394,16 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           <Field
             label="이벤트 일정 연결"
             optional
-            hint={editing ? undefined : '예정된 일정에 쓴 돈이면 골라 주세요. 금액과 내용을 채워 드려요.'}
+            hint={
+              tripId
+                ? '여행에 묶은 지출은 여행 예산으로 세요. 일정을 고르면 여행 연결이 풀려요.'
+                : editing
+                  ? undefined
+                  : '예정된 일정에 쓴 돈이면 골라 주세요. 금액과 내용을 채워 드려요.'
+            }
           >
             <Select
-              value={eventId}
+              value={tripId ? '' : eventId}
               onChange={pickEvent}
               options={[
                 { value: '', label: '연결하지 않기' },
@@ -383,7 +416,56 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           </Field>
         ) : null}
 
-        {!editing && linkedEvent && linkedEvent.status === 'planned' ? (
+        {trips.length > 0 ? (
+          <Field
+            label="여행"
+            optional
+            hint={
+              eventId && !tripId
+                ? '여행을 고르면 일정 연결이 풀려요.'
+                : editing || tripId
+                  ? undefined
+                  : '여행에 쓴 돈이면 골라 주세요. 날짜가 달라도 여행 예산에 함께 잡혀요.'
+            }
+          >
+            <Select
+              value={tripId}
+              onChange={pickTrip}
+              options={[
+                { value: '', label: '여행 아님' },
+                ...trips.map((t) => ({
+                  value: t.id,
+                  label: `${t.name} · ${tripPeriodText(t)}${t.deleted ? ' (지운 여행)' : ''}`,
+                })),
+              ]}
+            />
+          </Field>
+        ) : null}
+
+        {tripId ? (
+          <fieldset className={styles.fieldset}>
+            <legend className="label">
+              여행 항목 <span className="opt-text">(선택)</span>
+            </legend>
+            <ChipGroup label="여행 항목">
+              {TRIP_ITEMS.map((item) => (
+                <Chip
+                  key={item}
+                  icon={isIconName(TRIP_ITEM_ICONS[item]) ? TRIP_ITEM_ICONS[item] : 'dots'}
+                  selected={tripItem === item}
+                  onClick={() => {
+                    setTripItem(tripItem === item ? null : item);
+                    setTripItemTouched(true);
+                  }}
+                >
+                  {TRIP_ITEM_LABELS[item]}
+                </Chip>
+              ))}
+            </ChipGroup>
+          </fieldset>
+        ) : null}
+
+        {!editing && !tripId && linkedEvent && linkedEvent.status === 'planned' ? (
           <label className={styles.check}>
             <input type="checkbox" checked={markDone} onChange={(e) => setMarkDone(e.target.checked)} />
             <span>
@@ -398,7 +480,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
         {editing ? (
           <div className={styles.dangerRow}>
             <span className={styles.meta}>
-              {expense?.fixedExpenseId ? (
+              {expense && isAutoFixedRecord(expense) ? (
                 <Badge size="sm" dot={false}>
                   자동
                 </Badge>

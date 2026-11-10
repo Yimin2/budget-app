@@ -44,7 +44,7 @@ describe('지출 화면', () => {
     expect(within(summary).getByText(`${total.toLocaleString('en-US')}원`)).toBeTruthy();
     expect(within(summary).getByText(`${nov.length}건`)).toBeTruthy();
     for (const label of ['생활비', '이벤트', '고정비']) expect(within(summary).getByText(label)).toBeTruthy();
-    expect(within(summary).getByText('1,400,000원')).toBeTruthy(); // 고정비
+    expect(within(summary).getByText('1,500,000원')).toBeTruthy(); // 고정비 (월세·통신비·보험·용돈 1,400,000 + TV 할부 16회차 100,000)
 
     // 오늘(11/20) 묶음이 맨 위, 오늘 표시
     const days = within(list()).getAllByRole('heading', { level: 3 });
@@ -81,9 +81,62 @@ describe('지출 화면', () => {
     expect(added).toMatchObject({ amount: 230_000, accountId: 'demo-acc-event', categoryId: 'demo-cat-travel', date: '2026-11-20' });
     // 모바일 제목 · 데스크톱 내용 열 (화면 크기에 따라 하나만 보여요)
     expect(within(list()).getAllByText('숙소 예약').length).toBeGreaterThan(0);
-    // 이벤트 합계에 들어가요
+    // 이벤트 합계에 들어가요 (체험 예시의 이벤트통장 지출 — 개인 돈으로 낸 제주 항공권 · 제주 숙소 예약금 — 과 함께)
+    const eventTotal = current(h)
+      .ledger.data!.expenses.filter((e) => !e.deleted && e.date.startsWith('2026-11') && e.accountId === 'demo-acc-event')
+      .reduce((s, e) => s + e.amount, 0);
+    expect(eventTotal).toBe(680_000);
     const summary = screen.getByRole('region', { name: '2026년 11월 지출 합계' });
-    expect(within(summary).getByText('230,000원')).toBeTruthy();
+    expect(within(summary).getByText('680,000원')).toBeTruthy();
+  });
+
+  it('개인 돈으로 냈어요: 생활비는 다음 월급날에 돌려받고, 목록에 표시돼요', async () => {
+    const h = await open();
+    fireEvent.click(screen.getAllByRole('button', { name: '지출 추가' })[0]!);
+    const dialog = await screen.findByRole('dialog', { name: '지출 기록' });
+    fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '18000' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '식비' }));
+    fireEvent.change(within(dialog).getByLabelText(/내용/), { target: { value: '반찬' } });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
+    fireEvent.change(within(dialog).getByLabelText(/누가 냈나요/), { target: { value: '준호' } });
+    expect(within(dialog).getByText('준호가 12월 1일에 18,000원 돌려받아요')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
+    await screen.findByText('반찬 18,000원 기록했어요 · 준호가 12월 1일에 18,000원 돌려받아요');
+    const added = current(h).ledger.data!.expenses.find((e) => e.memo === '반찬')!;
+    expect(added).toMatchObject({ accountId: 'demo-acc-fixed', paidBy: '준호', claimDue: '2026-12-01' });
+    expect(within(list()).getAllByText('준호 돌려받기 전').length).toBeGreaterThan(0);
+  });
+
+  it('개인 돈으로 냈어요를 고른 채 청구할 수 없는 통장으로 바꾸면 기록하지 않고 알려 줘요', async () => {
+    const h = await open();
+    const before = current(h).ledger.data!.expenses.length;
+    fireEvent.click(screen.getAllByRole('button', { name: '지출 추가' })[0]!);
+    const dialog = await screen.findByRole('dialog', { name: '지출 기록' });
+    fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '18000' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '식비' }));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
+    fireEvent.change(within(dialog).getByLabelText(/^통장/), { target: { value: 'demo-acc-savings' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
+    expect(await within(dialog).findByText('개인 돈으로 낸 지출은 이벤트통장이나 고정지출통장으로 골라 주세요')).toBeTruthy();
+    expect(current(h).ledger.data!.expenses).toHaveLength(before);
+    // 체크를 끄면 보통 지출로 기록할 수 있어요
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
+    await waitFor(() => expect(current(h).ledger.data!.expenses).toHaveLength(before + 1));
+  });
+
+  it('일정과 여행은 하나만 연결해요', async () => {
+    const h = await open();
+    fireEvent.click(screen.getAllByRole('button', { name: '지출 추가' })[0]!);
+    const dialog = await screen.findByRole('dialog', { name: '지출 기록' });
+    fireEvent.change(within(dialog).getByLabelText(/이벤트 일정 연결/), { target: { value: 'demo-event-holiday' } });
+    fireEvent.change(within(dialog).getByLabelText(/^여행/), { target: { value: 'demo-trip-jeju' } });
+    expect((within(dialog).getByLabelText(/이벤트 일정 연결/) as HTMLSelectElement).value).toBe('');
+    fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const added = current(h).ledger.data!.expenses.find((e) => e.memo === '명절 부모님 용돈')!;
+    expect(added).toMatchObject({ tripId: 'demo-trip-jeju', eventId: null });
+    expect(current(h).ledger.data!.events.find((e) => e.id === 'demo-event-holiday')!.status).toBe('planned');
   });
 
   it('일정을 연결하면 금액·내용을 채우고, 일정을 완료로 바꿔요', async () => {
@@ -94,7 +147,7 @@ describe('지출 화면', () => {
     expect((within(dialog).getByLabelText(/금액/) as HTMLInputElement).value).toBe('400,000');
     expect((within(dialog).getByLabelText(/내용/) as HTMLInputElement).value).toBe('명절 부모님 용돈');
     expect((within(dialog).getByLabelText(/^통장/) as HTMLSelectElement).value).toBe('demo-acc-event');
-    expect((within(dialog).getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+    expect((within(dialog).getByRole('checkbox', { name: /완료로 바꿔요/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
     await screen.findByText('명절 부모님 용돈 400,000원 기록하고 일정을 완료했어요');
     const data = current(h).ledger.data!;

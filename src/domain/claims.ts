@@ -9,6 +9,7 @@
 import { accountBalance, isClaimExpense } from './balances';
 import { addMonths, dateInMonth, formatDateKo, isMonthActive, isValidDate, monthOf } from './dates';
 import { activeAccountsSorted } from './internal';
+import { withSubject } from './korean';
 import { formatWon } from './money';
 import type { ClaimSummary, Expense, Id, ISODate, LedgerData, PendingClaim, Won } from './types';
 
@@ -136,6 +137,7 @@ export function pendingClaimsTotal(data: LedgerData, accountId: Id, today: ISODa
 /**
  * 새 청구의 정산일 (PLAN 4-9).
  * - 이벤트통장 지출: 이벤트통장 잔액 − 다른 청구가 금액을 감당하면 오늘, 아니면 다음 월급날(오늘 뒤)
+ *   (expenseId 를 주면 그 지출은 잔액 · 다른 청구 어느 쪽에도 세지 않는다 — 보통 지출을 청구로 바꿀 때도 맞게)
  * - 그 밖의 통장(고정지출 · 생활비): 늘 다음 월급날(오늘 포함)
  */
 export function computeClaimDue(
@@ -145,7 +147,9 @@ export function computeClaimDue(
 ): ISODate {
   const account = data.accounts.find((a) => a.id === input.accountId);
   if (account?.role === 'event') {
-    const free = accountBalance(data, account.id, today) - pendingClaimsTotal(data, account.id, today, input.expenseId);
+    // 고치는 지출은 없는 것으로 보고 센다: 보통 지출을 청구로 바꾸면 그 지출은 더 이상 이 통장 잔액에서 빠지지 않는다
+    const base = input.expenseId ? { ...data, expenses: data.expenses.filter((e) => e.id !== input.expenseId) } : data;
+    const free = accountBalance(base, account.id, today) - pendingClaimsTotal(base, account.id, today);
     if (free >= input.amount) return today;
     return nextSettleDate(data, today, false);
   }
@@ -183,18 +187,7 @@ export function canClaimOnAccount(data: LedgerData, accountId: Id): boolean {
   return role === 'event' || role === 'fixed';
 }
 
-/** 받침이 있으면 true (한글이 아니면 false) */
-function hasBatchim(word: string): boolean {
-  const ch = word.trim().slice(-1);
-  const code = ch ? ch.charCodeAt(0) - 0xac00 : -1;
-  if (code < 0 || code > 11171) return false;
-  return code % 28 !== 0;
-}
-
-/** '기쁜' → '기쁜이', '민구' → '민구가' */
-export function withSubject(name: string): string {
-  return `${name}${hasBatchim(name) ? '이' : '가'}`;
-}
+export { withSubject } from './korean';
 
 /**
  * 기록 직후 · 목록에 보여 줄 한 줄.

@@ -1,5 +1,7 @@
+'use client';
+
 import Link from 'next/link';
-import type { CSSProperties, ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { cx } from './cx';
 import { Icon, LogoMark, type IconName } from './Icon';
 
@@ -47,6 +49,65 @@ function activeIndex(items: NavItem[], current: string): number {
   return best;
 }
 
+/** 메뉴 칸이 바뀐 순간에만 true (첫 그림 제외) — 하단 메뉴 아이콘이 한 번 튀어 오르게 */
+function useBumpOnChange(index: number): boolean {
+  const [state, setState] = useState({ index, bumped: false });
+  if (state.index !== index) setState({ index, bumped: true });
+  return state.bumped;
+}
+
+/**
+ * 사이드바 선택 배경을 누른 메뉴 자리로 옮겨요 (nav-ind). 처음 자리 잡을 때는 움직이지 않고,
+ * 사이드바 폭이 바뀌면(태블릿 ↔ 데스크톱) 다시 맞춰요.
+ */
+function useNavIndicator(navRef: RefObject<HTMLElement | null>, indRef: RefObject<HTMLElement | null>, index: number) {
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const ind = indRef.current;
+    if (!nav || !ind) return;
+    const place = () => {
+      const link = nav.querySelectorAll<HTMLElement>('a')[index];
+      if (!link || link.offsetWidth === 0) {
+        nav.classList.remove('has-ind');
+        return;
+      }
+      ind.style.setProperty('--ind-x', `${link.offsetLeft}px`);
+      ind.style.setProperty('--ind-y', `${link.offsetTop}px`);
+      ind.style.width = `${link.offsetWidth}px`;
+      ind.style.height = `${link.offsetHeight}px`;
+      nav.classList.add('has-ind');
+    };
+    place();
+    let raf = 0;
+    if (!nav.classList.contains('ind-ready') && typeof requestAnimationFrame === 'function') {
+      raf = requestAnimationFrame(() => nav.classList.add('ind-ready'));
+    }
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
+    ro?.observe(nav);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, [navRef, indRef, index]);
+}
+
+/** 경로가 바뀌면 본문 자식이 살짝 떠오르며 나타나요 (route-enter 를 다시 붙여 움직임을 처음부터) */
+function useRouteEnter(mainRef: RefObject<HTMLElement | null>, current: string) {
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    if (first.current) {
+      first.current = false;
+      main.classList.add('route-enter');
+      return;
+    }
+    main.classList.remove('route-enter');
+    void main.offsetWidth;
+    main.classList.add('route-enter');
+  }, [mainRef, current]);
+}
+
 /**
  * 앱 틀. 모바일(<768): 한 줄 + 하단 플로팅 메뉴 · 태블릿(768–1279): 80px 아이콘 사이드바 · 데스크톱(≥1280): 280px 사이드바.
  */
@@ -54,6 +115,12 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
   const dockItems = (mobileNav ?? nav).slice(0, 5);
   const sideActive = activeIndex(nav, current);
   const dockActive = activeIndex(dockItems, current);
+  const bump = useBumpOnChange(dockActive);
+  const navRef = useRef<HTMLElement>(null);
+  const indRef = useRef<HTMLSpanElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  useNavIndicator(navRef, indRef, sideActive);
+  useRouteEnter(mainRef, current);
 
   return (
     <div className="shell">
@@ -67,7 +134,8 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
             <span className="name">가계부</span>
           </Link>
           {header ? <div className="side-slot">{header}</div> : null}
-          <nav className="side-nav" aria-label="주 메뉴">
+          <nav className="side-nav" aria-label="주 메뉴" ref={navRef}>
+            {sideActive >= 0 ? <span className="nav-ind" aria-hidden ref={indRef} /> : null}
             {nav.map((item, i) => {
               const on = i === sideActive;
               return (
@@ -92,7 +160,7 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
       </div>
 
       <div className="shell-main">
-        <main id="main" className="shell-content" tabIndex={-1}>
+        <main id="main" className="shell-content" tabIndex={-1} ref={mainRef}>
           {children}
         </main>
       </div>
@@ -106,7 +174,7 @@ export function AppShell({ nav, current, mobileNav, header, footer, homeHref = '
         {dockItems.map((item, i) => {
           const on = i === dockActive;
           return (
-            <Link key={item.href} href={item.href} className={cx(on && 'on')} aria-current={on ? 'page' : undefined}>
+            <Link key={item.href} href={item.href} className={cx(on && 'on', on && bump && 'bump')} aria-current={on ? 'page' : undefined}>
               <Icon name={item.icon} size={24} />
               {item.label}
             </Link>

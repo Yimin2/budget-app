@@ -152,7 +152,7 @@ export function InfoCard({ ledger }: { ledger: ReadyLedger }) {
         'reset',
         async () => {
           const now = new Date();
-          await new LocalBackend().create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true }), DEMO_LEDGER_ID);
+          await new LocalBackend().create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
           await ledger.reload();
         },
         '체험 데이터를 처음으로 되돌렸어요',

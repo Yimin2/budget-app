@@ -330,6 +330,8 @@ export function monthDetailRows(m: ProjectionMonth, isThisMonth: boolean): Detai
     rows.push({ label: '미리 기록한 지출', amount: m.scheduledSpending, sign: '-' });
   }
   if (m.claims && m.claims > 0) rows.push({ label: '돌려줄 돈 (개인 돈으로 낸 것)', amount: m.claims, sign: '-' });
+  if (m.installments && m.installments > 0) rows.push({ label: '할부', amount: m.installments, sign: '-' });
+  if (m.trips && m.trips > 0) rows.push({ label: '여행 남은 예산', amount: m.trips, sign: '-' });
   if (m.extra > 0) rows.push({ label: '살까 하는 지출', amount: m.extra, sign: '-' });
   return rows;
 }

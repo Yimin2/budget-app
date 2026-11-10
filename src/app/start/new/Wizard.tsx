@@ -6,7 +6,7 @@ import { monthOf } from '@/domain';
 import type { Account, AllocationRule, FixedExpense, LedgerKind } from '@/domain/types';
 import { useLedger, useSession } from '@/state';
 import type { LedgerRef } from '@/storage/types';
-import { Button, LoadingBlock, useToast } from '@/ui';
+import { Button, LoadingBlock, cx, useToast } from '@/ui';
 import { LedgerLoadError } from '@/app/(app)/_components/RequireLedger';
 import { Stepper } from '../_components/Stepper';
 import { StepAllocation, StepBalances, StepBasics, StepFixed, StepLiving, StepNote } from './Steps';
@@ -51,6 +51,9 @@ export function Wizard() {
   const user = session.user;
 
   const [step, setStep] = useState(0);
+  // 단계 전환 방향: 다음 단계는 오른쪽에서, 이전 단계는 왼쪽에서 들어와요 (처음 그림은 움직이지 않아요)
+  const [stepTrack, setStepTrack] = useState<{ step: number; dir: 'next' | 'prev' | null }>({ step: 0, dir: null });
+  if (stepTrack.step !== step) setStepTrack({ step, dir: step > stepTrack.step ? 'next' : 'prev' });
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<LedgerRef | null>(null);
 
@@ -367,12 +370,14 @@ export function Wizard() {
       noValidate
     >
       <Stepper steps={steps} current={step} />
-      <div className="wz-head">
-        <StepHeading step={step} title={head.title} announce={stepText} />
-        <p>{head.desc}</p>
-      </div>
+      <div key={step} className={cx('stack gap-6', stepTrack.dir === 'next' && 'mo-step-next', stepTrack.dir === 'prev' && 'mo-step-prev')}>
+        <div className="wz-head">
+          <StepHeading step={step} title={head.title} announce={stepText} />
+          <p>{head.desc}</p>
+        </div>
 
-      {body}
+        {body}
+      </div>
 
       {step === 1 ? <StepNote>건너뛰면 잔액 0원으로 시작해요. 설정에서 언제든 바꿀 수 있어요.</StepNote> : null}
       {step >= 2 ? <StepNote>지금 정하지 않아도 돼요. 설정에서 언제든 추가하고 고칠 수 있어요.</StepNote> : null}

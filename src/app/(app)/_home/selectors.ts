@@ -1,7 +1,7 @@
 /* 홈 · 사도 돼? 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
 import { formatMonthKo, formatWon, monthOf, parseWon } from '@/domain';
 import type {
-  Account, AccountRole, Category, EventProjection, Expense, Id, ISODate, LedgerData, ProjectionMonth, Won,
+  Account, AccountRole, Category, EventProjection, Expense, Id, ISODate, LedgerData, ProjectionMonth, TripStatus, Won,
 } from '@/domain';
 
 /* ───────── 이벤트 일정 ───────── */
@@ -13,10 +13,20 @@ export interface UpcomingEvent {
   amount: Won;
   /** 날짜가 지났는데 아직 예정 상태 */
   overdue: boolean;
+  /** 여행이면 여행 id (amount = 남은 예산, date = 떠나는 날) */
+  tripId?: Id;
 }
 
-/** 예측에 들어간 예정 일정(반복 펼침 포함)을 날짜순으로 앞에서 n 개. 날짜가 지난 예정 일정이 맨 앞에 와요 */
-export function upcomingEvents(projection: EventProjection | null, today: ISODate, n = 3): UpcomingEvent[] {
+/**
+ * 예측에 들어간 예정 일정(반복 펼침 포함)과 다가오는 · 여행 중인 여행을 날짜순으로 앞에서 n 개.
+ * 날짜가 지난 예정 일정이 맨 앞에 와요. 여행은 떠나는 날 · 남은 예산으로 보여요
+ */
+export function upcomingEvents(
+  projection: EventProjection | null,
+  today: ISODate,
+  n = 3,
+  trips: TripStatus[] = [],
+): UpcomingEvent[] {
   if (!projection) return [];
   const seen = new Set<string>();
   const all: UpcomingEvent[] = [];
@@ -27,6 +37,17 @@ export function upcomingEvents(projection: EventProjection | null, today: ISODat
       seen.add(key);
       all.push({ ...e, overdue: e.date < today });
     }
+  }
+  for (const t of trips) {
+    if (t.phase === 'past') continue;
+    all.push({
+      id: t.trip.id,
+      name: t.trip.name,
+      date: t.trip.startDate,
+      amount: Math.max(0, t.remaining),
+      overdue: false,
+      tripId: t.trip.id,
+    });
   }
   all.sort((a, b) => (a.date === b.date ? a.name.localeCompare(b.name, 'ko') : a.date < b.date ? -1 : 1));
   return all.slice(0, n);

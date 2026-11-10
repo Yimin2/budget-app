@@ -110,6 +110,33 @@ describe('HomeView — 새 가계부', () => {
     expect(screen.queryByText(/이벤트통장이 .*모자라요/)).toBeNull();
   });
 
+  it('돌려받을 돈: 사람별 합 · 다음 정산일 · [보냈어요]로 돌려준 기록', async () => {
+    const h = await renderHome();
+    const card = await screen.findByRole('region', { name: '돌려받을 돈' });
+    expect(within(card).getByText('324,000원')).toBeTruthy();
+    expect(card.textContent).toContain('민지 300,000원 · 준호 24,000원');
+    expect(card.textContent).toContain('다음 정산일 12월 1일');
+    expect(within(card).getByText('민지에게 300,000원')).toBeTruthy();
+    expect(card.textContent).toContain('이벤트통장 → 민지 수입통장 · 제주 항공권');
+    expect(card.textContent).toContain('정산일을 기다리는 1건 보기');
+
+    const eventBefore = h.probe.ledger!.balances['demo-acc-event']!;
+    await act(async () => {
+      fireEvent.click(within(card).getByRole('button', { name: '민지에게 300,000원 보냈어요' }));
+    });
+    await screen.findByText('민지에게 300,000원 돌려줬다고 기록했어요');
+    expect(h.probe.ledger!.balances['demo-acc-event']).toBe(eventBefore - 300_000);
+    expect(h.probe.ledger!.balances['demo-acc-income']).toBe(0);
+    expect(within(card).queryByText('민지에게 300,000원')).toBeNull();
+    expect(h.probe.ledger!.claims!.total).toBe(24_000);
+
+    // 되돌리기 → 다시 돌려줄 돈
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    });
+    await waitFor(() => expect(h.probe.ledger!.claims!.total).toBe(324_000));
+  });
+
   it('가계부를 고르지 않았으면 고르기로 안내해요', async () => {
     await renderHome({ autoStart: false });
     expect(await screen.findByRole('heading', { name: '가계부를 골라 주세요' })).toBeTruthy();

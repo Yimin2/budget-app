@@ -193,10 +193,10 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       try {
         ref = await deps.local.describe(DEMO_LEDGER_ID);
       } catch {
-        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true }), DEMO_LEDGER_ID);
+        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
       }
     } else {
-      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true }), DEMO_LEDGER_ID);
+      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true }), DEMO_LEDGER_ID);
     }
     update((s) => ({
       status: 'signedIn',

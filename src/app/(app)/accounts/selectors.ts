@@ -1,5 +1,5 @@
 /* 통장 화면의 순수 함수. 화면과 떼어 테스트해요. */
-import { expenseBalanceAccountId, isClaimExpense, isCountedTransfer, isMonthActive, monthOf } from '@/domain';
+import { expenseBalanceAccountId, isClaimExpense, isAutoFixedRecord, isCountedTransfer, isMonthActive, monthOf } from '@/domain';
 import type { Account, AccountRole, Expense, Id, ISODate, LedgerData, Transfer, Won, YearMonth } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON } from '@/ui';
 import { incomeSummaries, referenceIncome, type IncomeSummary } from '../settings/helpers';
@@ -268,7 +268,7 @@ export function accountHistory(data: LedgerData, accountId: Id, today: ISODate):
       title: memo || cat || '지출',
       detail: claim ? `개인 돈으로 냄 · ${accountName(data, e.accountId) || '다른 통장'}에서 돌려받는 돈` : memo && cat ? cat : '지출',
       amount: -e.amount,
-      auto: e.fixedExpenseId !== null,
+      auto: isAutoFixedRecord(e),
       transfer: null,
       expense: e,
     });

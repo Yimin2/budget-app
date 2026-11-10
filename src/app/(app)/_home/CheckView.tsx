@@ -59,6 +59,8 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
   /** 생활비로 살 때 고른 항목 (livingItemKey) */
   const [itemKey, setItemKey] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  /** 이벤트통장으로 살 때 고른 여행 (PLAN 4-11: 여행 남은 예산으로 판단) */
+  const [tripId, setTripId] = useState<string | null>(null);
 
   const hasEventAccount = ledger.accountByRole('event') !== null;
   const source: Source = pickedSource === 'event' && !hasEventAccount ? 'living' : pickedSource;
@@ -74,19 +76,32 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
         : undefined;
   const needItem = source === 'living' && !livingMissing && !selectedItem;
   const eventCategories = hasEventAccount ? ledger.activeCategories.filter((c) => sourceForCategory(c) === 'event') : [];
+  const activeTrips = hasEventAccount ? ledger.trips.filter((t) => t.phase !== 'past') : [];
+  const pickedTrip = source === 'event' ? (activeTrips.find((t) => t.trip.id === tripId) ?? null) : null;
+  const pickedTripId = pickedTrip?.trip.id ?? null;
 
   // 입력하는 동안은 이전 결과를 잠깐 보여 주고, 계산은 뒤에서 따라와요
   const deferredAmount = useDeferredValue(amount);
-  const { judge } = ledger;
+  const { judge, trips } = ledger;
   const itemCategory = selectedItem ? selectedItem.categoryId : undefined;
   // 생활비를 정하지 않았거나 항목을 고르지 않았으면 생활비 기준 판단을 하지 않아요 (모든 금액이 '비추천'으로 보이지 않게)
+  const judgedTripId = source === 'event' && tripId !== null && trips.some((t) => t.trip.id === tripId && t.phase !== 'past') ? tripId : null;
   const verdict = useMemo(() => {
     if (deferredAmount === null || deferredAmount <= 0) return null;
-    if (source === 'event') return judge(deferredAmount, 'event');
+    if (source === 'event') return judge(deferredAmount, 'event', undefined, { tripId: judgedTripId });
     if (livingMissing || itemCategory === undefined) return null;
     return judge(deferredAmount, 'living', itemCategory);
-  }, [deferredAmount, source, judge, livingMissing, itemCategory]);
+  }, [deferredAmount, source, judge, livingMissing, itemCategory, judgedTripId]);
   const ready = amount !== null && amount > 0 && verdict !== null;
+  // 큰 금액이면 '12개월 할부면 매달 ○원'과 그 금액이 맞는지 (PLAN 4-4 · 4-10)
+  const { installmentHint } = ledger;
+  const hint = useMemo(() => {
+    if (verdict === null || deferredAmount === null) return null;
+    // 여행을 골랐으면 판단과 같은 여행으로 (같은 돈을 두 번 세지 않게)
+    return source === 'event'
+      ? installmentHint(deferredAmount, 'event', undefined, { tripId: judgedTripId })
+      : installmentHint(deferredAmount, 'living', itemCategory);
+  }, [verdict, deferredAmount, source, installmentHint, itemCategory, judgedTripId]);
 
   // 데스크톱(마우스)에서는 금액 칸에 바로 커서를 둬요. 휴대폰은 키보드가 결과를 가리지 않게 그대로 둬요
   useEffect(() => {
@@ -107,6 +122,19 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
     }
     setCategoryId(cat.id);
     setSource('event');
+  }
+
+  function pickTrip(id: string) {
+    if (source === 'event' && tripId === id) {
+      setTripId(null);
+      return;
+    }
+    setTripId(id);
+    setSource('event');
+    if (categoryId === null) {
+      const travel = eventCategories.find((c) => c.name === '여행');
+      if (travel) setCategoryId(travel.id);
+    }
   }
 
   function addStep(step: number) {
@@ -220,17 +248,41 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
         ) : null}
 
         {picker}
+
+        {activeTrips.length > 0 ? (
+          <section className={styles.section} aria-labelledby="check-trip-title">
+            <h2 className={styles.groupLabel} id="check-trip-title">
+              여행에 쓸 돈인가요? <span className="opt-text">(선택)</span>
+            </h2>
+            <p className={styles.hintText}>여행을 고르면 그 여행의 남은 예산으로 알려 드려요.</p>
+            <ChipGroup label="여행 고르기">
+              {activeTrips.map((t) => (
+                <Chip key={t.trip.id} icon="plane" selected={pickedTripId === t.trip.id} onClick={() => pickTrip(t.trip.id)}>
+                  {t.trip.name}
+                </Chip>
+              ))}
+            </ChipGroup>
+          </section>
+        ) : null}
       </div>
 
       <div className={cx(styles.checkCol, styles.checkSticky)}>
         {/* 처음부터 있는 알림 영역 안에서 결과를 바꿔요 → 첫 결과도 화면 읽기 프로그램이 읽어요 */}
         <div className={styles.cVerdict} aria-live="polite" aria-atomic="true">
           {verdict ? (
-            <VerdictCard verdict={verdict} live={false}>
-              {source === 'event' && verdict.projectionAfter && verdict.projectionAfter.months.length > 0 ? (
-                <ProjectionChart months={verdict.projectionAfter.months} title="사면 이벤트통장 예상 잔액" today={ledger.today} onTint />
+            <>
+              <VerdictCard verdict={verdict} live={false}>
+                {source === 'event' && verdict.projectionAfter && verdict.projectionAfter.months.length > 0 ? (
+                  <ProjectionChart months={verdict.projectionAfter.months} title="사면 이벤트통장 예상 잔액" today={ledger.today} onTint />
+                ) : null}
+              </VerdictCard>
+              {hint ? (
+                <p className={cx(styles.instHint, hint.fits ? styles.instFits : styles.instOver)}>
+                  <Icon name={hint.fits ? 'check-circle' : 'alert-circle'} size={20} className={styles.instIcon} />
+                  <span>{hint.message}</span>
+                </p>
               ) : null}
-            </VerdictCard>
+            </>
           ) : (
             <div className={styles.placeholder}>
               <Icon name="help-circle" size={48} className={styles.placeholderIcon} />
@@ -261,6 +313,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
           amount={amount}
           source={source}
           categoryId={source === 'living' ? (selectedItem?.categoryId ?? null) : categoryId}
+          tripId={pickedTripId}
           onClose={() => setSheetOpen(false)}
           onRecorded={onRecorded}
         />

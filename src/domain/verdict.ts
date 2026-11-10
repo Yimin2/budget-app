@@ -1,9 +1,14 @@
+import { accountBalance } from './balances';
 import { addMonths, daysInMonth, formatMonthKo, monthOf } from './dates';
 import { projectEventAccount, suggestShortageFixes } from './events';
+import { splitTotal } from './installments';
+import { firstAccountByRole } from './internal';
 import { findLivingItem } from './living';
+import { withTopic } from './korean';
 import { floorTo100, formatWon } from './money';
+import { tripStatus } from './trips';
 import type {
-  EventProjection, Id, ISODate, LedgerData, LivingItem, LivingStatus, Signal, Verdict, Won, YearMonth,
+  EventProjection, Id, InstallmentHint, ISODate, LedgerData, LivingItem, LivingStatus, Signal, Verdict, Won, YearMonth,
 } from './types';
 
 const TITLES: Record<Signal, string> = { ok: '괜찮아요', warn: '가능하지만', bad: '비추천' };
@@ -171,11 +176,26 @@ function minEnd(p: EventProjection): Won {
  * when: A 를 넣어도 이후 모든 달이 0 이상이 되는 가장 빠른 달 → '3월에 사면 일정에 문제없어요', 없으면 적립·저수지 안내
  * projectionAfter 채움
  */
-export function judgeEvent(data: LedgerData, today: ISODate, amount: Won): Verdict {
+export function judgeEvent(data: LedgerData, today: ISODate, amount: Won, opts?: { tripId?: Id | null }): Verdict {
   const a = Math.max(0, amount);
   const thisMonth = monthOf(today);
   const baseYear = Number(thisMonth.slice(0, 4));
-  const after = projectEventAccount(data, today, { extra: { month: thisMonth, amount: a } });
+  // 여행에 쓸 돈이면(PLAN 4-11) 그 여행에 묶은 지출로 넣어 본다: 여행의 남은 예산 안이면 이미 예측에 있던 돈이라 앞당겨질 뿐이다
+  const trip = opts?.tripId ? (data.trips.find((t) => t.id === opts.tripId && !t.deleted) ?? null) : null;
+  const project = (month: YearMonth): EventProjection => {
+    if (!trip) return projectEventAccount(data, today, { extra: { month, amount: a } });
+    const accountId = firstAccountByRole(data, 'event')?.id ?? null;
+    if (!accountId) return projectEventAccount(data, today);
+    const date = month === thisMonth ? today : `${month}-01`;
+    const hypo = {
+      id: '__check__', date, amount: a, accountId, categoryId: null, memo: '', eventId: null, fixedExpenseId: null,
+      author: '', createdAt: '', updatedAt: '', deleted: false, tripId: trip.id,
+    };
+    const p = projectEventAccount({ ...data, expenses: [...data.expenses, hypo] }, today);
+    // 잔액은 지금 잔액 (가정 지출은 이번 달 계산에만)
+    return { ...p, currentBalance: accountBalance(data, accountId, today) };
+  };
+  const after = project(thisMonth);
 
   if (after.accountId === null || after.months.length === 0) {
     return {
@@ -195,6 +215,14 @@ export function judgeEvent(data: LedgerData, today: ISODate, amount: Won): Verdi
   ];
   const lowest = minEnd(after);
   if (after.months.length > 1) details.push({ label: '가장 적은 달 예상 잔액', value: formatWon(lowest) });
+
+  const tripLeft = trip ? tripStatus(data, trip, today).remaining - a : null;
+  if (trip && tripLeft !== null) {
+    details.push({
+      label: `${trip.name} 남은 예산`,
+      value: tripLeft >= 0 ? formatWon(tripLeft) : `${formatWon(-tripLeft)} 넘어요`,
+    });
+  }
 
   let signal: Signal;
   let message: string;
@@ -225,14 +253,19 @@ export function judgeEvent(data: LedgerData, today: ISODate, amount: Won): Verdi
     }
   } else {
     signal = 'ok';
-    message = '예정된 일정에도 문제없어요';
+    message =
+      trip && tripLeft !== null
+        ? tripLeft >= 0
+          ? `${trip.name} 예산 안이에요. 예정된 일정에도 문제없어요`
+          : `${trip.name} 예산은 ${formatWon(-tripLeft)} 넘지만 일정에는 문제없어요`
+        : '예정된 일정에도 문제없어요';
   }
 
   let when: string | null = null;
   if (signal !== 'ok') {
     for (let k = 1; k < after.months.length; k++) {
       const month = addMonths(thisMonth, k);
-      const p = projectEventAccount(data, today, { extra: { month, amount: a } });
+      const p = project(month);
       if (p.months.slice(k).every((m) => m.endBalance >= 0)) {
         when = `${formatMonthKo(month, baseYear)}에 사면 일정에 문제없어요`;
         break;
@@ -242,4 +275,74 @@ export function judgeEvent(data: LedgerData, today: ISODate, amount: Won): Verdi
   }
 
   return { signal, title: TITLES[signal], message, details, when, projectionAfter: after };
+}
+
+/** "사도 돼?"에서 할부 안내를 보여 줄 금액 (이 금액 이상) */
+export const INSTALLMENT_HINT_MIN: Won = 300_000;
+/** 할부 안내의 기본 개월 */
+export const INSTALLMENT_HINT_MONTHS = 12;
+
+/**
+ * PLAN 4-4 · 4-10 큰 금액의 할부 안내: "12개월 할부면 매달 ○원" + 그 금액이 맞는지.
+ * 매달 금액 = 원 단위 내림(A ÷ 개월), 나머지는 첫 회차에 (splitTotal, 카드 할부와 같게). 첫 회차는 다음 달.
+ * - 생활비: 고른 항목의 한 달 예산(이월 뺀 base)과 비교. 매달 금액 ≤ base 면 맞음
+ * - 이벤트통장: 다음 달부터 매달 금액을 예측에 넣어(12개월 안) 모자라는 달이 없으면 맞음.
+ *   여행을 골랐으면(judgeEvent 와 같게) 회차를 그 여행에 묶은 지출로 넣는다: 여행 남은 예산 안이면 이미 예측에 있던 돈이라 두 번 세지 않는다
+ * A < INSTALLMENT_HINT_MIN 이거나 개월이 2 미만이면 null
+ */
+export function judgeInstallment(
+  input:
+    | { source: 'living'; living: LivingStatus; categoryId: Id | null }
+    | { source: 'event'; data: LedgerData; today: ISODate; tripId?: Id | null },
+  amount: Won,
+  months: number = INSTALLMENT_HINT_MONTHS,
+): InstallmentHint | null {
+  const n = Math.floor(months);
+  if (!(amount >= INSTALLMENT_HINT_MIN) || n < 2) return null;
+  const amounts = splitTotal(amount, n);
+  const monthly = amounts[n - 1] ?? 0;
+  const head = `${n}개월 할부면 매달 ${formatWon(monthly)}`;
+  if (input.source === 'living') {
+    const firstMonth = addMonths(input.living.month, 1);
+    const item = findLivingItem(input.living, input.categoryId);
+    const base = item?.base ?? 0;
+    const name = item?.name ?? '이 항목';
+    if (base <= 0) return { months: n, monthly, firstMonth, fits: false, message: `${head}이에요. ${withTopic(name)} 한 달 예산이 없어요` };
+    const fits = monthly <= base;
+    return {
+      months: n,
+      monthly,
+      firstMonth,
+      fits,
+      message: fits
+        ? `${head}이에요. 한 달 ${name} 예산 ${formatWon(base)} 안이에요`
+        : `${head}이에요. 한 달 ${name} 예산보다 ${formatWon(monthly - base)} 많아요`,
+    };
+  }
+  const thisMonth = monthOf(input.today);
+  const firstMonth = addMonths(thisMonth, 1);
+  const extras = amounts.map((a, i) => ({ month: addMonths(firstMonth, i), amount: a }));
+  const trip = input.tripId ? (input.data.trips.find((t) => t.id === input.tripId && !t.deleted) ?? null) : null;
+  const eventId = firstAccountByRole(input.data, 'event')?.id ?? null;
+  let after: EventProjection;
+  if (trip && eventId) {
+    const hypo = extras.map((x, i) => ({
+      id: `__check_installment_${i}__`, date: `${x.month}-01`, amount: x.amount, accountId: eventId, categoryId: null, memo: '',
+      eventId: null, fixedExpenseId: null, author: '', createdAt: '', updatedAt: '', deleted: false, tripId: trip.id,
+    }));
+    after = projectEventAccount({ ...input.data, expenses: [...input.data.expenses, ...hypo] }, input.today);
+  } else {
+    after = projectEventAccount(input.data, input.today, { extras });
+  }
+  if (after.accountId === null) return null;
+  const s = after.shortages[0];
+  return {
+    months: n,
+    monthly,
+    firstMonth,
+    fits: !s,
+    message: s
+      ? `${head}이에요. 그래도 ${formatMonthKo(s.month, Number(thisMonth.slice(0, 4)))}에 이벤트통장이 ${formatWon(s.amount)} 모자라요`
+      : `${head}이에요. 이벤트통장 일정에도 문제없어요`,
+  };
 }

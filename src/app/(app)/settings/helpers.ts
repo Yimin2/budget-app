@@ -113,9 +113,9 @@ export function ownerLabel(account: Pick<Account, 'name' | 'ownerName' | 'ownerE
   return account.name.includes(owner) ? null : owner;
 }
 
-/** 지금 보여 줄 고정 지출 (지우지 않았고 이번 달 이후에도 살아 있는 것). 생활비 → 일반 → 용돈 순 */
+/** 지금 보여 줄 고정 지출 (지우지 않았고 이번 달 이후에도 살아 있는 것). 생활비 → 일반 → 용돈 → 할부 순 */
 export function visibleFixed(list: FixedExpense[], month: YearMonth): FixedExpense[] {
-  const order = { living: 0, bill: 1, allowance: 2 } as const;
+  const order = { living: 0, bill: 1, allowance: 2, installment: 3 } as const;
   return list
     .filter((f) => !f.deleted && (f.endMonth === null || f.endMonth === '' || compareMonth(f.endMonth, month) >= 0))
     .sort((a, b) => order[a.kind] - order[b.kind] || (a.dayOfMonth ?? 0) - (b.dayOfMonth ?? 0));

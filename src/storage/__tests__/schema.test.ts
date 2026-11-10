@@ -7,7 +7,7 @@ import { sampleLedger } from './fixture';
 
 describe('schema', () => {
   it('탭 이름은 PLAN 5장과 같다', () => {
-    expect(ALL_TABS).toEqual(['설정', '통장', '월배분', '이체', '고정지출', '일정', '지출', '월말', '카테고리', '즐겨찾기', '멤버']);
+    expect(ALL_TABS).toEqual(['설정', '통장', '월배분', '이체', '고정지출', '일정', '지출', '월말', '카테고리', '즐겨찾기', '멤버', '여행']);
     expect(canonicalHeaders('transfers')).toEqual([
       'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨',
     ]);
@@ -94,6 +94,41 @@ describe('schema', () => {
     expect(owner.map((r) => [r.ownerName, r.ownerEmail])).toEqual([['민지', null], [null, 'x@y.z']]);
   });
 
+  it('고정지출 메모 열이 없거나 비면 메모 없음으로 읽고, 있으면 그대로 읽고 쓴다', () => {
+    const old = decodeTable('fixedExpenses', [['id', '이름'], ['f1', '월세']]);
+    expect(old[0]!.memo).toBeUndefined();
+    const rows = decodeTable('fixedExpenses', [['id', '메모'], ['f1', ''], ['f2', ' 관리비 포함 ']]);
+    expect(rows.map((r) => r.memo)).toEqual([undefined, '관리비 포함']);
+    const headers = canonicalHeaders('fixedExpenses');
+    expect(headers[headers.length - 1]).toBe('메모');
+    const enc = encodeRow('fixedExpenses', { ...rows[1]!, name: 'x' });
+    expect(enc[enc.length - 1]).toBe('관리비 포함');
+    expect(encodeRow('fixedExpenses', rows[0]!).at(-1)).toBe('');
+  });
+
+  it('할부 열(할부회차 · 할부개월)이 없거나 비면 null 로 읽고, 종류 할부를 읽는다', () => {
+    const old = decodeTable('fixedExpenses', [['id', '이름', '종류'], ['a', '월세', '일반']]);
+    expect(old[0]).toMatchObject({ kind: 'bill', installmentNo: null, installmentCount: null });
+    const rows = decodeTable('fixedExpenses', [
+      ['id', '종류', '할부회차', '할부개월'],
+      ['t', '할부', '', ''],
+      ['t@2027-01', 'installment', 17, '24'],
+    ]);
+    expect(rows.map((r) => [r.kind, r.installmentNo, r.installmentCount])).toEqual([
+      ['installment', null, null],
+      ['installment', 17, 24],
+    ]);
+  });
+
+  it('예전 앱이 종류를 일반으로 덮어쓴 할부 행(할부개월이 남음)은 할부로 읽는다', () => {
+    const rows = decodeTable('fixedExpenses', [
+      ['id', '종류', '할부회차', '할부개월'],
+      ['tv', '일반', 1, 24],
+      ['rent', '일반', '', ''],
+    ]);
+    expect(rows.map((r) => r.kind)).toEqual(['installment', 'bill']);
+  });
+
   it('청구 열(낸사람 · 돌려받을통장 · 정산일)이 없거나 비면 보통 지출로 읽는다', () => {
     const old = decodeTable('expenses', [['id', '날짜', '금액', '통장'], ['x', '2026-11-01', 1000, 'a']]);
     expect(old[0]).toMatchObject({ paidBy: null, claimAccountId: null, claimDue: null });
@@ -147,6 +182,30 @@ describe('schema', () => {
     expect(dec.settings).toEqual({ ...d.settings, kind: 'personal', sharedLedgerId: 'sheet-1' });
     expect(dec.extras).toEqual([['생활비통장ID', 'a-fix']]);
     expect(decodeSettings(encodeSettings(d.settings)).settings).toEqual(d.settings);
+  });
+
+  it('여행 열(여행id · 여행항목)이 없거나 비면 여행 아님으로 읽고, 여행 탭 항목예산은 한글 JSON', () => {
+    const old = decodeTable('expenses', [['id', '날짜', '금액', '통장'], ['x', '2026-11-01', 1000, 'a']]);
+    expect(old[0]!.tripId).toBeNull();
+    expect(old[0]!.tripItem).toBeNull();
+    const rows = decodeTable('expenses', [
+      ['id', '날짜', '금액', '통장', '여행id', '여행항목'],
+      ['x', '2026-11-01', 1000, 'a', 'tr1', '숙박'],
+      ['y', '2026-11-01', 1000, 'a', 'tr1', 'flight'],
+      ['z', '2026-11-01', 1000, 'a', '', '모름'],
+    ]);
+    expect(rows.map((r) => [r.tripId, r.tripItem])).toEqual([['tr1', 'stay'], ['tr1', 'flight'], [null, null]]);
+    const trip = sampleLedger().trips[0]!;
+    const encoded = encodeRow('trips', trip);
+    expect(encoded[canonicalHeaders('trips').indexOf('항목예산')]).toBe('{"항공":300000,"숙박":250000}');
+    expect(decodeTable('trips', encodeTable('trips', [trip]))[0]).toEqual(trip);
+    const loose = decodeTable('trips', [
+      ['id', '이름', '시작일', '종료일', '예산', '항목예산'],
+      ['t', '부산', '2026-05-01', '2026-05-02', '', '{"food": 5, "모름": 3, "투어": "1,000"}'],
+      ['u', '강릉', '2026-05-01', '', 100, '깨진 값'],
+    ]);
+    expect(loose[0]).toMatchObject({ budget: 0, items: { food: 5, tour: 1000 }, deleted: false });
+    expect(loose[1]).toMatchObject({ endDate: '', items: {} });
   });
 
   it('TAB_NAMES 는 TABLE_NAMES 전부를 덮는다', () => {

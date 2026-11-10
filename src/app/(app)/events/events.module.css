@@ -491,6 +491,10 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.detailEvents .n a {
+  color: var(--primary-text);
+  font-weight: 500;
+}
 .detailEvents .a {
   flex: none;
   font-variant-numeric: tabular-nums;

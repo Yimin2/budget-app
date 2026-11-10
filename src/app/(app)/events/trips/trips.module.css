@@ -1,0 +1,410 @@
+/* 여행 '/events/trips' · 이벤트 화면의 여행 카드
+   규칙은 src/ui/components.css 와 같아요: 의미 토큰만, 글자 12·14·15·16·18·22·28·36, 굵기 400·500·700·800.
+   상태색은 늘 아이콘 + 글자와 함께 써요. 모바일 한 줄 · 1280px 이상 여행 화면은 두 칸 */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .page {
+    gap: var(--space-6);
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.cardHead :global(.btn) {
+  flex: none;
+  margin-right: calc(var(--space-3) * -1);
+}
+.muted {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text-muted);
+}
+.moreLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--primary-text);
+  text-decoration: none;
+}
+.moreLink:hover {
+  text-decoration: underline;
+}
+
+/* ───────── 여행 한 줄 ───────── */
+.tripList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tripRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  margin: 0 calc(var(--space-3) * -1);
+  border-radius: var(--radius-md);
+  color: inherit;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.tripRow:hover {
+  background: var(--surface-subtle);
+}
+.tripRow:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.tripIcon,
+.itemIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--primary-subtle);
+  color: var(--primary-subtle-text);
+}
+.itemIcon {
+  width: 36px;
+  height: 36px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
+.tripMain,
+.itemMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.tripTop,
+.itemTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.tripName,
+.itemName {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tripPhase {
+  flex: none;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--primary-text);
+}
+.tripPeriod {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.tripBar {
+  margin-top: var(--space-1);
+}
+.tripNums {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tripNums > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.chev {
+  flex: none;
+  color: var(--text-muted);
+}
+.over {
+  color: var(--danger-text);
+  font-weight: 700;
+}
+.ok {
+  color: var(--success-text);
+}
+
+/* ───────── 여행 하나 ───────── */
+.detailGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+@media (min-width: 768px) {
+  .detailGrid {
+    gap: var(--space-6);
+  }
+}
+@media (min-width: 1280px) {
+  .detailGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .payments {
+    grid-column: 1 / -1;
+  }
+}
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.stat dt {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.stat dd {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 768px) {
+  .stat {
+    padding: var(--space-3);
+  }
+  .stat dd {
+    font-size: 22px;
+    line-height: 30px;
+  }
+}
+.overStat dd {
+  color: var(--danger-text);
+}
+.statusLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.note > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.itemLeft {
+  flex: none;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.itemNums {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.payList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.payList > li + li {
+  border-top: 1px solid var(--border);
+}
+.payRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.payRow:hover .payTitle {
+  text-decoration: underline;
+}
+.payRow:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.payDate {
+  flex: none;
+  width: 44px;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.payMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.payTitle {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.payMeta {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: 2px;
+}
+.payAmount {
+  flex: none;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────── 여행 창 ───────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.formGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+}
+@media (min-width: 768px) {
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+}
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.fieldset > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.itemGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+@media (min-width: 768px) {
+  .itemGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.hint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.dangerRow {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.dangerBtn:global(.btn.ghost) {
+  color: var(--danger-text);
+  margin-right: calc(var(--space-3) * -1);
+}
+.dangerBtn:global(.btn.ghost:hover) {
+  background: var(--danger-subtle);
+}

@@ -1,6 +1,7 @@
 import { claimTransferId, computeClaimDue } from './claims';
 import { addDays, addMonths, dateInMonth, monthOf } from './dates';
 import { newId } from './ids';
+import { buildInstallmentRows } from './installments';
 import { pendingAutoRecords } from './recurring';
 import type {
   Account, AccountRole, AllocationRule, Category, Expense, Favorite, FixedExpense, LedgerData, LedgerKind,
@@ -87,6 +88,7 @@ export function createDefaultLedger(
     categories: buildCategories(kind, () => newId()),
     favorites: [],
     members: [{ email: authorEmail, displayName }],
+    trips: [],
   };
 }
 
@@ -137,8 +139,20 @@ export const DEMO_LIVING_ITEMS: [string, number, 'daily' | 'monthly'][] = [
  * - 이벤트 일정: M+2 명절 400,000 · M+3 제주 여행 900,000 · M+5 결혼식 4건 800,000 + 어버이날 600,000 → M+5 에 300,000 부족
  * - 청구(opts.claims, 체험 모드에서 켬. 다른 숫자 테스트가 기대는 기본 예시는 그대로 두려고 따로 켜요): 민지 제주 항공권 300,000 (이벤트통장 · 제주 여행 일정 연결, 잔액이 넉넉해 오늘 돌려줌) ·
  *   준호 마트 장보기 24,000 (식비, 다음 월급날) · 1일 준호 세제·휴지 8,000 (생활, 돌려줌). 일정 합은 그대로라 부족 금액은 같다
+ * - 할부(opts.installments, 체험 모드에서 켬): TV 할부 2,400,000원 24개월 (매달 100,000원, 5일, 고정지출통장, 큰 구매).
+ *   1회차가 M-15 라 이번 달이 16회차. 지난 회차는 통장 시작 전이라 기록하지 않는다 (5일이 지나면 16회차가 자동 기록)
+ * - 여행(opts.trips, 체험 모드에서 켬): 제주 여행 일정 대신 여행 '제주 여행' (M+3 20~23일, 예산 900,000 = 항공 300,000 · 숙박 300,000 ·
+ *   식비 200,000 · 투어 100,000). 이미 낸 돈: 숙소 예약금 150,000 (이벤트통장) + 항공권 300,000 (청구를 켜면 민지 청구, 아니면 이벤트통장).
+ *   남은 예산 450,000 은 M+3 에 예측으로 들어가 나가는 돈 합이 일정일 때와 같다 → 부족 금액도 같다
  */
-export function createDemoLedger(today: string, now: string, opts: { claims?: boolean } = {}): LedgerData {
+/** 체험 모드 여행 id (opts.trips) */
+export const DEMO_TRIP_ID = 'demo-trip-jeju';
+
+export function createDemoLedger(
+  today: string,
+  now: string,
+  opts: { claims?: boolean; installments?: boolean; trips?: boolean } = {},
+): LedgerData {
   const M = monthOf(today);
   const first = `${M}-01`;
   const minji = DEMO_MEMBERS[0].email;
@@ -250,6 +264,25 @@ export function createDemoLedger(today: string, now: string, opts: { claims?: bo
     ),
   ];
 
+  if (opts.installments) {
+    fixedExpenses.push(
+      ...buildInstallmentRows(
+        {
+          name: 'TV 할부',
+          amount: 2_400_000,
+          amountKind: 'total',
+          months: 24,
+          firstMonth: addMonths(M, -15),
+          dayOfMonth: 5,
+          accountId: fixed.id,
+          categoryId: cat('big'),
+        },
+        'demo-installment-tv',
+        first,
+      ),
+    );
+  }
+
   const expenses: Expense[] = [];
   const todayDay = Number(today.slice(8, 10));
   for (let d = 1; d <= todayDay; d++) {
@@ -299,7 +332,8 @@ export function createDemoLedger(today: string, now: string, opts: { claims?: bo
   });
   const events: PlannedEvent[] = [
     ev('holiday', 2, 14, '명절 부모님 용돈', 400_000, 'holiday', minji),
-    ev('jeju', 3, 20, '제주 여행', 900_000, 'travel', junho),
+    // 여행을 켜면 제주 여행은 일정 대신 여행(예산 · 항목 예산 · 묶은 지출)으로 둔다
+    ...(opts.trips ? [] : [ev('jeju', 3, 20, '제주 여행', 900_000, 'travel', junho)]),
     ev('wedding1', 5, 2, '지수 결혼식', 300_000, 'occasion', minji),
     ev('wedding2', 5, 9, '민수 결혼식', 200_000, 'occasion', junho),
     ev('wedding3', 5, 16, '회사 동기 결혼식', 200_000, 'occasion', junho),
@@ -326,6 +360,23 @@ export function createDemoLedger(today: string, now: string, opts: { claims?: bo
     categories: buildCategories('shared', cat),
     favorites,
     members: DEMO_MEMBERS.map((m) => ({ ...m })),
+    trips: opts.trips
+      ? [
+          {
+            id: DEMO_TRIP_ID,
+            name: '제주 여행',
+            startDate: dateInMonth(addMonths(M, 3), 20),
+            endDate: dateInMonth(addMonths(M, 3), 23),
+            budget: 900_000,
+            items: { flight: 300_000, stay: 300_000, food: 200_000, tour: 100_000 },
+            memo: '',
+            author: junho,
+            createdAt: now,
+            updatedAt: now,
+            deleted: false,
+          },
+        ]
+      : [],
   };
 
   // 오늘까지 도래한 월배분·고정 지출 자동 기록을 미리 만들어 둔다 (앱의 자동 기록과 같은 id)
@@ -333,9 +384,31 @@ export function createDemoLedger(today: string, now: string, opts: { claims?: bo
   data.transfers.push(...auto.transfers);
   data.expenses.push(...auto.expenses);
 
+  const atFirst = (date: string) => (date < first ? first : date);
+  if (opts.trips) {
+    // 여행에 이미 낸 돈: 숙소 예약금 (이벤트통장). 항공권은 청구를 켜면 민지가 개인 돈으로 낸 청구, 아니면 이벤트통장에서 바로
+    const tripExpense = (key: string, date: string, amount: number, memo: string, tripItem: Expense['tripItem'], author: string): Expense => ({
+      id: `demo-trip-${key}`,
+      date,
+      amount,
+      accountId: event.id,
+      categoryId: cat('travel'),
+      memo,
+      eventId: null,
+      fixedExpenseId: null,
+      author,
+      createdAt: `${date}T12:00:00.000Z`,
+      updatedAt: `${date}T12:00:00.000Z`,
+      deleted: false,
+      tripId: DEMO_TRIP_ID,
+      tripItem,
+    });
+    data.expenses.push(tripExpense('stay', atFirst(addDays(today, -3)), 150_000, '제주 숙소 예약금', 'stay', minji));
+    if (!opts.claims) data.expenses.push(tripExpense('flight', atFirst(addDays(today, -2)), 300_000, '제주 항공권', 'flight', minji));
+  }
+
   if (!opts.claims) return data;
   // 청구: 개인 돈으로 내고 돌려받을 지출 (정산일은 앱과 같은 규칙으로)
-  const atLeastFirst = (date: string) => (date < first ? first : date);
   const claim = (
     key: string,
     date: string,
@@ -364,10 +437,16 @@ export function createDemoLedger(today: string, now: string, opts: { claims?: bo
     claimDue: computeClaimDue(data, { accountId: account.id, amount }, today),
   });
   data.expenses.push(
-    claim('jeju', atLeastFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], incomeMinji, 'demo-event-jeju'),
+    opts.trips
+      ? {
+          ...claim('jeju', atFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], incomeMinji),
+          tripId: DEMO_TRIP_ID,
+          tripItem: 'flight',
+        }
+      : claim('jeju', atFirst(addDays(today, -2)), 300_000, event, 'travel', '제주 항공권', DEMO_MEMBERS[0], incomeMinji, 'demo-event-jeju'),
   );
   // 1일에는 어제가 지난달이라 오늘 날짜가 돼요. 오늘 써도 되는 돈이 0원 아래로 가지 않게 한 달 한도 항목(쇼핑)으로
-  const martDate = atLeastFirst(addDays(today, -1));
+  const martDate = atFirst(addDays(today, -1));
   data.expenses.push(
     claim('mart', martDate, 24_000, fixed, martDate === today ? 'shopping' : 'food', '마트 장보기', DEMO_MEMBERS[1], incomeJunho),
   );

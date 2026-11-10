@@ -176,4 +176,66 @@ describe('설정 화면', () => {
     expect(after.living!.items.find((i) => i.unbudgeted)?.name).toBe('기타(예산 없음)');
     expect(within(card('생활비 예산')).queryByText('생활비를 항목별로 나눠 보세요')).toBeNull();
   });
+
+  it('할부: 회차 · 남은 금액을 보여 주고, 미리 갚으면 다음 회차부터 줄어요', async () => {
+    const h = renderApp(<SettingsPage />);
+    await startDemo(h);
+    const inst = card('할부');
+    expect(within(inst).getByText('TV 할부')).toBeTruthy();
+    expect(within(inst).getByText('16/24회차 · 남은 8회 · 남은 금액 800,000원')).toBeTruthy();
+    expect(within(card('고정 지출')).queryByText('TV 할부')).toBeNull();
+
+    fireEvent.click(within(inst).getByRole('button', { name: /TV 할부/ }));
+    const dialog = screen.getByRole('dialog', { name: 'TV 할부' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: '미리 갚기' }));
+    fireEvent.change(within(dialog).getByLabelText(/미리 갚을 금액/), { target: { value: '400000' } });
+    expect(within(dialog).getByText(/갚고 나면 남은 4회/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '미리 갚기' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(within(card('할부')).getByText('16/20회차 · 남은 4회 · 남은 금액 400,000원')).toBeTruthy();
+    expect(current(h).ledger.data!.expenses.some((e) => e.memo === 'TV 할부 미리 갚기' && e.amount === 400_000)).toBe(true);
+  });
+
+  it('할부 고치기: 언제부터를 바꾸면 남은 회차도 그 달부터 다시 세서 전체 회차가 늘지 않아요', async () => {
+    const h = renderApp(<SettingsPage />);
+    await startDemo(h);
+    fireEvent.click(within(card('할부')).getByRole('button', { name: /TV 할부/ }));
+    const dialog = screen.getByRole('dialog', { name: 'TV 할부' });
+    fireEvent.change(within(dialog).getByLabelText(/언제부터/), { target: { value: '2027-02' } });
+    expect((within(dialog).getByLabelText(/남은 회차/) as HTMLInputElement).value).toBe('6');
+    fireEvent.change(within(dialog).getByLabelText(/^이름/), { target: { value: '거실 TV' } });
+    expect(within(dialog).getByText(/전체 24회/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(current(h).ledger.installments.find((p) => p.id === 'demo-installment-tv')).toMatchObject({ count: 24, name: '거실 TV' });
+  });
+
+  it('끝난 할부도 열어서 지울 수 있어요', async () => {
+    const h = renderApp(<SettingsPage />);
+    await startDemo(h);
+    await act(async () => {
+      await current(h).ledger.endInstallment('demo-installment-tv');
+    });
+    expect(within(card('할부')).getByText('16회 다 냈어요')).toBeTruthy();
+    fireEvent.click(within(card('할부')).getByRole('button', { name: /TV 할부/ }));
+    const view = screen.getByRole('dialog', { name: 'TV 할부' });
+    fireEvent.click(within(view).getByRole('button', { name: '지우기' }));
+    const confirm = await screen.findByRole('dialog', { name: '이 할부를 지울까요?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: '지우기' }));
+    await waitFor(() => expect(current(h).ledger.installments.some((p) => p.id === 'demo-installment-tv')).toBe(false));
+  });
+
+  it('할부 추가: 총액과 개월로 매달 금액을 보여 줘요', async () => {
+    const h = renderApp(<SettingsPage />);
+    await startDemo(h);
+    fireEvent.click(screen.getByRole('button', { name: '할부 추가' }));
+    const dialog = screen.getByRole('dialog', { name: '할부 추가' });
+    fireEvent.change(within(dialog).getByLabelText(/이름/), { target: { value: '노트북' } });
+    fireEvent.change(within(dialog).getByLabelText(/^총액/), { target: { value: '1200000' } });
+    expect(within(dialog).getByText(/매달 100,000원 · 총 1,200,000원/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const plan = current(h).ledger.installments.find((p) => p.name === '노트북')!;
+    expect(plan).toMatchObject({ count: 12, monthly: 100_000, remainingAmount: 1_200_000 });
+  });
 });

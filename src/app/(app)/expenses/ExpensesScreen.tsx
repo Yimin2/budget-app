@@ -2,10 +2,10 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
-import { addMonths, compareMonth, formatDateKo, formatWon, monthOf } from '@/domain';
+import { addMonths, claimTransferId, compareMonth, formatDateKo, formatWon, isAutoFixedRecord, isClaimExpense, monthOf } from '@/domain';
 import type { Account, Category, Expense, Id, YearMonth } from '@/domain/types';
 import {
-  Avatar, Badge, Button, Card, Chip, ChipGroup, EmptyState, Icon, Money, PageHeader, Skeleton, cx,
+  Avatar, Badge, Button, Card, Chip, ChipGroup, EmptyState, Icon, Money, PageHeader, Skeleton, cx, presenceClass, useChanged, usePresence,
 } from '@/ui';
 import { useLedger } from '@/state';
 import { RequireLedger, isLedgerReady, type ReadyLedger } from '../_components/RequireLedger';
@@ -98,6 +98,11 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
 
   const accountsById = useMemo(() => new Map(data.accounts.map((a) => [a.id, a] as const)), [data.accounts]);
   const categoriesById = useMemo(() => new Map(data.categories.map((c) => [c.id, c] as const)), [data.categories]);
+  // 돌려준 청구 (이체 claim:<지출id>)
+  const settledClaimIds = useMemo(
+    () => new Set(data.transfers.filter((t) => !t.deleted && t.status === 'done').map((t) => t.id)),
+    [data.transfers],
+  );
   const memberIndex = useMemo(
     () => new Map(data.members.map((m, i) => [m.email.toLowerCase(), i] as const)),
     [data.members],
@@ -315,20 +320,19 @@ function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog 
                       {formatWon(g.total)}
                     </span>
                   </div>
-                  <ul className={styles.rows}>
-                    {g.items.map((e) => (
-                      <li key={e.id}>
+                  <PresenceRows className={styles.rows} items={g.items}>
+                    {(e) => (
                         <ExpenseRow
                           expense={e}
                           category={e.categoryId ? categoriesById.get(e.categoryId) : undefined}
                           account={accountsById.get(e.accountId)}
                           authorName={ledger.displayName(e.author)}
                           authorAlt={(memberIndex.get(e.author.toLowerCase()) ?? 0) % 2 === 1}
+                          claim={isClaimExpense(e) ? (settledClaimIds.has(claimTransferId(e.id)) ? 'settled' : 'pending') : null}
                           onOpen={() => setDialog({ mode: 'edit', expense: e })}
                         />
-                      </li>
-                    ))}
-                  </ul>
+                    )}
+                  </PresenceRows>
                 </section>
               );
             })}
@@ -395,10 +399,28 @@ interface RowProps {
   account: Account | undefined;
   authorName: string;
   authorAlt: boolean;
+  /** 개인 돈으로 낸 지출: 아직 돌려주지 않음(pending) · 돌려줌(settled) */
+  claim?: 'pending' | 'settled' | null;
   onOpen: () => void;
 }
 
-function ExpenseRow({ expense, category, account, authorName, authorAlt, onOpen }: RowProps) {
+/** 하루 목록: 새 지출은 옆에서 들어오고, 지운 지출은 접히며 빠져요 */
+function PresenceRows({ items, className, children }: { items: Expense[]; className?: string; children: (e: Expense) => ReactNode }) {
+  const presence = usePresence(items, (e) => e.id);
+  return (
+    <ul className={className}>
+      {presence.map(({ item, key, state }) => (
+        <li key={key} className={presenceClass(state)} inert={state === 'leave' || undefined}>
+          {children(item)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ExpenseRow({ expense, category, account, authorName, authorAlt, claim, onOpen }: RowProps) {
+  // 돌려받기 전 → 돌려받음으로 바뀌면 배지가 제자리에 놓이듯 나타나요
+  const claimChanged = useChanged(claim);
   const memo = expense.memo.trim();
   const catName = category?.name ?? null;
   const accName = account ? account.name : '지운 통장';
@@ -406,7 +428,7 @@ function ExpenseRow({ expense, category, account, authorName, authorAlt, onOpen 
   const sub = [memo ? catName : null, accName].filter(Boolean).join(' · ');
   const badges: ReactNode = (
     <>
-      {expense.fixedExpenseId ? (
+      {isAutoFixedRecord(expense) ? (
         <Badge size="sm" dot={false}>
           자동
         </Badge>
@@ -414,6 +436,11 @@ function ExpenseRow({ expense, category, account, authorName, authorAlt, onOpen 
       {expense.eventId ? (
         <Badge size="sm" tone="info" dot={false}>
           일정
+        </Badge>
+      ) : null}
+      {claim ? (
+        <Badge size="sm" tone={claim === 'pending' ? 'warning' : undefined} dot={false} className={claimChanged ? 'mo-settle' : undefined} key={claim}>
+          {claim === 'pending' ? `${expense.paidBy?.trim() ?? ''} 돌려받기 전` : `${expense.paidBy?.trim() ?? ''} 돌려받음`}
         </Badge>
       ) : null}
     </>

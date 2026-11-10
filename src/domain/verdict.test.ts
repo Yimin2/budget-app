@@ -1,5 +1,5 @@
 import { account, emptyLedger, event, rule } from './_fixtures';
-import { judgeEvent, judgeLiving, monthlyReserve } from './verdict';
+import { judgeEvent, judgeInstallment, judgeLiving, monthlyReserve } from './verdict';
 import type { LedgerData, LivingItem, LivingStatus } from './types';
 
 /** 예전 방식 '생활비' 한 줄(daily) 하나만 있는 상태 */
@@ -207,5 +207,16 @@ describe('judgeEvent', () => {
     const v = judgeEvent(emptyLedger(), '2026-11-10', 1_000);
     expect(v.signal).toBe('bad');
     expect(v.projectionAfter!.accountId).toBeNull();
+  });
+});
+
+describe('할부 안내 문구', () => {
+  it('항목 이름에 맞춰 은/는 을 붙인다', () => {
+    const food = withItems([{ ...living().items[0]!, categoryId: 'food', name: '식비', base: 0 }]);
+    expect(judgeInstallment({ source: 'living', living: food, categoryId: 'food' }, 600_000)!.message).toBe(
+      '12개월 할부면 매달 50,000원이에요. 식비는 한 달 예산이 없어요',
+    );
+    const shop = withItems([{ ...living().items[0]!, categoryId: 'shop', name: '쇼핑', base: 0 }]);
+    expect(judgeInstallment({ source: 'living', living: shop, categoryId: 'shop' }, 600_000)!.message).toMatch(/쇼핑은 한 달/);
   });
 });

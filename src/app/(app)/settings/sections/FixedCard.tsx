@@ -12,8 +12,8 @@ import { DAY_OPTIONS, isEmail } from '@/app/start/new/wizard';
 import { accountName, periodLabel, startMonthForNew, startMonthHint, visibleFixed } from '../helpers';
 import { useRunner } from '../useRunner';
 
-/** 생활비 항목 예산은 생활비 예산 카드(LivingCard)에서 다뤄요 */
-type BillKind = Exclude<FixedKind, 'living'>;
+/** 생활비 항목 예산은 생활비 예산 카드(LivingCard), 할부는 할부 카드(InstallmentCard)에서 다뤄요 */
+type BillKind = Exclude<FixedKind, 'living' | 'installment'>;
 
 const KIND_OPTIONS: { value: BillKind; label: string }[] = [
   { value: 'bill', label: '고정비' },
@@ -48,7 +48,7 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
 
   const month = monthOf(ledger.today);
   const accounts = ledger.activeAccounts;
-  const items = visibleFixed(ledger.data.fixedExpenses, month).filter((f) => f.kind !== 'living');
+  const items = visibleFixed(ledger.data.fixedExpenses, month).filter((f) => f.kind !== 'living' && f.kind !== 'installment');
   const isShared = ledger.data.settings.kind === 'shared';
   const accountOptions = accounts.map((a) => ({ value: a.id, label: a.name }));
   const categoryOptions = [{ value: '', label: '없음' }, ...ledger.activeCategories.map((c) => ({ value: c.id, label: c.name }))];
@@ -73,7 +73,7 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
   }
 
   function openEdit(f: FixedExpense) {
-    if (f.kind === 'living') return;
+    if (f.kind === 'living' || f.kind === 'installment') return;
     setErrors({});
     setDraft({
       id: f.id,
@@ -145,6 +145,7 @@ export function FixedCard({ ledger }: { ledger: ReadyLedger }) {
       f.kind === 'allowance'
           ? [`매달 ${f.dayOfMonth ?? 1}일`, `${f.targetEmail ? ledger.displayName(f.targetEmail) : '받는 사람 없음'}에게`]
           : [`매달 ${f.dayOfMonth ?? 1}일`, accountName(accounts, f.accountId)];
+    if (f.memo?.trim()) parts.push(f.memo.trim());
     return (
       <span className="st-sub">
         <span>{parts.join(' · ')}</span>

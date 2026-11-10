@@ -26,9 +26,10 @@ export function sampleLedger(): LedgerData {
       { id: 't3', date: '2026-11-26', kind: 'adjustment', fromAccountId: 'a-fix', toAccountId: null, amount: 1000, status: 'done', ruleId: null, memo: '맞추기', ...audit, deleted: true },
     ],
     fixedExpenses: [
-      { id: 'f1', name: '월세', amount: 700000, accountId: 'a-fix', categoryId: 'c1', dayOfMonth: 5, kind: 'bill', targetEmail: null, spread: 'daily', startMonth: '2026-11', endMonth: null, deleted: false },
-      { id: 'f2', name: '생활비', amount: 600000, accountId: 'a-fix', categoryId: null, dayOfMonth: null, kind: 'living', targetEmail: null, spread: 'monthly', startMonth: '2026-11', endMonth: '2027-03', deleted: false },
-      { id: 'f3', name: '용돈(민지)', amount: 300000, accountId: 'a-fix', categoryId: null, dayOfMonth: 1, kind: 'allowance', targetEmail: 'minji@example.com', spread: 'daily', startMonth: '2026-11', endMonth: null, deleted: true },
+      { id: 'f1', name: '월세', amount: 700000, accountId: 'a-fix', categoryId: 'c1', dayOfMonth: 5, kind: 'bill', targetEmail: null, spread: 'daily', startMonth: '2026-11', endMonth: null, installmentNo: null, installmentCount: null, deleted: false },
+      { id: 'f2', name: '생활비', amount: 600000, accountId: 'a-fix', categoryId: null, dayOfMonth: null, kind: 'living', targetEmail: null, spread: 'monthly', startMonth: '2026-11', endMonth: '2027-03', installmentNo: null, installmentCount: null, deleted: false },
+      { id: 'f3', name: '용돈(민지)', amount: 300000, accountId: 'a-fix', categoryId: null, dayOfMonth: 1, kind: 'allowance', targetEmail: 'minji@example.com', spread: 'daily', startMonth: '2026-11', endMonth: null, installmentNo: null, installmentCount: null, deleted: true },
+      { id: 'f4@2026-12', name: 'TV 할부', amount: 100000, accountId: 'a-fix', categoryId: 'c1', dayOfMonth: 15, kind: 'installment', targetEmail: null, spread: 'daily', startMonth: '2026-12', endMonth: '2027-07', installmentNo: 17, installmentCount: 24, deleted: false },
     ],
     events: [
       { id: 'e1', date: '2027-02-16', name: '설날', amount: 500000, accountId: 'a-evt', categoryId: 'c2', status: 'planned', repeat: 'yearly', memo: '', ...audit },
@@ -36,8 +37,8 @@ export function sampleLedger(): LedgerData {
       { id: 'e3', date: '2027-05-10', name: '결혼식', amount: 100000, accountId: 'a-evt', categoryId: null, status: 'canceled', repeat: 'none', memo: '', ...audit, deleted: true },
     ],
     expenses: [
-      { id: 'x1', date: '2026-11-09', amount: 12000, accountId: 'a-fix', categoryId: 'c1', memo: '점심', eventId: null, fixedExpenseId: null, ...audit, paidBy: null, claimAccountId: null, claimDue: null },
-      { id: 'x2', date: '2026-11-05', amount: 700000, accountId: 'a-fix', categoryId: null, memo: '', eventId: 'e2', fixedExpenseId: 'f1', ...audit, deleted: true, paidBy: '민지', claimAccountId: 'a-inc', claimDue: '2026-11-21' },
+      { id: 'x1', date: '2026-11-09', amount: 12000, accountId: 'a-fix', categoryId: 'c1', memo: '점심', eventId: null, fixedExpenseId: null, ...audit, paidBy: null, claimAccountId: null, claimDue: null, tripId: null, tripItem: null },
+      { id: 'x2', date: '2026-11-05', amount: 700000, accountId: 'a-fix', categoryId: null, memo: '', eventId: 'e2', fixedExpenseId: 'f1', ...audit, deleted: true, paidBy: '민지', claimAccountId: 'a-inc', claimDue: '2026-11-21', tripId: 'tr1', tripItem: 'flight' },
     ],
     monthEnds: [
       { month: '2026-10', leftover: 52000, choice: 'reservoir', decidedBy: 'minji@example.com', decidedAt: now, items: [{ categoryId: 'c1', leftover: 55000 }, { categoryId: null, leftover: -3000 }] },
@@ -55,6 +56,10 @@ export function sampleLedger(): LedgerData {
     members: [
       { email: 'minji@example.com', displayName: '민지' },
       { email: 'junho@example.com', displayName: '준호' },
+    ],
+    trips: [
+      { id: 'tr1', name: '제주 여행', startDate: '2027-02-20', endDate: '2027-02-23', budget: 900000, items: { flight: 300000, stay: 250000 }, memo: '', ...audit },
+      { id: 'tr2', name: '부산', startDate: '2026-05-01', endDate: '2026-05-02', budget: 0, items: {}, memo: '메모', ...audit, deleted: true },
     ],
   };
 }

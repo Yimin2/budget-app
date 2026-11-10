@@ -220,6 +220,10 @@ export class SheetsRepository implements LedgerRepository {
       throw new StorageError(MESSAGES.notLedger, 400);
     }
 
+    // 나중에 더한 탭(예: 여행)이 없는 예전 가계부: 한 번 만들어 둔다. 그러지 않으면 불러올 때마다
+    // 400 → 탭 목록 → 다시 읽기로 요청이 세 번씩 나가 분당 읽기 한도를 빨리 쓴다
+    if (this.missingTabs.size > 0) await this.createMissingTabs();
+
     const { settings, extras } = decodeSettings(byTab.get(SETTINGS_TAB));
     if (!settings.name) settings.name = this.ref.name;
     if (!byTab.get(SETTINGS_TAB)?.length) settings.kind = this.ref.kind;
@@ -237,6 +241,19 @@ export class SheetsRepository implements LedgerRepository {
       });
     }
     return data;
+  }
+
+  /** 없는 앱 탭(표)을 만든다. 만들지 못해도(읽기 권한만 등) 불러오기는 계속하고, 쓸 때 readTab 이 다시 시도한다 */
+  private async createMissingTabs(): Promise<void> {
+    for (const table of TABLE_NAMES) {
+      const tab = TAB_NAMES[table];
+      if (!this.missingTabs.has(tab)) continue;
+      try {
+        await this.createTab(tab, canonicalHeaders(table));
+      } catch {
+        // 그대로 둔다 (missingTabs 에 남아 쓸 때 다시 만든다)
+      }
+    }
   }
 
   /**
