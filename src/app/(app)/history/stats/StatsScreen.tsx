@@ -40,7 +40,7 @@ const man = (n: Won) => formatManShort(n);
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 const monthKo = (m: YearMonth) => formatMonthKo(m, 0);
 
-/** '/history/stats' 통계: 맨 위 ◀ 달 ▶ + 네 묶음 (처음에는 접힌 요약, [펼치기]로 같은 자리에서 펼침 — 창 없음) */
+/** '/history/stats' 통계: 맨 위 ◀ 달 ▶ + 네 묶음 (처음부터 펼쳐 둠 (사용자 결정), [접기]로 요약만 — 창 없음) */
 export function StatsScreen() {
   const params = useSearchParams();
   const initial = params?.get('month') ?? null;
@@ -106,10 +106,10 @@ function StatsMonthSwitcher({ data, today, month, onChange }: { data: LedgerData
   );
 }
 
-/* ───────── 묶음 틀: 접힌 요약 + [펼치기] ───────── */
+/* ───────── 묶음 틀: 처음부터 펼침 + [접기] ───────── */
 
 function StatSection({ id, title, summary, children }: { id: string; title: string; summary: ReactNode; children: () => ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const titleId = useId();
   const bodyId = `${id}-body`;
   return (
