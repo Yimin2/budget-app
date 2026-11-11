@@ -7,13 +7,29 @@ import { sampleLedger } from './fixture';
 
 describe('schema', () => {
   it('탭 이름은 PLAN 5장과 같다', () => {
-    expect(ALL_TABS).toEqual(['설정', '통장', '월배분', '이체', '고정지출', '일정', '지출', '월말', '카테고리', '즐겨찾기', '멤버', '여행', '수입계획']);
+    expect(ALL_TABS).toEqual(['설정', '통장', '월배분', '이체', '고정지출', '일정', '지출', '월말', '카테고리', '즐겨찾기', '멤버', '여행', '수입계획', '예측기록']);
     expect(canonicalHeaders('transfers')).toEqual([
       'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨',
     ]);
     expect(canonicalHeaders('monthEnds')).toEqual(['월', '남은생활비', '처리', '처리자', '처리일시', '항목별']);
     expect(canonicalHeaders('accounts')).toEqual(['id', '이름', '역할', '시작잔액', '시작일', '순서', '주인', '주인이메일', '삭제됨']);
     expect(canonicalHeaders('fixedExpenses')).toContain('나눠쓰기');
+    expect(canonicalHeaders('forecasts')).toEqual([
+      'id', '기록한달', '대상달', '예상잔액', '아끼면', '많이쓰면', '예상들어올돈', '예상나갈돈', '기록일시', '삭제됨',
+    ]);
+  });
+
+  it('예측기록: 빈 칸은 null · 같은 id 는 처음 줄만 · 열 순서가 바뀌어도 읽어요', () => {
+    const rows = decodeTable('forecasts', [
+      ['대상달', 'id', '기록한달', '예상잔액', '아끼면', '많이쓰면', '기록일시'],
+      ['2026-11', 'forecast:2026-11:2026-11', '2026-11', 150000, '', '', ''],
+      ['2026-11', 'forecast:2026-11:2026-11', '2026-11', 999999, '', '', ''],
+      ['2026-12', 'forecast:2026-11:2026-12', '2026. 11', '-20,000원', -10000, -30000, '2026-11-01T00:00:00.000Z'],
+    ]);
+    expect(rows).toEqual([
+      { id: 'forecast:2026-11:2026-11', recordedMonth: '2026-11', targetMonth: '2026-11', expected: 150000, low: null, high: null, inflow: null, outflow: null, recordedAt: null, deleted: false },
+      { id: 'forecast:2026-11:2026-12', recordedMonth: '2026-11', targetMonth: '2026-12', expected: -20000, low: -10000, high: -30000, inflow: null, outflow: null, recordedAt: '2026-11-01T00:00:00.000Z', deleted: false },
+    ]);
   });
 
   it.each(TABLE_NAMES)('%s 행 왕복 변환', (table) => {

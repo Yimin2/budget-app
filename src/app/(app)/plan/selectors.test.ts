@@ -14,7 +14,11 @@ import {
   compromiseHeadline,
   aheadMonthItems,
   aheadMonthLine,
+  aheadMonthSummary,
   aheadOutflow,
+  aheadTotalLines,
+  aheadTotals,
+  repaySummary,
   monthLabel,
   nextContribution,
   nextOccurrence,
@@ -253,7 +257,7 @@ describe('앞으로 12개월: 고른 달 항목', () => {
       { id: 'b', name: '어버이날', date: '2027-04-08', amount: 500_000 },
     ],
   };
-  it('일정 → 여행 남은 예산 → 할부 → 미리 기록 · 돌려줄 돈 → 평소 쓰는 돈(근거)을 늘 마지막에', () => {
+  it('새로 나갈 돈(일정 → 여행 남은 예산 → 할부 → 미리 기록 → 평소 쓰는 돈) 뒤에 지난 지출 돌려주기', () => {
     const items = aheadMonthItems(
       {
         ...month,
@@ -273,8 +277,8 @@ describe('앞으로 12개월: 고른 달 항목', () => {
       ['trip', '제주 여행', 450_000, '여행 남은 예산'],
       ['installment', 'TV 할부', 100_000, '할부'],
       ['scheduled', '미리 기록한 지출', 20_000, undefined],
-      ['claims', '돌려줄 돈 (개인 돈으로 낸 것)', 30_000, undefined],
       ['usual', '평소 쓰는 돈', 120_000, '작년 30% + 평균 70%, 일정 뺀 뒤'],
+      ['claims', '지난 지출 돌려주기', 30_000, undefined],
     ]);
     expect(items[2]!.tripId).toBe('t1');
     expect(items[0]!.date).toBe('2027-04-02');
@@ -294,8 +298,8 @@ describe('앞으로 12개월: 고른 달 항목', () => {
     expect(aheadInflowText({ ...month, transfersIn: 0 }, true)).toBe('지금 잔액 110만 · 아직 안 들어온 적립 +30만');
     expect(aheadInflowText({ ...month, transfersIn: 0, contributions: 0 }, true)).toBe('지금 잔액 110만');
   });
-  it("다가오는 달 한 줄: '12월 · 예정 30만 · 결혼식 2건'", () => {
-    expect(aheadMonthLine({ ...month, month: '2026-12' }, TODAY)).toBe('12월 · 예정 140만 · 지수 결혼식 · 어버이날');
+  it("다가오는 달 한 줄: 합계 먼저 '12월 · 30만 · 결혼식 2건'", () => {
+    expect(aheadMonthLine({ ...month, month: '2026-12' }, TODAY)).toBe('12월 · 140만 · 지수 결혼식 · 어버이날');
     const weddings = {
       ...month,
       events: [
@@ -303,9 +307,57 @@ describe('앞으로 12개월: 고른 달 항목', () => {
         { id: 'b', name: '민호 결혼식', date: '2027-04-09', amount: 200_000 },
       ],
     };
-    expect(aheadMonthLine(weddings, TODAY)).toBe('2027년 4월 · 예정 30만 · 결혼식 2건');
-    expect(aheadMonthLine({ ...month, events: [], usual: 52_400 }, TODAY)).toBe('2027년 4월 · 예정 5.2만');
-    expect(aheadMonthLine({ ...month, events: [], installments: 50_000 }, TODAY)).toBe('2027년 4월 · 예정 5만 · 할부');
+    expect(aheadMonthLine(weddings, TODAY)).toBe('2027년 4월 · 30만 · 결혼식 2건');
+    expect(aheadMonthLine({ ...month, events: [], usual: 52_400 }, TODAY)).toBe('2027년 4월 · 5.2만');
+    expect(aheadMonthLine({ ...month, events: [], installments: 50_000 }, TODAY)).toBe('2027년 4월 · 5만 · 할부');
+    // 돌려주기는 나갈 돈 이름에 섞지 않고 '돌려주기 ○'로 뒤에 (합계에는 들어가요)
+    expect(aheadMonthSummary({ ...month, events: [], usual: 20_000, claims: 300_000 }, TODAY)).toEqual({
+      head: '2027년 4월 · 32만',
+      tail: '돌려주기 30만',
+    });
+  });
+
+  const claimMonth: ProjectionMonth = {
+    ...month,
+    month: '2026-11',
+    events: [{ id: 'a', name: '지수 결혼식', date: '2026-11-22', amount: 206_000 }],
+    planned: 206_000,
+    claims: 672_000,
+    claimList: [
+      { expenseId: 'x1', payer: '민구', amount: 550_000, spentDate: '2026-10-03' },
+      { expenseId: 'x2', payer: '민지', amount: 100_000, spentDate: '2026-09-12' },
+      { expenseId: 'x3', payer: '민지', amount: 22_000, spentDate: '2026-10-28' },
+    ],
+  };
+
+  it("지난 지출 돌려주기: 한 건씩 '10월에 쓴 것 · 민구', 묶음 한 줄 '(9~10월에 쓴 것 3건)'", () => {
+    const items = aheadMonthItems(claimMonth);
+    expect(items.map((i) => [i.kind, i.label, i.amount])).toEqual([
+      ['event', '지수 결혼식', 206_000],
+      ['claims', '10월에 쓴 것 · 민구', 550_000],
+      ['claims', '9월에 쓴 것 · 민지', 100_000],
+      ['claims', '10월에 쓴 것 · 민지', 22_000],
+    ]);
+    expect(repaySummary(claimMonth)).toBe('지난 지출 돌려주기 67.2만 (9~10월에 쓴 것 3건)');
+    expect(repaySummary({ ...claimMonth, claimList: [claimMonth.claimList![0]!] , claims: 550_000 })).toBe('지난 지출 돌려주기 55만 (10월에 쓴 것 1건)');
+    expect(repaySummary(month)).toBeNull();
+    expect(aheadTotals(claimMonth)).toEqual({ spend: 206_000, repay: 672_000, total: 878_000 });
+    expect(aheadOutflow(claimMonth)).toBe(878_000);
+  });
+
+  it("고른 달 합계 줄: '12월 나갈 돈 합계 87.8만' · 이번 달은 '이미 나간 돈 10만 + 앞으로 77.8만'", () => {
+    expect(aheadTotalLines({ ...claimMonth, month: '2026-12' }, TODAY, 100_000)).toEqual({
+      title: '12월 나갈 돈 합계 87.8만',
+      split: null,
+      parts: '새로 나갈 돈 20.6만 · 지난 지출 돌려주기 67.2만',
+    });
+    const now = { ...claimMonth, events: [{ id: 'a', name: '지수 결혼식', date: '2026-11-22', amount: 106_000 }], planned: 106_000 };
+    expect(aheadTotalLines(now, TODAY, 100_000)).toEqual({
+      title: '이번 달 나갈 돈 87.8만',
+      split: '이미 나간 돈 10만 + 앞으로 77.8만',
+      parts: '새로 나갈 돈 10.6만 · 지난 지출 돌려주기 67.2만',
+    });
+    expect(aheadTotalLines(month, TODAY, null).parts).toBeNull();
   });
   it('평소 쓰는 돈 카테고리 줄', () => {
     expect(

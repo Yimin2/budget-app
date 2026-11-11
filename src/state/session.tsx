@@ -55,6 +55,11 @@ export interface StateDeps {
    */
   demoCouple: boolean;
   /**
+   * 체험 가계부에 이벤트통장 지난 12개월 기록(적립 · 지난 일정 · 예측 기록)을 넣을지 (PLAN 4-2 지난 달 막대).
+   * 기본 true. 이번 달부터 시작하는 예시 숫자에 기대는 테스트는 false
+   */
+  demoHistory: boolean;
+  /**
    * 구글 시트 가계부의 마지막 내용 보관 (PLAN 7). 기본은 IndexedDB(안 되면 메모리). null 이면 보관하지 않아요.
    * 로그아웃 · 계정이 바뀌면 지워요
    */
@@ -102,6 +107,7 @@ function buildDeps(partial?: Partial<StateDeps>): StateDeps {
     storage: partial && 'storage' in partial ? (partial.storage ?? null) : browserStorage(),
     restoreTimeoutMs: partial?.restoreTimeoutMs ?? 3000,
     demoCouple: partial?.demoCouple ?? true,
+    demoHistory: partial?.demoHistory ?? true,
     cache: partial && 'cache' in partial ? (partial.cache ?? null) : createLedgerCache(),
   };
 }
@@ -332,10 +338,10 @@ export function SessionProvider({ children, deps: partialDeps }: { children: Rea
       try {
         ref = await deps.local.describe(DEMO_LEDGER_ID);
       } catch {
-        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple }), DEMO_LEDGER_ID);
+        ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple, history: deps.demoHistory }), DEMO_LEDGER_ID);
       }
     } else {
-      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple }), DEMO_LEDGER_ID);
+      ref = await deps.local.create(createDemoLedger(toISODate(now), now.toISOString(), { claims: true, installments: true, trips: true, couple: deps.demoCouple, history: deps.demoHistory }), DEMO_LEDGER_ID);
     }
     update((s) => ({
       notice: null,

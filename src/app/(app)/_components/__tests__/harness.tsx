@@ -41,7 +41,7 @@ function ProbeView({ target }: { target: { current: Probe | null } }) {
 
 export function renderApp(
   ui: ReactElement,
-  opts: { now?: Date; ledgerStorage?: KeyValueStorage; google?: GoogleDeps; sheets?: LedgerBackend; couple?: boolean } = {},
+  opts: { now?: Date; ledgerStorage?: KeyValueStorage; google?: GoogleDeps; sheets?: LedgerBackend; couple?: boolean; history?: boolean } = {},
 ): AppHarness {
   const clock = { now: opts.now ?? new Date(2026, 10, 20, 10, 0, 0) };
   const ledgerStorage = opts.ledgerStorage ?? createMemoryStorage();
@@ -55,6 +55,7 @@ export function renderApp(
     restoreTimeoutMs: 50,
     // 체험 가계부: 기본은 예전 예시(숫자에 기대는 테스트), couple 이면 부부 예시
     demoCouple: opts.couple ?? false,
+    demoHistory: opts.history ?? false,
   };
   const probe: { current: Probe | null } = { current: null };
   const wrap = (children: ReactNode) => (

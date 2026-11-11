@@ -90,6 +90,7 @@ export function createDefaultLedger(
     members: [{ email: authorEmail, displayName }],
     trips: [],
     incomePlans: [],
+    forecasts: [],
   };
 }
 
@@ -213,7 +214,7 @@ export const DEMO_COUPLE = {
 export function createDemoLedger(
   today: string,
   now: string,
-  opts: { claims?: boolean; installments?: boolean; trips?: boolean; couple?: boolean } = {},
+  opts: { claims?: boolean; installments?: boolean; trips?: boolean; couple?: boolean; history?: boolean } = {},
 ): LedgerData {
   const M = monthOf(today);
   const first = `${M}-01`;
@@ -481,6 +482,7 @@ export function createDemoLedger(
     categories: buildCategories('shared', cat),
     favorites,
     members: DEMO_MEMBERS.map((m) => ({ ...m })),
+    forecasts: [],
     trips: opts.trips
       ? [
           {
@@ -504,6 +506,8 @@ export function createDemoLedger(
   const auto = pendingAutoRecords(data, today, minji, now);
   data.transfers.push(...auto.transfers);
   data.expenses.push(...auto.expenses);
+
+  if (opts.history) addDemoEventHistory(data, event, M, who, (k) => cat(k), ev);
 
   const atFirst = (date: string) => (date < first ? first : date);
   if (opts.trips) {
@@ -590,4 +594,96 @@ export function createDemoLedger(
     deleted: false,
   });
   return data;
+}
+
+/** 체험 이벤트통장 지난 12개월: 매달 1일 적립 30만, 지난 일정 6건(완료 · 지출 연결). 이번 달 1일 잔액은 시작 잔액(60만) 그대로 */
+const DEMO_HISTORY_EVENTS: [offset: number, day: number, name: string, amount: number, categoryKey: string][] = [
+  [-10, 9, '설날 부모님 용돈', 500_000, 'holiday'],
+  [-7, 18, '친구 결혼식', 200_000, 'occasion'],
+  [-6, 8, '어버이날', 600_000, 'gift'],
+  [-3, 22, '여름 휴가', 1_200_000, 'travel'],
+  [-2, 14, '추석 부모님 용돈', 500_000, 'holiday'],
+  [-1, 25, '회사 동료 결혼식', 150_000, 'occasion'],
+];
+const DEMO_HISTORY_MONTHS = 12;
+const DEMO_HISTORY_MONTHLY = 300_000;
+/** 지난 달 예측 기록 (실제와의 차이, 원). 오래된 순으로 최근 6개월 */
+const DEMO_FORECAST_DIFFS = [-50_000, 40_000, 120_000, 250_000, -30_000, 60_000];
+
+function addDemoEventHistory(
+  data: LedgerData,
+  event: Account,
+  M: string,
+  who: string[],
+  cat: (key: string) => string,
+  ev: (key: string, offset: number, day: number, name: string, amount: number, categoryKey: string, author: string) => PlannedEvent,
+): void {
+  const start = addMonths(M, -DEMO_HISTORY_MONTHS);
+  const spent = DEMO_HISTORY_EVENTS.reduce((s, x) => s + x[3], 0);
+  const endBalance = event.openingBalance;
+  event.openingBalance = endBalance - DEMO_HISTORY_MONTHS * DEMO_HISTORY_MONTHLY + spent;
+  event.openingDate = `${start}-01`;
+  const income = data.accounts.find((a) => a.role === 'income');
+  let balance = event.openingBalance;
+  const ends: { month: string; start: number; end: number }[] = [];
+  for (let i = DEMO_HISTORY_MONTHS; i >= 1; i--) {
+    const month = addMonths(M, -i);
+    const date = `${month}-01`;
+    const monthStart = balance;
+    data.transfers.push({
+      id: `demo-history-in-${month}`,
+      date,
+      kind: 'transfer',
+      fromAccountId: income?.id ?? null,
+      toAccountId: event.id,
+      amount: DEMO_HISTORY_MONTHLY,
+      status: 'done',
+      ruleId: null,
+      memo: '이벤트통장 적립',
+      author: who[0]!,
+      createdAt: `${date}T09:00:00.000Z`,
+      updatedAt: `${date}T09:00:00.000Z`,
+      deleted: false,
+    });
+    balance += DEMO_HISTORY_MONTHLY;
+    DEMO_HISTORY_EVENTS.forEach(([offset, day, name, amount, categoryKey], k) => {
+      if (offset !== -i) return;
+      const e = { ...ev(`history-${k}`, offset, day, name, amount, categoryKey, who[k % 2]!), status: 'done' as const };
+      data.events.push(e);
+      data.expenses.push({
+        id: `demo-history-exp-${k}`,
+        date: e.date,
+        amount,
+        accountId: event.id,
+        categoryId: cat(categoryKey),
+        memo: name,
+        eventId: e.id,
+        fixedExpenseId: null,
+        author: e.author,
+        createdAt: `${e.date}T12:00:00.000Z`,
+        updatedAt: `${e.date}T12:00:00.000Z`,
+        deleted: false,
+      });
+      balance -= amount;
+    });
+    ends.push({ month, start: monthStart, end: balance });
+  }
+  // 최근 6개월은 그달 처음 연 날의 예측 기록이 있어요 (실제 + 차이)
+  // 한 달은 그때 적립을 25만으로 알고 있었어요 (들어온 돈이 바뀐 예)
+  ends.slice(-DEMO_FORECAST_DIFFS.length).forEach(({ month, start, end }, i) => {
+    const expected = end - DEMO_FORECAST_DIFFS[i]!;
+    const inflow = i === 2 ? 250_000 : DEMO_HISTORY_MONTHLY;
+    data.forecasts.push({
+      id: `forecast:${month}:${month}`,
+      recordedMonth: month,
+      targetMonth: month,
+      expected,
+      low: null,
+      high: null,
+      inflow,
+      outflow: start + inflow - expected,
+      recordedAt: `${month}-01T00:00:00.000Z`,
+      deleted: false,
+    });
+  });
 }

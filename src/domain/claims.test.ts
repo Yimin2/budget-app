@@ -178,6 +178,21 @@ describe('잔액과 예측 — 두 번 빠지지 않게', () => {
     expect(projectEventAccount(d, TODAY).months[0]!.claims).toBe(30_000);
   });
 
+  it('예측 달의 돌려줄 청구 한 건씩 (쓴 날 · 낸 사람), 합은 claims 와 같아요', () => {
+    const d = ledger({
+      expenses: [
+        claim({ id: 'c1', amount: 30_000, accountId: 'event', claimDue: '2026-10-21', date: '2026-10-01' }),
+        claim({ id: 'c2', amount: 20_000, accountId: 'event', claimDue: '2026-11-21', date: '2026-11-02', paidBy: '나래', claimAccountId: 'inc-m' }),
+      ],
+    });
+    const nov = projectEventAccount(d, TODAY).months[0]!;
+    expect(nov.claims).toBe(50_000);
+    expect(nov.claimList).toEqual([
+      { expenseId: 'c1', payer: '가람', amount: 30_000, spentDate: '2026-10-01' },
+      { expenseId: 'c2', payer: '나래', amount: 20_000, spentDate: '2026-11-02' },
+    ]);
+  });
+
   it('일정에 연결한 청구: 일정 남은 금액 + 청구 = 예상 금액 (한 번만)', () => {
     const ev = event({ id: 'ev1', date: '2026-12-10', amount: 200_000, accountId: 'event' });
     const d = ledger({

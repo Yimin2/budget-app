@@ -33,7 +33,7 @@ export interface Probe {
 }
 
 /** 체험 모드를 시작하는 감싸개와, 지금 상태를 들여다보는 probe */
-export function makeHarness() {
+export function makeHarness(opts: { history?: boolean } = {}) {
   const probe: Probe = { ledger: null, session: null };
 
   function ProbeAndStart() {
@@ -56,6 +56,7 @@ export function makeHarness() {
     storage: createMemoryStorage(),
     restoreTimeoutMs: 20,
     demoCouple: false,
+    demoHistory: opts.history ?? false,
   };
   function Wrapper({ children }: { children: ReactNode }) {
     return (

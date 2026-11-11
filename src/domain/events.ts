@@ -242,9 +242,13 @@ function projectAccount(
     }
     const scheduledSpending = laterExpenses.reduce((s, e) => (monthOf(e.date) === month ? s + e.amount : s), 0);
     let claimsOut = 0;
+    const claimList: NonNullable<ProjectionMonth['claimList']> = [];
     for (const c of claims) {
       if (claimMonth(c.due) !== month || c.accountId === c.claimAccountId) continue;
-      if (c.accountId === accountId) claimsOut += c.amount;
+      if (c.accountId === accountId) {
+        claimsOut += c.amount;
+        claimList.push({ expenseId: c.expense.id, payer: c.payer, amount: c.amount, spentDate: c.expense.date });
+      }
       if (c.claimAccountId === accountId) transfersIn += c.amount;
     }
     const events: ProjectionMonth['events'] = [];
@@ -292,7 +296,7 @@ function projectAccount(
       ...(usual > 0 && u.basis !== 'none' ? { usualBasis: u.basis } : {}),
       extra: extraAmount,
       ...(scheduledSpending > 0 ? { scheduledSpending } : {}),
-      ...(claimsOut > 0 ? { claims: claimsOut } : {}),
+      ...(claimsOut > 0 ? { claims: claimsOut, claimList } : {}),
       ...(installments > 0 ? { installments } : {}),
       ...(tripsOut > 0 ? { trips: tripsOut, tripList } : {}),
       ...(income > 0 ? { income } : {}),

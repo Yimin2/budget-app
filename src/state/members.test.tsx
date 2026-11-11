@@ -64,6 +64,7 @@ async function setupSheets(data: LedgerData, listSharing: () => Promise<SharingL
     storage,
     restoreTimeoutMs: 10,
     demoCouple: false,
+    demoHistory: false,
   };
   const wrapper = ({ children }: { children: ReactNode }) => <AppProviders deps={deps}>{children}</AppProviders>;
   const r = renderHook(() => ({ session: useSession(), ledger: useLedger() }), { wrapper });
@@ -157,6 +158,7 @@ describe('체험 모드(브라우저 저장)는 그대로', () => {
       storage: createMemoryStorage(),
       restoreTimeoutMs: 10,
       demoCouple: false,
+      demoHistory: false,
     };
     const wrapper = ({ children }: { children: ReactNode }) => <AppProviders deps={deps}>{children}</AppProviders>;
     const r = renderHook(() => ({ session: useSession(), ledger: useLedger() }), { wrapper });

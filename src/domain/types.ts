@@ -403,6 +403,31 @@ export interface LedgerData {
   trips: Trip[];
   /** 수입 계획 (PLAN 4-13). 예전 시트에 탭이 없으면 빈 배열 */
   incomePlans: IncomePlan[];
+  /** 달마다 남겨 둔 이벤트통장 예측 기록 (PLAN 4-2 · 5장 예측기록). 예전 시트에 탭이 없으면 빈 배열 */
+  forecasts: ForecastSnapshot[];
+}
+
+/**
+ * 예측 기록 한 줄 (PLAN 5장 '예측기록' 탭): recordedMonth 에 처음 연 날 본 targetMonth 의 달 말 예상 잔액.
+ * (기록한달, 대상달) 마다 한 줄, id = forecast:<기록한달>:<대상달>. 처음 쓴 것이 그달 기록이에요 (덮어쓰지 않아요)
+ */
+export interface ForecastSnapshot {
+  id: Id;
+  recordedMonth: YearMonth;
+  targetMonth: YearMonth;
+  /** 보통 쓰면 달 말 예상 잔액 */
+  expected: Won;
+  /** 아끼면 달 말 잔액 (범위가 없으면 null) */
+  low: Won | null;
+  /** 많이 쓰면 달 말 잔액 (범위가 없으면 null) */
+  high: Won | null;
+  /** 그달 들어올 돈 예상 (적립 · 옮겨 올 돈 · 수입). 나중에 더한 열이라 빈 칸이면 null */
+  inflow: Won | null;
+  /** 그달 나갈 돈 예상 (일정 · 여행 · 할부 · 평소 쓰는 돈 · 돌려주기 · 옮겨 갈 돈 …). 빈 칸이면 null */
+  outflow: Won | null;
+  /** 기록한 시각 (빈 칸이면 null) */
+  recordedAt: Timestamp | null;
+  deleted: boolean;
 }
 
 /* ---------- 계산 결과 타입 ---------- */
@@ -503,6 +528,8 @@ export interface ProjectionMonth {
   scheduledSpending?: Won;
   /** 그달 돌려줄 청구 (아직 안 돌려준 개인 돈 지출, 정산일 기준. 지난 정산일은 이번 달). 0 이면 생략 */
   claims?: Won;
+  /** claims 의 한 건씩 (쓴 날 · 낸 사람). 합은 claims 와 같아요 */
+  claimList?: { expenseId: Id; payer: string; amount: Won; spentDate: ISODate }[];
   /** 그달 이 통장에서 나갈 할부 (아직 자동 기록되지 않은 회차). 0 이면 생략 */
   installments?: Won;
   /** 그달 여행의 남은 예산 (이벤트통장만, 여행 날짜의 달에 나눔). 0 이면 생략 */

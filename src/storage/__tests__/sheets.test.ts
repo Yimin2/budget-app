@@ -128,7 +128,7 @@ describe('SheetsBackend.create', () => {
     expect(create!.auth).toBe('Bearer token');
     expect(values!.url.pathname).toBe('/v4/spreadsheets/sheet-1/values:batchUpdate');
     expect(values!.body.valueInputOption).toBe('RAW');
-    expect(values!.body.data).toHaveLength(13);
+    expect(values!.body.data).toHaveLength(14);
     expect(g.tabs.get('통장')![0]).toEqual(canonicalHeaders('accounts'));
     expect(g.tabs.get('설정')![0]).toEqual(['키', '값']);
   });
@@ -429,6 +429,35 @@ describe('검증된 결함 회귀', () => {
     const data = await repo.load();
     expect(data.trips).toEqual([]);
     expect(g.calls.length - before).toBe(1);
+  });
+
+  it('예측기록 탭이 없는 예전 가계부: 불러올 때 탭을 만들고, 다른 탭은 그대로 · 같은 id 는 두 번 쓰지 않아요', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    g.tabs.delete('예측기록');
+    const repo = backend.open(ref);
+    const data = await repo.load();
+    expect(data.forecasts).toEqual([]);
+    expect(g.tabs.get('예측기록')).toEqual([canonicalHeaders('forecasts')]);
+    expect(data.transfers).toEqual(sampleLedger().transfers);
+    const row = sampleLedger().forecasts[0]!;
+    await repo.insert('forecasts', [row]);
+    await repo.insert('forecasts', [{ ...row, expected: 1 }]);
+    expect(g.tabs.get('예측기록')!.map((r) => r[0])).toEqual(['id', row.id]);
+    expect((await repo.load()).forecasts).toEqual([row]);
+  });
+
+  it('예전 예측기록 탭(들어올 · 나갈 돈 열 없음)도 읽고, 빈 칸은 null', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    g.tabs.set('예측기록', [
+      ['id', '기록한달', '대상달', '예상잔액', '아끼면', '많이쓰면', '기록일시', '삭제됨'],
+      ['forecast:2026-10:2026-10', '2026-10', '2026-10', -200000, '', '', '', false],
+    ]);
+    const data = await backend.open(ref).load();
+    expect(data.forecasts).toEqual([
+      { id: 'forecast:2026-10:2026-10', recordedMonth: '2026-10', targetMonth: '2026-10', expected: -200000, low: null, high: null, inflow: null, outflow: null, recordedAt: null, deleted: false },
+    ]);
   });
 
   it('가계부가 아닌 파일에는 탭을 만들지 않는다', async () => {

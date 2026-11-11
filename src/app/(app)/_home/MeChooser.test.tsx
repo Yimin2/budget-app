@@ -110,6 +110,7 @@ async function setup(data: LedgerData, opts: { readOnly?: boolean } = {}) {
     storage,
     restoreTimeoutMs: 10,
     demoCouple: false,
+    demoHistory: false,
   };
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <ToastProvider>
