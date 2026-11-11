@@ -1,7 +1,7 @@
 /* 홈 · 사도 돼? 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
 import { formatMonthKo, formatWon, monthOf, parseWon } from '@/domain';
 import type {
-  Account, AccountRole, Category, EventProjection, Expense, Id, ISODate, LedgerData, ProjectionMonth, TripStatus, Won,
+  Account, AccountRole, Category, EventProjection, Expense, Id, ISODate, LedgerData, ProjectionMonth, TripStatus, Won, YearMonth,
 } from '@/domain';
 
 /* ───────── 이벤트 일정 ───────── */
@@ -236,4 +236,15 @@ export function errorMessage(e: unknown, fallback: string): string {
   if (e instanceof Error && e.message.trim()) return e.message;
   if (typeof e === 'string' && e.trim()) return e;
   return fallback;
+}
+
+/**
+ * 홈 항목별 생활비 → 내역(/history) 주소: 그달 · 그 생활비 통장 (· 카테고리).
+ * categoryId 'none' = 카테고리 없는 지출만, 빼면 통장의 모든 지출
+ */
+export function livingHistoryHref(month: YearMonth, accountId: Id | null, categoryId?: Id | 'none' | null): string {
+  const q = new URLSearchParams({ month });
+  if (accountId) q.set('account', accountId);
+  if (categoryId) q.set('category', categoryId);
+  return `/history?${q.toString()}`;
 }

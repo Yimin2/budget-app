@@ -22,7 +22,7 @@ type DialogState = { mode: 'add' } | { mode: 'edit'; expense: Expense } | null;
 
 /**
  * '/history' 내역의 지출 (기본 탭). 주소로 미리 정할 수 있어요:
- * ?month=2026-11 (볼 달) · ?account=<통장 id> (통장 필터) · ?new=1 (열자마자 지출 기록 창)
+ * ?month=2026-11 (볼 달) · ?account=<통장 id> (통장 필터) · ?category=<카테고리 id | none> (카테고리 필터) · ?new=1 (열자마자 지출 기록 창)
  */
 export function ExpensesScreen({ switcher }: { switcher?: ReactNode } = {}) {
   const params = useSearchParams();
@@ -31,6 +31,7 @@ export function ExpensesScreen({ switcher }: { switcher?: ReactNode } = {}) {
   const ready = isLedgerReady(useLedger());
   const initialMonth = parseMonthParam(params?.get('month'));
   const initialAccount = params?.get('account') || null;
+  const initialCategory = params?.get('category') || null;
   const openNew = params?.get('new') === '1';
   const [dialog, setDialog] = useState<DialogState>(openNew ? { mode: 'add' } : null);
 
@@ -61,6 +62,7 @@ export function ExpensesScreen({ switcher }: { switcher?: ReactNode } = {}) {
             ledger={ledger}
             initialMonth={initialMonth}
             initialAccount={initialAccount}
+            initialCategory={initialCategory}
             dialog={dialog}
             setDialog={setDialog}
           />
@@ -74,17 +76,20 @@ interface ViewProps {
   ledger: ReadyLedger;
   initialMonth: YearMonth | null;
   initialAccount: Id | null;
+  initialCategory: string | null;
   dialog: DialogState;
   setDialog: (d: DialogState) => void;
 }
 
-function ExpensesView({ ledger, initialMonth, initialAccount, dialog, setDialog }: ViewProps) {
+function ExpensesView({ ledger, initialMonth, initialAccount, initialCategory, dialog, setDialog }: ViewProps) {
   const { data, today } = ledger;
   const thisMonth = monthOf(today);
   const [month, setMonth] = useState<YearMonth>(initialMonth ?? thisMonth);
   const [filter, setFilter] = useState<ExpenseFilter>(() => ({
     ...EMPTY_FILTER,
     accountId: initialAccount && data.accounts.some((a) => a.id === initialAccount) ? initialAccount : null,
+    categoryId:
+      initialCategory === 'none' || (initialCategory && data.categories.some((c) => c.id === initialCategory)) ? initialCategory : null,
   }));
   const [filtersOpen, setFiltersOpen] = useState(false);
   const panelId = `xf${useId().replace(/:/g, '')}`;

@@ -26,7 +26,7 @@ export function historyHref(tab: HistoryTab): string {
 
 /**
  * '/history' 내역: 지출 · 이체 · 통장 잔액을 한 화면에서 탭으로 바꿔 봐요. 통계(/history/stats)는 하단 메뉴 · 사이드바의 통계 칸으로 가요.
- * ?tab=transfers · ?tab=accounts (&id=<통장 id> 면 통장 하나), 지출은 ?month= · ?account= · ?new=1
+ * ?tab=transfers · ?tab=accounts (&id=<통장 id> 면 통장 하나), 지출은 ?month= · ?account= · ?category= · ?new=1
  */
 export function HistoryScreen() {
   const params = useSearchParams();

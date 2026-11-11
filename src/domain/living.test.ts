@@ -1,8 +1,9 @@
 import { account, emptyLedger, expense, fixed } from './_fixtures';
 import {
-  computeLiving, defaultSpreadFor, findLivingItem, hasLegacyLivingRow, hasLivingBudget, LIVING_ETC_NAME, livingDayNote, livingLeftover,
-  livingLeftoverItems, previewLivingItem, schedulePreviewText,
+  computeLiving, defaultSpreadFor, findLivingItem, hasLegacyLivingRow, hasLivingBudget, LIVING_ETC_NAME, livingByAccount, livingDayNote,
+  livingItemExpenses, livingLeftover, livingLeftoverItems, previewLivingItem, schedulePreviewText,
 } from './living';
+import { createDemoLedger } from './defaults';
 import type { Category, Expense, LedgerData } from './types';
 
 const fixedAcc = account('fixed');
@@ -333,5 +334,52 @@ describe('쓰는 날 (평일 · 공휴일 빼기 · 주 N회)', () => {
     const monthly = planExample();
     monthly.fixedExpenses = monthly.fixedExpenses.map((f) => ({ ...f, spread: 'monthly' as const, perWeek: 2 }));
     expect(computeLiving(monthly, '2026-11-10').items[0]!.weekly).toBeUndefined();
+  });
+});
+
+describe('livingItemExpenses — 홈 항목별 생활비를 펼치면 보이는 지출', () => {
+  const sum = (list: Expense[]) => list.reduce((s, e) => s + e.amount, 0);
+
+  it.each([
+    ['체험 예시', false],
+    ['부부 예시 (사람별 생활비 통장)', true],
+  ])('%s: 항목마다 지출 합 = 그 항목 쓴 돈, 새것부터, 그 사람 생활비 통장 것만', (_, couple) => {
+    const today = '2026-11-20';
+    const data = createDemoLedger(today, `${today}T10:00:00.000Z`, { couple, claims: true });
+    const views = livingByAccount(data, today);
+    expect(views.length).toBe(couple ? 2 : 1);
+    for (const view of views) {
+      for (const item of view.status.items) {
+        const list = livingItemExpenses(data, view.status, item);
+        expect(sum(list)).toBe(item.spent);
+        expect(list.every((e) => e.accountId === view.accountId && e.date.startsWith('2026-11'))).toBe(true);
+        expect([...list].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).map((e) => e.date)).toEqual(list.map((e) => e.date));
+      }
+      expect(view.status.items.some((i) => livingItemExpenses(data, view.status, i).length > 0)).toBe(true);
+    }
+  });
+
+  it('기타 묶음: 예산 항목이 없는 카테고리 · 카테고리 없는 지출이 들어가고, 고정비 · 일정 지출은 빠져요', () => {
+    const living = account('fixed', { id: 'liv' });
+    const food: Category = { id: 'food', name: '식비', icon: 'utensils', order: 0, deleted: false } as Category;
+    const gift: Category = { id: 'gift', name: '선물', icon: 'gift', order: 1, deleted: false } as Category;
+    const data = emptyLedger({
+      accounts: [living],
+      categories: [food, gift],
+      fixedExpenses: [fixed({ kind: 'living', amount: 300_000, accountId: 'liv', categoryId: 'food' })],
+      expenses: [
+        expense({ id: 'a', date: '2026-11-02', amount: 8_000, accountId: 'liv', categoryId: 'food' }),
+        expense({ id: 'b', date: '2026-11-05', amount: 20_000, accountId: 'liv', categoryId: 'gift' }),
+        expense({ id: 'c', date: '2026-11-07', amount: 3_000, accountId: 'liv', categoryId: null }),
+        expense({ id: 'd', date: '2026-11-08', amount: 9_000, accountId: 'liv', categoryId: 'food', eventId: 'ev' }),
+        expense({ id: 'e', date: '2026-10-30', amount: 7_000, accountId: 'liv', categoryId: 'food' }),
+      ],
+    });
+    const status = computeLiving(data, '2026-11-10');
+    const foodItem = status.items.find((i) => i.categoryId === 'food')!;
+    const etc = status.items.find((i) => i.categoryId === null)!;
+    expect(livingItemExpenses(data, status, foodItem).map((e) => e.id)).toEqual(['a']);
+    expect(livingItemExpenses(data, status, etc).map((e) => e.id)).toEqual(['c', 'b']);
+    expect(sum(livingItemExpenses(data, status, etc))).toBe(etc.spent);
   });
 });

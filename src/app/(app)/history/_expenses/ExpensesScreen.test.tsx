@@ -283,6 +283,22 @@ describe('지출 화면', () => {
     expect(current(h).ledger.data!.expenses.find((e) => e.id === target.id)!.deleted).toBe(false);
   });
 
+  it('?account= · ?category= 로 통장 · 카테고리 필터를 미리 걸어요 (홈 항목별 생활비에서 와요), 모르는 카테고리는 무시해요', async () => {
+    const h = await open('month=2026-11&account=demo-acc-fixed&category=demo-cat-food');
+    const data = current(h).ledger.data!;
+    expect(current(h).ledger.living!.livingAccountId).toBe('demo-acc-fixed');
+    const food = data.expenses.filter(
+      (e) => !e.deleted && e.date.startsWith('2026-11') && e.accountId === 'demo-acc-fixed' && e.categoryId === 'demo-cat-food',
+    );
+    expect(food.length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '필터 2' })).toBeTruthy();
+    expect(within(list()).getAllByRole('listitem')).toHaveLength(food.length);
+    cleanup();
+
+    await open('account=demo-acc-fixed&category=nope');
+    expect(screen.getByRole('button', { name: '필터 1' })).toBeTruthy();
+  });
+
   it('?month= 로 다른 달을 열면 빈 상태, ?new=1 이면 기록 창을 열고 주소에서 지워요', async () => {
     nav.params = new URLSearchParams('month=2026-10&new=1');
     const h = renderApp(<ExpensesScreen />);
