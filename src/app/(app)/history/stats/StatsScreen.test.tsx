@@ -35,10 +35,11 @@ async function open(opts: { couple?: boolean; params?: string; past?: boolean } 
 }
 
 const section = (id: string) => screen.getByTestId(id);
+/** 묶음은 처음부터 펼쳐져 있어요 (접혀 있으면 펼쳐요) */
 const expand = (id: string) => {
   const s = section(id);
-  const btn = within(s).getByRole('button', { name: /펼치기$/ });
-  fireEvent.click(btn);
+  const btn = within(s).queryByRole('button', { name: /펼치기$/ });
+  if (btn) fireEvent.click(btn);
   return s;
 };
 
@@ -71,26 +72,27 @@ describe('통계 화면', () => {
     expect(screen.getByTestId('stats-month').textContent).toBe('2026년 11월');
   });
 
-  it('묶음은 접힌 요약으로 시작하고, [펼치기] · [접기]로 같은 자리에서 펼쳐요 (창 없음)', async () => {
+  it('묶음은 모바일 · 데스크톱 모두 처음부터 펼쳐져 있고, [접기] · [펼치기]로 같은 자리에서 접어요 (창 없음)', async () => {
     await open();
     for (const id of ['stats-budget', 'stats-category', 'stats-trend', 'stats-event']) {
       const s = section(id);
-      const btn = within(s).getByRole('button', { name: /펼치기$/ });
-      expect(btn.getAttribute('aria-expanded')).toBe('false');
-      expect(document.getElementById(btn.getAttribute('aria-controls')!)!.hidden).toBe(true);
+      const btn = within(s).getByRole('button', { name: /접기$/ });
+      expect(btn.getAttribute('aria-expanded')).toBe('true');
+      expect(document.getElementById(btn.getAttribute('aria-controls')!)!.hidden).toBe(false);
     }
     expect(section('stats-budget').textContent).toMatch(/생활비 예산 .+ 중 .+ 썼어요/);
 
-    const s = expand('stats-budget');
-    const btn = within(s).getByRole('button', { name: /접기$/ });
-    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    const s = section('stats-budget');
     const list = within(s).getByRole('list', { name: '2026년 11월 생활비 항목별 예산과 쓴 돈' });
     expect(within(list).getAllByRole('listitem').length).toBeGreaterThan(0);
     expect(within(s).getByRole('list', { name: '고정비 · 용돈' }).textContent).toContain('고정비');
     expect(screen.queryByRole('dialog')).toBeNull();
-    fireEvent.click(btn);
+    fireEvent.click(within(s).getByRole('button', { name: /접기$/ }));
     expect(within(s).queryByRole('list')).toBeNull();
-    expect(within(s).getByRole('button', { name: /펼치기$/ }).getAttribute('aria-expanded')).toBe('false');
+    const again = within(s).getByRole('button', { name: /펼치기$/ });
+    expect(again.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(again);
+    expect(within(s).getByRole('list', { name: '2026년 11월 생활비 항목별 예산과 쓴 돈' })).toBeTruthy();
   });
 
   it('카테고리별 비율: 도넛(글 대체) + 범례, [전체 · 사람] 고르기', async () => {
