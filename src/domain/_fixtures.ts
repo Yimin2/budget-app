@@ -22,6 +22,7 @@ export function emptyLedger(overrides: Partial<LedgerData> = {}): LedgerData {
     members: [],
     trips: [],
     incomePlans: [],
+    forecasts: [],
     ...overrides,
   };
 }

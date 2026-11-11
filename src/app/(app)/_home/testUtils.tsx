@@ -49,6 +49,7 @@ export function makeHarness(opts: { autoStart?: boolean; couple?: boolean } = {}
     restoreTimeoutMs: 20,
     // 기본은 예전 체험 예시(사람별 수입통장), couple 이면 부부 예시(월급통장 하나 · 사람별 생활비)
     demoCouple: opts.couple ?? false,
+    demoHistory: false,
   };
   function Wrapper({ children }: { children: ReactNode }) {
     return (

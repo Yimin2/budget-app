@@ -18,6 +18,19 @@ describe('LocalBackend (메모리 저장소)', () => {
     expect(backend.list()).toEqual([ref]);
   });
 
+  it('예측기록이 없던 예전 저장본은 빈 배열로 읽고, 쓰면 더해져요', async () => {
+    const storage = createMemoryStorage();
+    const b = new LocalBackend(storage);
+    const ref = await b.create(sampleLedger());
+    const raw = JSON.parse(storage.getItem(localStorageKey(ref.id))!);
+    delete raw.forecasts;
+    storage.setItem(localStorageKey(ref.id), JSON.stringify(raw));
+    const repo = b.open(ref);
+    expect((await repo.load()).forecasts).toEqual([]);
+    await repo.insert('forecasts', [sampleLedger().forecasts[0]!]);
+    expect((await repo.load()).forecasts).toEqual([sampleLedger().forecasts[0]]);
+  });
+
   it('load 결과를 고쳐도 저장본은 바뀌지 않는다', async () => {
     const ref = await backend.create(sampleLedger());
     const repo = backend.open(ref);

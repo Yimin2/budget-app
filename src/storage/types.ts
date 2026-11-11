@@ -1,6 +1,6 @@
 import type { SharingList } from '@/domain/members';
 import type {
-  Account, AllocationRule, Category, Expense, Favorite, FixedExpense, LedgerData, LedgerKind,
+  Account, AllocationRule, Category, Expense, Favorite, FixedExpense, ForecastSnapshot, LedgerData, LedgerKind,
   IncomePlan, LedgerSettings, Member, MonthEnd, PlannedEvent, Transfer, Trip,
 } from '@/domain/types';
 
@@ -17,6 +17,7 @@ export interface TableRows {
   members: Member; // 키 = email
   trips: Trip;
   incomePlans: IncomePlan;
+  forecasts: ForecastSnapshot;
 }
 export type TableName = keyof TableRows;
 

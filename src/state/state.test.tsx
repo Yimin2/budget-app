@@ -34,6 +34,7 @@ function setup(opts: { storage?: KeyValueStorage; ledgerStorage?: KeyValueStorag
     storage: sessionStorage,
     restoreTimeoutMs: 50,
     demoCouple: false,
+    demoHistory: false,
   };
   const wrapper = ({ children }: { children: ReactNode }) => <AppProviders deps={deps}>{children}</AppProviders>;
   const hook = renderHook(() => ({ session: useSession(), ledger: useLedger() }), { wrapper });

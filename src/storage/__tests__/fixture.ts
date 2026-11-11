@@ -66,5 +66,9 @@ export function sampleLedger(): LedgerData {
       { id: 'ip1', personName: '민지', personEmail: 'minji@example.com', amount: 3000000, dayOfMonth: 21, accountId: 'a-inc', startMonth: '2026-11', endMonth: null, memo: '', deleted: false },
       { id: 'ip2', personName: '준호', personEmail: null, amount: 2000000, dayOfMonth: 31, accountId: 'a-inc', startMonth: '2026-01', endMonth: '2026-10', memo: '보너스 제외', deleted: true },
     ],
+    forecasts: [
+      { id: 'forecast:2026-10:2026-10', recordedMonth: '2026-10', targetMonth: '2026-10', expected: -200000, low: -100000, high: -350000, inflow: 500000, outflow: 700000, recordedAt: '2026-10-01T00:00:00.000Z', deleted: false },
+      { id: 'forecast:2026-10:2026-11', recordedMonth: '2026-10', targetMonth: '2026-11', expected: 150000, low: null, high: null, inflow: null, outflow: null, recordedAt: '2026-10-01T00:00:00.000Z', deleted: false },
+    ],
   };
 }

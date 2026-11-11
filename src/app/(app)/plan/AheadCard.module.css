@@ -490,3 +490,149 @@
 .upShort:not(.upOn) {
   border-color: var(--danger-border);
 }
+
+/* ───────── 지난 달 실제 잔액 (회색 막대) · 예측 기록 표시 ───────── */
+/* 폰: 칸이 좁아지지 않게 최소 폭을 두고 가로로 밀어요 */
+.scroller {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+@media (max-width: 767.98px) {
+  .bars.withPast {
+    min-width: calc(var(--n) * 30px);
+  }
+}
+.past .barPos,
+.past .barNeg {
+  background: color-mix(in srgb, var(--chart-6) 55%, transparent);
+}
+.past .negLabel {
+  color: var(--text-muted);
+}
+.past .monthNum {
+  color: var(--text-muted);
+}
+.col.past.short .monthNum {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+/* 지난 달과 앞으로 달 사이 */
+.firstAhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-left: 1px dashed var(--border-strong);
+  pointer-events: none;
+}
+.swatch.pastSwatch {
+  background: color-mix(in srgb, var(--chart-6) 55%, transparent);
+}
+.mark {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  height: 0;
+  border-top: 2px dotted var(--text);
+  pointer-events: none;
+  z-index: 2;
+}
+.markFaint {
+  border-top-style: dashed;
+  border-top-color: var(--text-muted);
+  opacity: 0.5;
+}
+.markSwatch {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 2px dotted var(--text);
+}
+.markSwatch.prevSwatch {
+  border-top-style: dashed;
+  border-top-color: var(--text-muted);
+  opacity: 0.6;
+}
+/* 고른 달 맨 위 합계 */
+.totalBox {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.totalTitle {
+  margin: 0;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.totalSub {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.groupTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.groupAmount {
+  font-variant-numeric: tabular-nums;
+}
+.groupNote {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.inlineLink {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  color: var(--primary-text);
+  white-space: nowrap;
+}
+.inlineLink:hover {
+  text-decoration: underline;
+}
+.upHead {
+  font-weight: 800;
+}
+/* 지난 달 예상과 견주기 */
+.compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.compareHead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.compareSub {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

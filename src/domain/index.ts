@@ -38,3 +38,5 @@ export * from './usualBreakdown';
 export * from './budgetMonth';
 export * from './suggestions';
 export * from './stats';
+export * from './pastBalances';
+export * from './forecastSnapshots';

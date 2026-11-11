@@ -30,11 +30,12 @@ export const TAB_NAMES: Record<TableName, string> = {
   members: '멤버',
   trips: '여행',
   incomePlans: '수입계획',
+  forecasts: '예측기록',
 };
 
 export const TABLE_NAMES: TableName[] = [
   'accounts', 'rules', 'transfers', 'fixedExpenses', 'events', 'expenses',
-  'monthEnds', 'categories', 'favorites', 'members', 'trips', 'incomePlans',
+  'monthEnds', 'categories', 'favorites', 'members', 'trips', 'incomePlans', 'forecasts',
 ];
 
 /** 시트 탭 순서 (설정이 맨 앞) */
@@ -599,6 +600,16 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('amount', '금액', int), c('dayOfMonth', '입금일', int, ['받는날']), c('accountId', '통장', str, ['받는통장']),
       c('startMonth', '시작월', month), c('endMonth', '종료월', optMonth), c('memo', '메모', str),
       c('deleted', '삭제됨', bool, ['삭제']),
+    ],
+  },
+  // 예측 기록 (PLAN 4-2): (기록한달, 대상달) 마다 한 줄, id = forecast:<기록한달>:<대상달>. 앱은 덮어쓰지 않아요
+  forecasts: {
+    table: 'forecasts', tab: TAB_NAMES.forecasts, key: 'id',
+    columns: [
+      c('id', 'id', str), c('recordedMonth', '기록한달', month, ['기록월']), c('targetMonth', '대상달', month, ['대상월']),
+      c('expected', '예상잔액', int, ['보통쓰면']), c('low', '아끼면', optInt), c('high', '많이쓰면', optInt),
+      c('inflow', '예상들어올돈', optInt), c('outflow', '예상나갈돈', optInt),
+      c('recordedAt', '기록일시', optTs), c('deleted', '삭제됨', bool, ['삭제']),
     ],
   },
 };

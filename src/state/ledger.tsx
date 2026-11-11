@@ -81,6 +81,7 @@ import {
   pendingClaims,
   pendingMonthEnd as pendingMonthEndDomain,
   projectEventAccount,
+  pendingSnapshot,
   suggestShortageFixes,
   summarizeClaims,
   toISODate,
@@ -554,6 +555,41 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     [setNotice],
   );
 
+  /** 예측 기록을 쓰는 중이거나 쓴 (가계부:달). 같은 달을 두 번 쓰지 않게 */
+  const snapshotKeys = useRef(new Set<string>());
+
+  /**
+   * 예측 기록 (PLAN 4-2 · 5장 예측기록): 구글 시트 가계부를 불러온 뒤, 이번 달 기록이 없으면 이번 달 + 다음 11개월 예측을 써요.
+   * 화면을 기다리게 하지 않아요 (불러오기가 끝난 뒤 따로). 이미 있으면 쓰지 않고(그달 처음 것이 기록), 실패하면 조용히 남기고 다음에 열 때 다시 써요
+   */
+  const saveForecastSnapshot = useCallback(
+    (repo: LedgerRepository, loaded: LedgerData, day: ISODate) => {
+      if (repo.ref.source !== 'sheets') return;
+      const key = `${repo.ref.id}:${monthOf(day)}`;
+      if (snapshotKeys.current.has(key)) return;
+      const rows = pendingSnapshot(loaded, projectEventAccount(loaded, day), day, nowIso());
+      if (rows.length === 0) return;
+      snapshotKeys.current.add(key);
+      const entry: PendingWrite = { apply: (d) => ({ ...d, forecasts: insertIn(d.forecasts ?? [], rows) }), doneAt: null };
+      void repo
+        .insert('forecasts', rows)
+        .then(() => {
+          entry.doneAt = ++clock.current;
+          writes.current.push(entry);
+          const shown = dataRef.current;
+          if (!shown || shown.repo !== repo || repoRef.current !== repo) return;
+          const next = entry.apply(shown.data);
+          setDataBoth(next);
+          saveCache(repo, next, syncRef.current.syncedAt);
+        })
+        .catch((e: unknown) => {
+          snapshotKeys.current.delete(key);
+          console.warn('예측 기록을 남기지 못했어요', e);
+        });
+    },
+    [nowIso, setDataBoth, saveCache],
+  );
+
   const loadAll = useCallback(async () => {
     const repo = repoRef.current;
     if (!repo) return;
@@ -573,6 +609,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
       lastFailure.current = null;
       setDataBoth(merged, { syncedAt: at, fromCache: false, offline: false });
       saveCache(repo, merged, at);
+      saveForecastSnapshot(repo, merged, todayRef.current);
     } catch (e) {
       if (token !== loadToken.current || repo !== repoRef.current) return;
       const reconnect = isReconnectError(e);
@@ -593,7 +630,7 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingCount((n) => n - 1);
     }
-  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, syncAutoRecords, withPendingWrites]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, syncAutoRecords, withPendingWrites, saveForecastSnapshot]);
   const loadAllRef = useRef(loadAll);
   useEffect(() => {
     loadAllRef.current = loadAll;

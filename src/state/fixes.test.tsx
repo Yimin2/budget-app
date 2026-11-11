@@ -65,6 +65,7 @@ function setup() {
     storage: createMemoryStorage(),
     restoreTimeoutMs: 50,
     demoCouple: false,
+    demoHistory: false,
   };
   const wrapper = ({ children }: { children: ReactNode }) => <AppProviders deps={deps}>{children}</AppProviders>;
   const hook = renderHook(() => ({ session: useSession(), ledger: useLedger() }), { wrapper });
@@ -275,7 +276,7 @@ describe('google: forceRefresh and reconnect', () => {
         updateSettings: async () => {},
       }),
     } as unknown as LedgerBackend;
-    const deps: Partial<StateDeps> = { google: { ...fakeGoogle(), reconnect }, local: new LocalBackend(createMemoryStorage()), sheets, now: () => new Date(2026, 10, 20), storage, restoreTimeoutMs: 10, demoCouple: false };
+    const deps: Partial<StateDeps> = { google: { ...fakeGoogle(), reconnect }, local: new LocalBackend(createMemoryStorage()), sheets, now: () => new Date(2026, 10, 20), storage, restoreTimeoutMs: 10, demoCouple: false, demoHistory: false };
     const wrapper = ({ children }: { children: ReactNode }) => <AppProviders deps={deps}>{children}</AppProviders>;
     const r = renderHook(() => ({ session: useSession(), ledger: useLedger() }), { wrapper });
     await waitFor(() => expect(r.result.current.ledger.status).toBe('error'));

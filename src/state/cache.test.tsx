@@ -95,6 +95,7 @@ async function setup(opts: { cached?: LedgerData | null; load?: LoadMode; storeE
     storage,
     restoreTimeoutMs: 10,
     demoCouple: false,
+    demoHistory: false,
     cache,
   };
   const probe: Setup['probe'] = { current: null };
@@ -306,6 +307,7 @@ describe('체험 · 브라우저 저장 가계부', () => {
       storage: createMemoryStorage(),
       restoreTimeoutMs: 10,
       demoCouple: false,
+      demoHistory: false,
       cache: new LedgerCache(store),
     };
     const probe: { current: { ledger: LedgerApi; session: SessionApi } | null } = { current: null };
