@@ -5,7 +5,7 @@ import { livingOwnerName } from './household';
 import { floorTo100, formatWon } from './money';
 import { isEveryDay, scheduleOf, useDayPlan, WEEKDAY_LONG, weekdayOf, weeklyPlan } from './schedule';
 import type {
-  Category, FixedExpense, Id, ISODate, LedgerData, LivingItem, LivingSchedule, LivingSpread, LivingStatus, MonthEndItem, YearMonth, Won,
+  Category, Expense, FixedExpense, Id, ISODate, LedgerData, LivingItem, LivingSchedule, LivingSpread, LivingStatus, MonthEndItem, YearMonth, Won,
 } from './types';
 
 /** 예산 행 없이 지출만 있는 생활비 묶음 이름 */
@@ -399,6 +399,26 @@ export function findLivingItem(living: LivingStatus, categoryId: Id | null): Liv
     if (hit) return hit;
   }
   return living.items.find((i) => i.categoryId === null) ?? null;
+}
+
+/**
+ * 생활비 항목 하나에 들어간 이번 달 지출 (새것부터). computeLiving 이 그 항목의 쓴 돈에 더한 지출과 똑같아요:
+ * 그 항목의 생활비 통장(item.accountId)에서 나간 생활비 지출 중, 카테고리 항목이면 그 카테고리,
+ * null 묶음이면 카테고리가 없거나 예산 항목이 없는 카테고리. 그래서 금액 합 = item.spent
+ * (사람별 생활비는 통장 주인으로 사람을 가르므로, 청구 지출도 그 통장에서 나갔으면 이 사람 몫이에요)
+ */
+export function livingItemExpenses(data: LedgerData, living: LivingStatus, item: LivingItem): Expense[] {
+  const accountId = item.accountId ?? living.livingAccountId;
+  const budgeted = new Set(living.items.flatMap((i) => (i.categoryId !== null ? [i.categoryId] : [])));
+  return livingExpenses(data, living.month, accountId ?? null)
+    .filter((e) =>
+      item.categoryId !== null ? e.categoryId === item.categoryId : e.categoryId === null || !budgeted.has(e.categoryId),
+    )
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+      return a.id < b.id ? 1 : -1;
+    });
 }
 
 /** 예전 방식의 '생활비' 한 줄(카테고리 없는 생활비 행)이 그달에 있는지 — 설정에서 항목으로 나누라고 안내 */

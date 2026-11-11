@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatWon } from '@/domain';
+import { formatWon, livingItemExpenses } from '@/domain';
 import { HomeView } from './HomeView';
 import { makeHarness } from './testUtils';
 
@@ -12,6 +12,17 @@ vi.mock('next/navigation', () => ({
 }));
 
 afterEach(cleanup);
+
+/** 항목별 생활비 카드의 펼치기 버튼: 글이 그 항목 이름으로 시작해요 */
+function itemToggle(card: HTMLElement, name: string): HTMLElement {
+  const btn = within(card)
+    .getAllByRole('button')
+    .find((b) => b.hasAttribute('aria-expanded') && (b.textContent ?? '').startsWith(name));
+  if (!btn) throw new Error(`항목 없음: ${name}`);
+  return btn;
+}
+/** 항목별 생활비 카드의 항목 한 줄(li) */
+const itemRow = (card: HTMLElement, name: string) => itemToggle(card, name).closest('li') as HTMLElement;
 
 async function renderHome(opts: { autoStart?: boolean } = {}) {
   const h = makeHarness(opts);
@@ -47,13 +58,19 @@ describe('HomeView — 체험 가계부', () => {
     const living = h.probe.ledger!.living!;
     const rows = within(card).getAllByRole('listitem');
     expect(rows).toHaveLength(living.items.length);
-    expect(within(card).getAllByRole('progressbar')).toHaveLength(living.items.length);
+    // 항목 한 줄 = 펼치기 버튼 (막대는 버튼 글과 같은 숫자라 화면 읽기에서 숨겨요)
+    expect(within(card).getAllByRole('button').filter((b) => b.getAttribute('aria-expanded') === 'false')).toHaveLength(living.items.length);
+    expect(card.querySelectorAll('.bar')).toHaveLength(living.items.length);
     const food = living.items.find((i) => i.name === '식비')!;
-    const foodRow = within(card).getByRole('progressbar', { name: '식비 사용' }).closest('li') as HTMLElement;
+    const foodRow = itemRow(card, '식비');
     expect(within(foodRow).getByText(formatWon(food.todayAvailable!))).toBeTruthy();
-    const shopRow = within(card).getByRole('progressbar', { name: '쇼핑 사용' }).closest('li') as HTMLElement;
+    const shopRow = itemRow(card, '쇼핑');
     expect(within(shopRow).getByText('한 달 한도')).toBeTruthy();
-    expect(within(card).getByRole('link', { name: /예산 바꾸기/ }).getAttribute('href')).toBe('/budget#st-living');
+    // 머리 링크는 예산이 아니라 이번 달 생활비 통장 내역 (예산 바꾸기는 예산 탭에서)
+    expect(within(card).queryByRole('link', { name: /예산 바꾸기/ })).toBeNull();
+    expect(within(card).getByRole('link', { name: /내역 보기/ }).getAttribute('href')).toBe(
+      `/history?month=2026-11&account=${living.livingAccountId}`,
+    );
   });
 
   it('하루 예산: 오늘 안 썼으면 써도 되는 돈만, 쓰면 오늘 쓴 돈과 함께, 넘으면 넘은 돈을 경고 색으로', async () => {
@@ -71,7 +88,7 @@ describe('HomeView — 체험 가계부', () => {
     let hero = screen.getByRole('region', { name: '오늘 써도 되는 돈' });
     expect(within(hero).queryByText(/오늘 쓴 돈/)).toBeNull();
     let card = screen.getByRole('region', { name: '항목별 생활비' });
-    const foodRow = () => within(card).getByRole('progressbar', { name: '식비 사용' }).closest('li') as HTMLElement;
+    const foodRow = () => itemRow(card, '식비');
     expect(within(foodRow()).queryByText(/오늘 쓴 돈/)).toBeNull();
     expect(within(foodRow()).getByText(/오늘 써도 되는 돈/)).toBeTruthy();
 
@@ -85,7 +102,7 @@ describe('HomeView — 체험 가계부', () => {
     const after = ledger().living!.items.find((i) => i.name === '식비')!;
     expect(foodRow().textContent).toContain(`오늘 쓴 돈 ${formatWon(3_000)}·써도 되는 돈 ${formatWon(after.todayAvailable!)}`);
     // 다른 하루 항목(카페)은 안 썼으니 '오늘 써도 되는 돈'만
-    const cafeRow = within(card).getByRole('progressbar', { name: '카페 사용' }).closest('li') as HTMLElement;
+    const cafeRow = itemRow(card, '카페');
     expect(within(cafeRow).queryByText(/오늘 쓴 돈/)).toBeNull();
 
     // 넘으면 '오늘 ○원 넘었어요' (경고 색)
@@ -353,5 +370,87 @@ describe('HomeView — 이번 달 쓴 돈 (부부 예시)', () => {
     fireEvent.click(screen.getByRole('radio', { name: '준호' }));
     const his = await screen.findByRole('region', { name: '이번 달 쓴 돈 · 준호' });
     expect(within(his).getByRole('link', { name: /고정비/ }).textContent).toContain('83.5만 / 83.5만 · 남은 결제 없어요');
+  });
+});
+
+describe('HomeView — 항목별 생활비 펼쳐 보기 (부부 예시)', () => {
+  const MINJI = 'demo-acc-living-minji';
+  const amountOf = (b: HTMLElement) => Number((b.getAttribute('aria-label') ?? '').match(/([\d,]+)원 고치기$/)![1]!.replace(/,/g, ''));
+
+  async function renderCouple() {
+    const h = makeHarness({ couple: true });
+    await act(async () => {
+      render(<HomeView />, { wrapper: h.Wrapper });
+    });
+    const card = await screen.findByRole('region', { name: '항목별 생활비 · 민지' });
+    return { h, card };
+  }
+
+  it('머리 링크는 민지 생활비 통장의 이번 달 내역, 예산 바꾸기는 없어요', async () => {
+    const { card } = await renderCouple();
+    expect(within(card).queryByRole('link', { name: /예산/ })).toBeNull();
+    expect(within(card).getByRole('link', { name: /내역 보기/ }).getAttribute('href')).toBe(`/history?month=2026-11&account=${MINJI}`);
+  });
+
+  it('항목을 누르면 창 없이 그 아래로 이번 달 지출(새것부터)이 펼쳐지고, 합 = 카드의 쓴 돈. 여러 개를 함께 펼치고 다시 누르면 접혀요', async () => {
+    const { h, card } = await renderCouple();
+    const view = h.probe.ledger!.livingViews.find((v) => v.accountId === MINJI)!;
+    const food = view.status.items.find((i) => i.name === '식비')!;
+    const cafe = view.status.items.find((i) => i.name === '카페')!;
+    const foodBtn = itemToggle(card, '식비');
+    expect(foodBtn.tagName).toBe('BUTTON');
+    expect(foodBtn.getAttribute('aria-expanded')).toBe('false');
+    expect(foodBtn.hasAttribute('aria-controls')).toBe(false);
+
+    fireEvent.click(foodBtn);
+    expect(foodBtn.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const panel = document.getElementById(foodBtn.getAttribute('aria-controls')!)!;
+    expect(panel.getAttribute('aria-label')).toBe('이번 달 식비 지출');
+    const expected = livingItemExpenses(h.probe.ledger!.data!, view.status, food);
+    expect(expected.length).toBeGreaterThan(0);
+    const rows = within(panel).getAllByRole('button', { name: /고치기$/ });
+    expect(rows).toHaveLength(expected.length);
+    // 합 = 카드에 보이는 식비 쓴 돈
+    const total = rows.reduce((s, b) => s + amountOf(b), 0);
+    expect(total).toBe(food.spent);
+    expect(itemRow(card, '식비').textContent).toContain(`${food.spent.toLocaleString('ko-KR')} / `);
+    // 새것부터
+    expect(rows[0]!.getAttribute('aria-label')).toContain(expected[0]!.amount.toLocaleString('ko-KR'));
+    expect(expected.map((e) => e.date)).toEqual([...expected.map((e) => e.date)].sort().reverse());
+    // 남은 돈 한 줄 · 식비 내역 전체 보기
+    expect(panel.textContent).toContain(`이번 달 남은 돈 ${formatWon(food.remaining)}`);
+    expect(panel.textContent).toContain(`${view.status.daysLeft}일 남음`);
+    expect(within(panel).getByRole('link', { name: /식비 내역 전체 보기/ }).getAttribute('href')).toBe(
+      `/history?month=2026-11&account=${MINJI}&category=${food.categoryId}`,
+    );
+
+    // 카페도 함께 펼쳐요
+    const cafeBtn = itemToggle(card, '카페');
+    fireEvent.click(cafeBtn);
+    expect(foodBtn.getAttribute('aria-expanded')).toBe('true');
+    expect(cafeBtn.getAttribute('aria-expanded')).toBe('true');
+    const cafePanel = document.getElementById(cafeBtn.getAttribute('aria-controls')!)!;
+    const cafeRows = within(cafePanel).queryAllByRole('button', { name: /고치기$/ });
+    expect(cafeRows.reduce((s, b) => s + amountOf(b), 0)).toBe(cafe.spent);
+
+    // 다시 누르면 접혀요
+    fireEvent.click(foodBtn);
+    expect(foodBtn.getAttribute('aria-expanded')).toBe('false');
+    expect(document.getElementById(panel.id)).toBeNull();
+    expect(cafeBtn.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('펼친 지출을 누르면 내역과 같은 지출 고치기 창이 그 지출로 열려요', async () => {
+    const { h, card } = await renderCouple();
+    const view = h.probe.ledger!.livingViews.find((v) => v.accountId === MINJI)!;
+    const food = view.status.items.find((i) => i.name === '식비')!;
+    const first = livingItemExpenses(h.probe.ledger!.data!, view.status, food)[0]!;
+    fireEvent.click(itemToggle(card, '식비'));
+    const row = within(card).getAllByRole('button', { name: /고치기$/ })[0]!;
+    fireEvent.click(row);
+    const dialog = await screen.findByRole('dialog', { name: '지출 고치기' });
+    expect((within(dialog).getByLabelText(/^금액/) as HTMLInputElement).value.replace(/,/g, '')).toBe(String(first.amount));
+    expect((within(dialog).getByLabelText(/통장/) as HTMLSelectElement).value).toBe(MINJI);
   });
 });
