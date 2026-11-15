@@ -95,7 +95,7 @@ describe('EventsView — 체험 가계부', () => {
     expect(within(chart).getByRole('heading', { level: 3, name: '11월 · 이번 달' })).toBeTruthy();
     fireEvent.click(within(months).getByRole('button', { name: '2027년 4월 자세히 보기' }));
     expect(within(chart).getByTestId('ahead-month-status').textContent).toBe('2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날');
-    expect(within(chart).getByRole('list', { name: '2027년 4월 나갈 돈' }).querySelectorAll('li')).toHaveLength(5);
+    expect(within(chart).getByRole('list', { name: '2027년 4월 쓸 돈' }).querySelectorAll('li')).toHaveLength(5);
 
     // 화면 읽기용 표
     const table = screen.getByRole('table');
@@ -114,14 +114,15 @@ describe('EventsView — 체험 가계부', () => {
     const months = within(chart).getByRole('group', { name: '달 고르기' });
     fireEvent.click(within(months).getByRole('button', { name: '2027년 2월 자세히 보기' }));
     expect(within(chart).getByRole('heading', { level: 3, name: '2027년 2월' })).toBeTruthy();
-    const list = within(chart).getByRole('list', { name: '2027년 2월 나갈 돈' });
+    // 여행 남은 예산은 쓸 돈 합계에 넣지 않고 '합계에 안 넣은 돈'에 (여행 화면 링크)
+    const list = within(chart).getByRole('list', { name: '2027년 2월 합계에 안 넣은 돈' });
     expect(within(list).getByRole('link', { name: '제주 여행' }).getAttribute('href')).toBe('/plan/trips?id=demo-trip-jeju');
     expect(within(chart).getByTestId('ahead-inflow').textContent).toMatch(/^달 시작 잔액 .+ · 적립 \+30만$/);
     expect(within(chart).getAllByText('달 말 예상 잔액').length).toBeGreaterThan(0);
 
     fireEvent.click(within(chart).getByRole('button', { name: '다음 달' }));
     expect(within(chart).getByRole('heading', { level: 3, name: '2027년 3월' })).toBeTruthy();
-    expect(within(chart).getByText('이 달에는 나갈 돈이 없어요')).toBeTruthy();
+    expect(within(chart).getByText('이 달에 쓸 돈은 없어요')).toBeTruthy();
 
     // 키보드: 왼쪽 화살표로 앞 달
     const march = within(months).getByRole('button', { name: '2027년 3월 자세히 보기' });

@@ -29,7 +29,7 @@ const eventCat = (L: ReturnType<typeof makeHarness>['probe']['ledger']) =>
   L!.data!.categories.find((c) => !c.deleted && c.defaultAccountRole === 'event')!.id;
 
 describe('숫자 띠', () => {
-  it('네 칸: 이벤트통장 잔액 · 이번 달 나갈 돈(12개월 카드 이번 달과 같은 셈) · 정산 · 가장 모자라는 달, 늘 펼쳐 있어요', async () => {
+  it('네 칸: 이벤트통장 잔액 · 이번 달 쓴 돈(지난 청구 돌려주기 빼고) · 정산 · 처음 모자라는 달, 늘 펼쳐 있어요', async () => {
     const { strip, L } = await renderStrip();
     expect(strip.getAttribute('data-testid')).toBe('kpi-strip');
     // 접는 버튼이 없어요
@@ -37,18 +37,12 @@ describe('숫자 띠', () => {
     // 시작 600,000 + 적립 300,000 − 제주 여행 숙소 예약금 150,000 (이번 달 적립은 이미 들어왔어요)
     expect(within(strip).getByTestId('kpi-balance').textContent).toBe('이벤트통장 잔액75만매달 30만 적립');
 
-    const p = L().eventProjection!;
-    const now = p.months[0]!;
-    const t = aheadTotals(now);
-    const spent = spentSoFarThisMonth(L().data!, p.accountId!, L().today);
+    // 이번 달 쓴 돈 = 이번 달 날짜로 쓴 이벤트 지출 + 예정 (여행 빼고, 지난 청구 돌려주기는 넣지 않아요)
+    const u0 = eventMonthUsage(L().data!, L().settlement!, L().today);
     const spend = within(strip).getByTestId('kpi-spend');
-    expect(spend.textContent).toContain(`이번 달 나갈 돈${formatManShort(spent + t.total)}`);
-    expect(spend.textContent).toContain(`이미 ${formatManShort(spent)} · 앞으로 ${formatManShort(t.total)}`);
-    expect(t.repay).toBe(300_000);
-    expect(spend.textContent).toContain('(돌려주기 30만)');
-    // 12개월 카드 이번 달 합계와 같아요
-    fireEvent.click(within(screen.getByRole('group', { name: '달 고르기' })).getByRole('button', { name: '11월 (이번 달) 자세히 보기' }));
-    expect(within(screen.getByTestId('ahead-total')).getByText(`이번 달 나갈 돈 ${formatManShort(spent + t.total)}`)).toBeTruthy();
+    expect(spend.textContent).toContain(`이번 달 쓴 돈${formatManShort(u0.spent + u0.planned)}`);
+    expect(spend.textContent).toContain(`지금까지 ${formatManShort(u0.spent)} · 예정 ${formatManShort(u0.planned)}`);
+    expect(spend.textContent).not.toContain('돌려주기');
     const usage = eventMonthUsage(L().data!, L().settlement!, L().today);
     const trip = usage.tripSpent + usage.tripPlanned;
     if (trip > 0) expect(within(spend).getByTestId('kpi-trip').textContent).toBe(`여행 ${formatManShort(trip)}`);
@@ -62,19 +56,19 @@ describe('숫자 띠', () => {
     expect(within(strip).queryByRole('checkbox')).toBeNull();
     expect(within(strip).queryByRole('button', { name: /지급했어요/ })).toBeNull();
 
-    const short = within(strip).getByRole('button', { name: /가장 모자라는 달/ });
+    const short = within(strip).getByRole('button', { name: /처음 모자라는 달/ });
     expect(short.textContent).toContain('2027년 4월 −30만');
     expect(short.textContent).toContain('300,000원 모자라요');
   });
 
-  it('가장 모자라는 달을 누르면 12개월 카드에서 그 달을 고르고 그 카드로 스크롤해요', async () => {
+  it('처음 모자라는 달을 누르면 12개월 카드에서 그 달을 고르고 그 카드로 스크롤해요', async () => {
     const { strip } = await renderStrip();
     const scroll = vi.fn();
     document.getElementById('ahead')!.scrollIntoView = scroll;
     const months = screen.getByRole('group', { name: '달 고르기' });
     fireEvent.click(within(months).getByRole('button', { name: '2027년 2월 자세히 보기' }));
     expect(within(months).getByRole('button', { name: '2027년 4월 자세히 보기' }).getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(within(strip).getByRole('button', { name: /가장 모자라는 달/ }));
+    fireEvent.click(within(strip).getByRole('button', { name: /처음 모자라는 달/ }));
     expect(within(months).getByRole('button', { name: '2027년 4월 자세히 보기' }).getAttribute('aria-pressed')).toBe('true');
     expect(within(screen.getByRole('region', { name: '앞으로 12개월' })).getByRole('heading', { level: 3, name: '2027년 4월' })).toBeTruthy();
     expect(scroll).toHaveBeenCalled();
@@ -85,8 +79,8 @@ describe('숫자 띠', () => {
     await act(async () => {
       await L().applyFromReservoir(L().shortageFix!.fromReservoir!);
     });
-    await waitFor(() => expect(within(strip).getByTestId('kpi-short').textContent).toBe('가장 모자라는 달12개월 동안 모자라는 달 없어요'));
-    expect(within(strip).queryByRole('button', { name: /가장 모자라는 달/ })).toBeNull();
+    await waitFor(() => expect(within(strip).getByTestId('kpi-short').textContent).toBe('모자라는 달12개월 동안 모자라는 달 없어요'));
+    expect(within(strip).queryByRole('button', { name: /모자라는 달/ })).toBeNull();
   });
 
   it('매달 적립액을 바꾸면 잔액 칸 아래 줄도 바뀌어요', async () => {

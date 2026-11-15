@@ -19,7 +19,7 @@ import { useLedger } from '@/state';
 import { Badge, Button, Icon, cx } from '@/ui';
 import { SETTLE_HREF } from '../_components/SettlementCard';
 import { LOAN_HREF, hasLoanLine, useLoanActions } from './LoanLine';
-import { aheadTotals, monthLabel, nextContribution, settleTileText, worstShortMonth } from './selectors';
+import { aheadTotals, firstShortMonth, monthLabel, nextContribution, settleTileText, worstShortMonth } from './selectors';
 import styles from './KpiStrip.module.css';
 
 export interface KpiStripProps {
@@ -34,10 +34,10 @@ export interface KpiStripProps {
 /**
  * 이벤트 화면 맨 위 숫자 띠 (PLAN 4-2 · 4-9). 넓은 화면은 네 칸 한 줄, 폰은 2×2. 늘 펼쳐 있어요 (접기 없음).
  * ① 이벤트통장 잔액 + '21일 +30만 들어와요'(정산일까지 들어올 돈) 또는 '매달 30만 적립'
- * ② 이번 달 나갈 돈 (12개월 카드의 이번 달 합계와 같은 셈) + '이미 ○ · 앞으로 ○ (돌려주기 ○)' · 이번 달 여행이 있으면 '여행 ○'
- * ③ '11/21 정산 32.4만' + [정산하기 →] (#settlement). 줄 돈이 없으면 '정산할 돈 없어요'.
+ * ② 이번 달 쓴 돈 = 이번 달 날짜로 쓴 이벤트 지출(지금까지) + 이번 달 예정 (여행 빼고, 지난 청구 돌려주기는 정산 칸에서) + '지금까지 ○ · 예정 ○' · 이번 달 여행이 있으면 '여행 ○'
+ * ③ '11/21 정산 32.4만'(이번에 실제로 줄 돈, 넘어가는 돈은 아래 '못 준 돈' 배지) + [정산하기 →] (#settlement). 줄 돈이 없으면 '정산할 돈 없어요'.
  *    저수지 갚을 돈이 있으면 작은 줄 + 그 자리 [갚았어요] / [되돌리기]. 이벤트통장이 음수면 '이벤트통장이 ○ 모자라요'
- * ④ 가장 모자라는 달 '4월 −30만'(경고 색, 누르면 12개월 카드에서 그 달) 또는 '12개월 동안 모자라는 달 없어요'
+ * ④ 처음 모자라는 달 '1월 −10.5만' + '가장 많이 10월 −613만'(경고 색, 누르면 12개월 카드에서 그 달) 또는 '12개월 동안 모자라는 달 없어요'
  */
 export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: KpiStripProps) {
   const ledger = useLedger();
@@ -53,6 +53,7 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
   const next = nextContribution(projection);
   const settle = settleTileText(usage, sum, s?.date ?? today);
   const short = s ? shortfallText(s) : null;
+  const first = firstShortMonth(projection);
   const worst = worstShortMonth(projection);
   const month = Number(today.slice(5, 7));
 
@@ -61,7 +62,10 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
       ? `${Number(s.incomingOn.slice(8))}일 +${formatManShort(s.incoming)} 들어와요`
       : `매달 ${formatManShort(projection.monthlyContribution)} 적립${next !== null ? ` · 다음 달부터 ${formatManShort(next)}` : ''}`;
 
-  const spendSub = `이미 ${formatManShort(spentSoFar)} · 앞으로 ${formatManShort(totals.total)}${totals.repay > 0 ? ` (돌려주기 ${formatManShort(totals.repay)})` : ''}`;
+  // 이번 달 쓴 돈 = 이번 달 날짜로 쓴 이벤트 지출(지금까지) + 이번 달 예정. 지난달에 쓴 청구를 돌려주는 돈은 넣지 않아요 (정산 칸에서 따로)
+  const usedNow = usage ? usage.spent : spentSoFar;
+  const usedPlanned = usage ? usage.planned : totals.spend;
+  const spendSub = `지금까지 ${formatManShort(usedNow)} · 예정 ${formatManShort(usedPlanned)}`;
 
   return (
     <section className={styles.strip} aria-labelledby={titleId} data-testid="kpi-strip">
@@ -75,8 +79,8 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
       </div>
 
       <div className={styles.tile} data-testid="kpi-spend">
-        <span className={styles.label}>이번 달 나갈 돈</span>
-        <strong className={styles.value}>{formatManShort(spentSoFar + totals.total)}</strong>
+        <span className={styles.label}>이번 달 쓴 돈</span>
+        <strong className={styles.value}>{formatManShort(usedNow + usedPlanned)}</strong>
         <span className={cx(styles.sub, styles.subOneLine)} title={spendSub}>
           {spendSub}
         </span>
@@ -100,7 +104,7 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
           </span>
         ) : null}
         {settle.carry ? (
-          <Badge tone="warning" variant="soft" size="sm" dot={false} data-testid="settlement-carry">
+          <Badge tone="warning" variant="soft" size="sm" dot={false} className={styles.carry} data-testid="settlement-carry">
             {settle.carry}
           </Badge>
         ) : null}
@@ -117,20 +121,22 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
         <LoanMini repayMonths={repayMonths} />
       </div>
 
-      {worst ? (
-        <button type="button" className={cx(styles.tile, styles.tileButton, styles.warnTile)} onClick={() => onPickMonth(worst.month)} data-testid="kpi-short">
-          <span className={styles.label}>가장 모자라는 달</span>
+      {first ? (
+        <button type="button" className={cx(styles.tile, styles.tileButton, styles.warnTile)} onClick={() => onPickMonth(first.month)} data-testid="kpi-short">
+          <span className={styles.label}>처음 모자라는 달</span>
           <strong className={styles.value}>
-            {monthLabel(worst.month, today)} −{formatManShort(-worst.endBalance)}
+            {monthLabel(first.month, today)} −{formatManShort(-first.endBalance)}
           </strong>
           <span className={styles.sub}>
-            12개월 카드에서 보기
-            <span className="sr-only"> ({formatWon(-worst.endBalance)} 모자라요)</span>
+            {worst && worst.month !== first.month
+              ? `가장 많이 ${monthLabel(worst.month, today)} −${formatManShort(-worst.endBalance)}`
+              : '12개월 카드에서 보기'}
+            <span className="sr-only"> ({formatWon(-first.endBalance)} 모자라요)</span>
           </span>
         </button>
       ) : (
         <div className={cx(styles.tile, styles.okTile)} data-testid="kpi-short">
-          <span className={styles.label}>가장 모자라는 달</span>
+          <span className={styles.label}>모자라는 달</span>
           <strong className={cx(styles.value, styles.valueText)}>
             <Icon name="check-circle" size={18} />
             {projection.months.length}개월 동안 모자라는 달 없어요

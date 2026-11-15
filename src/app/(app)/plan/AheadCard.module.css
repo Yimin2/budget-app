@@ -799,3 +799,32 @@
 .spentCol .monthNum {
   color: var(--text-muted);
 }
+/* ───────── 쓴 돈 줄의 정산 상태 배지 · 아래 잔액 묶음 ───────── */
+.badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}
+/* 그달 쓴 돈 · 쓸 돈 아래, 통장 잔액 쪽 숫자는 작게 한 묶음으로 */
+.balance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+}
+.balanceTitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.calcCompact .calcRow {
+  font-size: 14px;
+  line-height: 20px;
+}

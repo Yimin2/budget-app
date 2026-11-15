@@ -178,3 +178,15 @@
     gap: var(--space-3);
   }
 }
+
+/* '못 준 돈 87.6만 → 다음 달 (민구 66.9만 · 기쁜 20.7만)' 배지가 칸 밖으로 넘치지 않게 줄바꿈 */
+.carry {
+  max-width: 100%;
+  white-space: normal;
+  height: auto;
+  line-height: 1.4;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  align-self: flex-start;
+  text-align: left;
+}
