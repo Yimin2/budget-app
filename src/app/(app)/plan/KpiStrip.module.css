@@ -47,6 +47,13 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.subOneLine {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
 .link {
   display: inline-flex;
   align-items: center;

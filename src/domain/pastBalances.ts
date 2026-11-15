@@ -5,6 +5,7 @@
  */
 import { accountBalance, expenseBalanceAccountId, isCountedTransfer } from './balances';
 import { addDays, addMonths, compareMonth, dateInMonth, daysInMonth, isValidDate, monthOf, monthRange } from './dates';
+import { eventRecordGroup, eventRecordNames, eventRecords, EventMonthBucket, type EventMonthItem } from './eventRecords';
 import type { Id, ISODate, LedgerData, Won, YearMonth } from './types';
 
 /** 지난 달 막대 기본 개수 */
@@ -89,4 +90,60 @@ export function pastMonthEnds(data: LedgerData, accountId: Id, today: ISODate, c
 /** 이번 달 1일부터 오늘까지 통장에서 이미 나간 돈 (이체 나감 + 지출) */
 export function spentSoFarThisMonth(data: LedgerData, accountId: Id, today: ISODate): Won {
   return accountFlow(data, accountId, dateInMonth(monthOf(today), 1), today).outflow;
+}
+
+/**
+ * 통장 시작 전 달: 들어온 기록이 없어 잔액을 되살릴 수 없으니, 그달 이벤트통장에서 쓴 돈만 (PLAN 4-2).
+ * 노션 등에서 가져온 지난 지출이 통장 시작일보다 앞서 있을 때
+ */
+export interface SpentOnlyMonth {
+  month: YearMonth;
+  kind: 'spentOnly';
+  /** 그달 쓴 돈 (쓴 날 기준, 저수지에서 빌려 낸 이벤트 청구 포함) */
+  spent: Won;
+  /** 기록 건수 */
+  count: number;
+  /** eventRecordGroup 으로 묶은 줄 (금액 큰 순) */
+  items: EventMonthItem[];
+}
+
+/** 지난 달 막대 한 칸: 잔액을 아는 달(kind 'balance') 또는 통장 시작 전 쓴 돈만 아는 달 */
+export type PastBar = (PastMonth & { kind: 'balance' }) | SpentOnlyMonth;
+
+/**
+ * 이번 달 바로 앞까지 최근 count 개월 중 통장 시작 달 전의 달마다 쓴 돈 (오래된 순).
+ * eventRecords(scope all · 저수지 청구 포함)를 쓴 날의 달로 세고, 기록이 한 건이라도 있는 달만
+ */
+export function preStartSpentMonths(data: LedgerData, accountId: Id, today: ISODate, count = PAST_MONTHS): SpentOnlyMonth[] {
+  const start = accountStartMonth(data, accountId);
+  if (!start || count <= 0) return [];
+  const thisMonth = monthOf(today);
+  const from = addMonths(thisMonth, -count);
+  const lastPast = addMonths(thisMonth, -1);
+  const beforeStart = addMonths(start, -1);
+  const to = compareMonth(beforeStart, lastPast) < 0 ? beforeStart : lastPast;
+  if (compareMonth(from, to) > 0) return [];
+  const buckets = new Map<YearMonth, { bucket: EventMonthBucket; count: number }>();
+  const names = eventRecordNames(data);
+  const records = eventRecords(data, accountId, { scope: 'all', reservoirClaims: true, from: dateInMonth(from, 1), to: dateInMonth(to, daysInMonth(to)) });
+  for (const { expense, record, month } of records) {
+    const b = buckets.get(month) ?? { bucket: new EventMonthBucket(), count: 0 };
+    b.bucket.add(eventRecordGroup(data, expense, names), 'spent', record.amount, expense);
+    b.count += 1;
+    buckets.set(month, b);
+  }
+  return monthRange(from, to).flatMap((month) => {
+    const b = buckets.get(month);
+    if (!b) return [];
+    const m = b.bucket.month(month);
+    return [{ month, kind: 'spentOnly' as const, spent: m.spent, count: b.count, items: m.items }];
+  });
+}
+
+/** 지난 달 막대 (오래된 순): 통장 시작 전 쓴 돈만 아는 달 → 시작 달부터 실제 달 말 잔액 */
+export function pastMonthBars(data: LedgerData, accountId: Id, today: ISODate, count = PAST_MONTHS): PastBar[] {
+  return [
+    ...preStartSpentMonths(data, accountId, today, count),
+    ...pastMonthEnds(data, accountId, today, count).map((p) => ({ ...p, kind: 'balance' as const })),
+  ];
 }

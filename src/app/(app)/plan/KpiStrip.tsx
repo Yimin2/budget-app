@@ -61,6 +61,8 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
       ? `${Number(s.incomingOn.slice(8))}일 +${formatManShort(s.incoming)} 들어와요`
       : `매달 ${formatManShort(projection.monthlyContribution)} 적립${next !== null ? ` · 다음 달부터 ${formatManShort(next)}` : ''}`;
 
+  const spendSub = `이미 ${formatManShort(spentSoFar)} · 앞으로 ${formatManShort(totals.total)}${totals.repay > 0 ? ` (돌려주기 ${formatManShort(totals.repay)})` : ''}`;
+
   return (
     <section className={styles.strip} aria-labelledby={titleId} data-testid="kpi-strip">
       <h2 id={titleId} className="sr-only">
@@ -75,9 +77,8 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
       <div className={styles.tile} data-testid="kpi-spend">
         <span className={styles.label}>이번 달 나갈 돈</span>
         <strong className={styles.value}>{formatManShort(spentSoFar + totals.total)}</strong>
-        <span className={styles.sub}>
-          이미 {formatManShort(spentSoFar)} · 앞으로 {formatManShort(totals.total)}
-          {totals.repay > 0 ? ` (돌려주기 ${formatManShort(totals.repay)})` : ''}
+        <span className={cx(styles.sub, styles.subOneLine)} title={spendSub}>
+          {spendSub}
         </span>
         {trip > 0 ? (
           <span className={styles.sub} data-testid="kpi-trip">

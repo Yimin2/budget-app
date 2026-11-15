@@ -145,6 +145,8 @@ export interface AheadItem {
   tripId?: Id;
   /** 평소 쓰는 돈 근거 같은 작은 설명 */
   note?: string;
+  /** 지난 지출 돌려주기: 낸 사람 */
+  payer?: string;
 }
 
 /**
@@ -181,6 +183,7 @@ export function aheadMonthItems(m: ProjectionMonth, installments: { key: string;
           label: `${formatMonthKo(monthOf(c.spentDate), base)}에 쓴 것 · ${c.payer}`,
           amount: c.amount,
           date: c.spentDate,
+          payer: c.payer,
         });
       }
     } else items.push({ key: 'claims', kind: 'claims', label: '지난 지출 돌려주기', amount: claims });
@@ -215,7 +218,7 @@ export function aheadOutflow(m: ProjectionMonth): Won {
   return aheadTotals(m).total;
 }
 
-/** 돌려주기 묶음 한 줄: '지난 지출 돌려주기 67.2만 (9~10월에 쓴 것 3건)'. 돌려줄 게 없으면 null */
+/** 돌려주기 묶음 한 줄: '지난 지출 돌려주기 67.2만 · 3건 (9~10월에 쓴 것)'. 돌려줄 게 없으면 null */
 export function repaySummary(m: ProjectionMonth): string | null {
   const total = m.claims ?? 0;
   if (total <= 0) return null;
@@ -232,7 +235,56 @@ export function repaySummary(m: ProjectionMonth): string | null {
       : lo.slice(0, 4) === hi.slice(0, 4) && Number(lo.slice(0, 4)) === base
         ? `${Number(lo.slice(5, 7))}~${formatMonthKo(hi, base)}`
         : `${formatMonthKo(lo, base)}~${formatMonthKo(hi, base)}`;
-  return `${head} (${span}에 쓴 것 ${list.length}건)`;
+  return `${head} · ${list.length}건 (${span}에 쓴 것)`;
+}
+
+/** 돌려주기 묶음 낸 사람별 합 (많은 순, 3명 넘으면 '외 N명'): '민구 420만 · 기쁜 20만'. 한 건씩 목록이 없으면 null */
+export function repayPayersLine(m: ProjectionMonth, max = 3): string | null {
+  const list = m.claimList ?? [];
+  if (list.length === 0) return null;
+  const by = new Map<string, Won>();
+  for (const c of list) by.set(c.payer, (by.get(c.payer) ?? 0) + c.amount);
+  const sorted = [...by].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
+  const shown = sorted.slice(0, max).map(([p, a]) => `${p} ${formatManShort(a)}`);
+  if (sorted.length > max) shown.push(`외 ${sorted.length - max}명`);
+  return shown.join(' · ');
+}
+
+export interface RepayMonthGroup {
+  /** 쓴 달 */
+  month: YearMonth;
+  /** '10월' (다른 해면 '2025년 10월') */
+  label: string;
+  count: number;
+  amount: Won;
+  /** 쓴 날 순 */
+  items: AheadItem[];
+}
+
+/** 돌려주기 항목을 쓴 달로 묶어요 (오래된 달 먼저, 달 안은 쓴 날 순). 합은 항목 합 그대로. 날짜 없는 한 줄(합만)은 빈 목록 */
+export function repayByMonth(items: AheadItem[], m: Pick<ProjectionMonth, 'month'>): RepayMonthGroup[] {
+  const base = baseYearOf(`${m.month}-01`);
+  const map = new Map<YearMonth, AheadItem[]>();
+  for (const i of items) {
+    if (i.kind !== 'claims' || !i.date) continue;
+    const k = monthOf(i.date);
+    map.set(k, [...(map.get(k) ?? []), i]);
+  }
+  return [...map]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([month, list]) => ({
+      month,
+      label: formatMonthKo(month, base),
+      count: list.length,
+      amount: list.reduce((s, i) => s + i.amount, 0),
+      items: [...list].sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : 0)),
+    }));
+}
+
+/** 긴 목록 줄이기: limit 줄을 넘으면 앞 keep 줄만 보이고 나머지 수 (새로 나갈 돈 6 → 5, 돌려주기 달마다 5) */
+export function capList<T>(list: T[], limit: number, keep = limit): { shown: T[]; more: number } {
+  if (list.length <= limit) return { shown: list, more: 0 };
+  return { shown: list.slice(0, keep), more: list.length - keep };
 }
 
 /** 그달 들어오는 쪽 한 줄: '달 시작 잔액 50만 · 적립 +30만 · 옮겨 올 돈 +30만' (이번 달은 '지금 잔액' · '아직 안 들어온 적립') */

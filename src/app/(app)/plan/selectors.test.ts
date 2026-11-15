@@ -20,6 +20,9 @@ import {
   aheadTotalLines,
   aheadTotals,
   repaySummary,
+  repayPayersLine,
+  repayByMonth,
+  capList,
   monthLabel,
   nextContribution,
   nextOccurrence,
@@ -305,7 +308,7 @@ describe('앞으로 12개월: 고른 달 항목', () => {
     ],
   };
 
-  it("지난 지출 돌려주기: 한 건씩 '10월에 쓴 것 · 민구', 묶음 한 줄 '(9~10월에 쓴 것 3건)'", () => {
+  it("지난 지출 돌려주기: 한 건씩 '10월에 쓴 것 · 민구', 묶음 한 줄 '· 3건 (9~10월에 쓴 것)'", () => {
     const items = aheadMonthItems(claimMonth);
     expect(items.map((i) => [i.kind, i.label, i.amount])).toEqual([
       ['event', '지수 결혼식', 206_000],
@@ -313,11 +316,31 @@ describe('앞으로 12개월: 고른 달 항목', () => {
       ['claims', '9월에 쓴 것 · 민지', 100_000],
       ['claims', '10월에 쓴 것 · 민지', 22_000],
     ]);
-    expect(repaySummary(claimMonth)).toBe('지난 지출 돌려주기 67.2만 (9~10월에 쓴 것 3건)');
-    expect(repaySummary({ ...claimMonth, claimList: [claimMonth.claimList![0]!] , claims: 550_000 })).toBe('지난 지출 돌려주기 55만 (10월에 쓴 것 1건)');
+    expect(repaySummary(claimMonth)).toBe('지난 지출 돌려주기 67.2만 · 3건 (9~10월에 쓴 것)');
+    expect(repaySummary({ ...claimMonth, claimList: [claimMonth.claimList![0]!] , claims: 550_000 })).toBe('지난 지출 돌려주기 55만 · 1건 (10월에 쓴 것)');
     expect(repaySummary(month)).toBeNull();
     expect(aheadTotals(claimMonth)).toEqual({ spend: 206_000, repay: 672_000, total: 878_000 });
     expect(aheadOutflow(claimMonth)).toBe(878_000);
+  });
+
+  it('돌려주기: 낸 사람별 합(많은 순) · 쓴 달로 묶기(오래된 달 먼저) · 긴 목록 줄이기', () => {
+    expect(repayPayersLine(claimMonth)).toBe('민구 55만 · 민지 12.2만');
+    expect(repayPayersLine(month)).toBeNull();
+    const many: ProjectionMonth = {
+      ...claimMonth,
+      claimList: ['가', '나', '다', '라'].map((p, i) => ({ expenseId: `p${i}`, payer: p, amount: (i + 1) * 10_000, spentDate: '2026-10-01' })),
+      claims: 100_000,
+    };
+    expect(repayPayersLine(many)).toBe('라 4만 · 다 3만 · 나 2만 · 외 1명');
+    const groups = repayByMonth(aheadMonthItems(claimMonth), claimMonth);
+    expect(groups.map((g) => [g.month, g.label, g.count, g.amount])).toEqual([
+      ['2026-09', '9월', 1, 100_000],
+      ['2026-10', '10월', 2, 572_000],
+    ]);
+    expect(groups[1]!.items.map((i) => i.date)).toEqual(['2026-10-03', '2026-10-28']);
+    expect(groups.reduce((s, g) => s + g.amount, 0)).toBe(claimMonth.claims);
+    expect(capList([1, 2, 3, 4, 5, 6], 6, 5)).toEqual({ shown: [1, 2, 3, 4, 5, 6], more: 0 });
+    expect(capList([1, 2, 3, 4, 5, 6, 7], 6, 5)).toEqual({ shown: [1, 2, 3, 4, 5], more: 2 });
   });
 
   it("고른 달 합계 줄: '12월 나갈 돈 합계 87.8만' · 이번 달은 '이미 나간 돈 10만 + 앞으로 77.8만'", () => {
