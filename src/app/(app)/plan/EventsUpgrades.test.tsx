@@ -144,8 +144,6 @@ describe('예외 지출 빼기', () => {
     fireEvent.click(box);
     expect(box.checked).toBe(true);
     expect(within(chart()).getByText('미리 보는 중')).toBeTruthy();
-    // 미리 보는 중에는 부족 알림(반영 버튼)을 숨겨요
-    expect(within(chart()).queryByTestId('shortage-panel')).toBeNull();
     expect(card.textContent).toMatch(/평소 쓰는 돈 한 달 평균 [\d.]+만원 → [\d.]+만원/);
     expect(card.textContent).toContain('1건을 바꿔 봤어요');
     // 미리 보는 중에는 접을 수 없고 다른 단계로 바꿀 수도 없어요, 칩에도 바꾼 대로
@@ -160,7 +158,6 @@ describe('예외 지출 빼기', () => {
 
     fireEvent.click(within(card).getByRole('button', { name: '되돌리기' }));
     expect(within(chart()).queryByText('미리 보는 중')).toBeNull();
-    expect(within(chart()).getByTestId('shortage-panel')).toBeTruthy();
     expect(box.checked).toBe(false);
     expect(h.probe.ledger!.data!.expenses.find((e) => e.memo === '친구 결혼식')!.excluded).toBeUndefined();
     // 미리 보기가 끝나면 [접기]로 다시 접혀요

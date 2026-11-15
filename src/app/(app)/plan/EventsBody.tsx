@@ -111,8 +111,6 @@ export function EventsBody({
             data={data}
             today={today}
             badge={tried ? '미리 보는 중' : undefined}
-            fix={ledger.shortageFix}
-            showShortage={!tried}
             picked={aheadPicked}
             onPick={setAheadPicked}
           />

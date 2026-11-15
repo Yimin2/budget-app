@@ -487,8 +487,14 @@
 .pastLink:hover {
   text-decoration: underline;
 }
+/* 모자라는 달: 경고 색 + '−30만' */
 .upShort:not(.upOn) {
-  border-color: var(--danger-border);
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+.upShort .upBadge {
+  color: var(--warning-text);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ───────── 지난 달 실제 잔액 (회색 막대) · 예측 기록 표시 ───────── */

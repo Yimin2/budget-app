@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** 이벤트 화면 카드 2 '앞으로 12개월': 막대 · 고른 달 항목 · 다가오는 달 · 부족 알림 */
+/** 이벤트 화면 '지난 · 앞으로 12개월' 카드: 막대 · 고른 달 항목(모자라면 맨 위 한 줄) · 다가오는 달 */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forecastCompare, formatManShort, formatWon, pastMonthEnds } from '@/domain';
@@ -18,22 +18,29 @@ afterEach(cleanup);
 async function renderCard(opts: { history?: boolean } = {}) {
   const h = makeHarness(opts);
   render(<EventsView />, { wrapper: h.Wrapper });
-  const card = await screen.findByRole('region', { name: '앞으로 12개월' });
+  const card = await screen.findByRole('region', { name: /앞으로 12개월$/ });
   return { h, card };
 }
 
 describe('앞으로 12개월 카드', () => {
-  it('고른 달(처음엔 첫 부족 달)의 나갈 돈 항목과 그 달 끝 예상 잔액', async () => {
+  it('처음엔 이번 달을 골라 두고, 모자라는 달을 고르면 맨 위 한 줄 · 나갈 돈 항목 · 그 달 끝 예상 잔액', async () => {
     const { h, card } = await renderCard();
+    expect(within(within(card).getByTestId('ahead-month')).getByRole('heading', { level: 3, name: '11월 · 이번 달' })).toBeTruthy();
+    expect(within(card).getByRole('button', { name: '11월 (이번 달) 자세히 보기' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(card).getByTestId('ahead-month-status').textContent).toBe('모자라지 않아요');
     const april = h.probe.ledger!.eventProjection!.months.find((m) => m.month === '2027-04')!;
+    fireEvent.click(within(card).getByRole('button', { name: '2027년 4월 자세히 보기' }));
     const detail = within(card).getByTestId('ahead-month');
+    expect(within(detail).getByTestId('ahead-month-status').textContent).toBe('2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날');
     expect(within(detail).getByRole('heading', { level: 3, name: '2027년 4월' })).toBeTruthy();
     const list = within(detail).getByRole('list', { name: '2027년 4월 나갈 돈' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(april.events.length);
     for (const e of april.events) expect(list.textContent).toContain(e.name);
     // 보이는 금액은 만 단위, 화면 읽기용 글에는 정확한 금액
     expect(detail.textContent).toContain(`그 달 끝 예상 잔액${formatManShort(april.endBalance)}${formatWon(april.endBalance)}`);
-    expect(detail.textContent).toContain(`${formatManShort(-april.endBalance)} 모자라요`);
+    // 해결 방법 패널(적립 늘리기 · 저수지에서 옮기기)은 없어요
+    expect(within(card).queryByRole('radio')).toBeNull();
+    expect(within(card).queryByRole('button', { name: '이 방법으로 반영하기' })).toBeNull();
   });
 
   it('평소 쓰는 돈은 근거와 함께 마지막 줄, 금액은 예측 그대로', async () => {
@@ -58,7 +65,8 @@ describe('앞으로 12개월 카드', () => {
     expect(rows[1]!.textContent).toMatch(/^12월 · ([\d.]+만|0원)/);
     // 합계가 먼저, 굵게
     expect(rows[1]!.querySelector('strong')!.textContent).toMatch(/^12월 · ([\d.]+만|0원)$/);
-    expect(rows.every((r) => r.getAttribute('aria-pressed') === 'false')).toBe(true);
+    // 처음엔 이번 달
+    expect(rows.map((r) => r.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false']);
     fireEvent.click(rows[1]!);
     expect(rows[1]!.getAttribute('aria-pressed')).toBe('true');
     expect(within(card).getByRole('heading', { level: 3, name: '12월' })).toBeTruthy();
@@ -69,11 +77,17 @@ describe('앞으로 12개월 카드', () => {
     expect(screen.queryByRole('region', { name: '월별 이벤트 비용' })).toBeNull();
   });
 
-  it('모자라는 달이 있으면 같은 카드 안에 부족 알림(두 가지 방법)', async () => {
-    const { card } = await renderCard();
-    const panel = within(card).getByRole('group', { name: /2027년 4월에 300,000원 모자라요/ });
-    expect(within(panel).getByRole('heading', { level: 3, name: /2027년 4월에 300,000원 모자라요 \(결혼식 4건 · 어버이날\)/ })).toBeTruthy();
-    expect(within(panel).getAllByRole('radio')).toHaveLength(2);
+  it('다가오는 달 중 모자라는 달은 경고 색으로 \'−30만\'', async () => {
+    const { h, card } = await renderCard();
+    // 12월에 큰 일정을 넣어 다가오는 달 안에 모자라는 달을 만들어요
+    await act(async () => {
+      await h.probe.ledger!.addEvent({ date: '2026-12-10', name: '큰 경조사', amount: 1_500_000 });
+    });
+    const dec = h.probe.ledger!.eventProjection!.months.find((m) => m.month === '2026-12')!;
+    expect(dec.endBalance).toBeLessThan(0);
+    const row = within(within(card).getByRole('list', { name: '다가오는 달' })).getByRole('button', { name: /^12월/ });
+    expect(row.className).toMatch(/upShort/);
+    expect(row.textContent).toContain(`−${formatManShort(-dec.endBalance)} 모자라요`);
   });
 
   it('폰에서는 상태 한 줄만, [펼치기]로 막대 · 항목 (넓은 화면은 CSS 로 늘 펼침)', async () => {
@@ -92,6 +106,7 @@ describe('앞으로 12개월 카드', () => {
     const { h, card } = await renderCard();
     const proj = h.probe.ledger!.eventProjection!;
     const april = proj.months.find((m) => m.month === '2027-04')!;
+    fireEvent.click(within(card).getByRole('button', { name: '2027년 4월 자세히 보기' }));
     const total = within(within(card).getByTestId('ahead-month')).getByTestId('ahead-total');
     expect(total.textContent).toContain(`2027년 4월 나갈 돈 합계 ${formatManShort(aheadTotals(april).total)}`);
     fireEvent.click(within(card).getByRole('button', { name: '11월 (이번 달) 자세히 보기' }));

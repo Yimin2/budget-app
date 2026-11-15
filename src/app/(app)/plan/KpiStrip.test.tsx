@@ -89,6 +89,15 @@ describe('숫자 띠', () => {
     expect(within(strip).queryByRole('button', { name: /가장 모자라는 달/ })).toBeNull();
   });
 
+  it('매달 적립액을 바꾸면 잔액 칸 아래 줄도 바뀌어요', async () => {
+    const { strip, L } = await renderStrip();
+    await act(async () => {
+      await L().applyIncreaseMonthly(L().shortageFix!.increaseMonthly!);
+    });
+    // 체험 가계부의 적립 규칙은 이번 달에 시작해서 금액만 바뀌어요 (이번 달 적립은 이미 들어왔어요)
+    await waitFor(() => expect(within(strip).getByTestId('kpi-balance').textContent).toBe('이벤트통장 잔액75만매달 36만 적립'));
+  });
+
   it('정산 칸: 이벤트통장 밖에서 나가는 돈은 작은 줄로 · 저수지 돈으로 낸 이벤트 청구는 따로', async () => {
     const { strip, L } = await renderStrip();
     const settle = within(strip).getByTestId('kpi-settle');

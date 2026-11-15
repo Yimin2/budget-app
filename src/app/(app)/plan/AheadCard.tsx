@@ -31,7 +31,6 @@ import type {
   PastMonth,
   ProjectionMonth,
   ProjectionRangeMonth,
-  ShortageFix,
   YearMonth,
 } from '@/domain';
 import { Badge, Button, Card, Icon, cx, useMediaQuery } from '@/ui';
@@ -50,11 +49,11 @@ import {
   hasUsual,
   initialMonth,
   monthLabel,
+  monthShortLine,
   rangeNote,
   yOf,
   type AheadItem,
 } from './selectors';
-import { ShortagePanel } from './ShortagePanel';
 import { tripHref } from './trips/selectors';
 import shared from './events.module.css';
 import styles from './AheadCard.module.css';
@@ -83,9 +82,6 @@ export interface AheadCardProps {
   today: ISODate;
   /** 미리 보는 중이면(예외 지출 빼기) 제목 옆에 붙일 표시 */
   badge?: string;
-  /** 부족 알림의 두 가지 방법 (미리 보는 중이 아니고 모자라는 달이 있을 때만 알림을 보여요) */
-  fix?: ShortageFix | null;
-  showShortage?: boolean;
   /** 고른 달 (밖에서 들고 있을 때. 없으면 카드 안에서) */
   picked?: YearMonth | null;
   onPick?: (month: YearMonth) => void;
@@ -93,15 +89,15 @@ export interface AheadCardProps {
 }
 
 /**
- * 이벤트 화면 카드 2 '앞으로 12개월' (PLAN 4-2): 왼쪽은 지난 12개월 실제 달 말 잔액(회색 막대, 기록으로 계산) + 그때 예상한 잔액(점선, 예측 기록),
+ * 이벤트 화면 '지난 · 앞으로 12개월' 카드 (PLAN 4-2, 지난 달 막대가 없으면 '앞으로 12개월'): 왼쪽은 지난 12개월 실제 달 말 잔액(회색 막대, 기록으로 계산) + 그때 예상한 잔액(점선, 예측 기록),
  * 이번 달부터는 달 말 예상 잔액 막대(범위 띠 · 미리 보는 중 표시). 0 이상은 기준선 위(파랑), 0 아래는 기준선 아래(빨강) + 모자라는 금액.
- * 이번 달은 달 숫자에 파란 동그라미. 막대를 누르면(마우스는 올리기만 해도) 아래에 그달이 보여요:
+ * 이번 달은 달 숫자에 파란 동그라미. 처음엔 이번 달을 골라 두고, 막대를 누르면(마우스는 올리기만 해도) 아래에 그달이 보여요:
  * - 지난 달: 시작 잔액 · 들어온 돈 · 나간 돈 · 끝 잔액, 그때 예상과 견주기, 정산 화면 링크
- * - 이번 달 · 앞으로 달: 나갈 돈 합계(굵게) → 새로 나갈 돈 · 지난 지출 돌려주기 두 묶음 → 들어오는 돈 · 그 달 끝 예상 잔액
- * 옆에 다가오는 달 한 줄씩(합계 먼저) → 모자라는 달이 있으면 부족 알림(두 가지 방법). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
+ * - 이번 달 · 앞으로 달: 모자라면 맨 위 한 줄 '4월에 30만 모자라요 · 결혼식 4건 · 어버이날' → 나갈 돈 합계(굵게) → 새로 나갈 돈 · 지난 지출 돌려주기 두 묶음 → 들어오는 돈 · 그 달 끝 예상 잔액
+ * 옆에 다가오는 달 한 줄씩(합계 먼저, 모자라는 달은 경고 색 '−30만'). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
  * 폰에서는 상태 한 줄만 보이고 [펼치기]로 나머지. 막대는 가로로 밀어 지난 달을 봐요
  */
-export function AheadCard({ projection, data, today, badge, fix = null, showShortage = false, picked: pickedProp, onPick, className }: AheadCardProps) {
+export function AheadCard({ projection, data, today, badge, picked: pickedProp, onPick, className }: AheadCardProps) {
   const ids = useId().replace(/:/g, '');
   const titleId = `${ids}-title`;
   const months = projection.months;
@@ -251,7 +247,7 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
     <Card as="section" id={AHEAD_ID} className={cx(foldStyles.card, className)} aria-labelledby={titleId}>
       <FoldHead
         titleId={titleId}
-        title={`앞으로 ${months.length}개월`}
+        title={past.length > 0 ? `지난 · 앞으로 ${months.length}개월` : `앞으로 ${months.length}개월`}
         badge={
           badge ? (
             <Badge tone="info" size="sm">
@@ -259,7 +255,7 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
             </Badge>
           ) : undefined
         }
-        actions={<span className={styles.chartHint}>막대를 누르면 그달 항목이 보여요</span>}
+        actions={<span className={styles.chartHint}>막대를 누르면 그 달이 아래에 · 처음엔 이번 달</span>}
       />
       <p className={cx(styles.caption, shortages.length > 0 ? shared.bad : shared.ok)} data-testid="ahead-status">
         <Icon name={shortages.length > 0 ? 'alert-triangle' : 'check-circle'} size={16} />
@@ -530,9 +526,10 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
                         {m.month === thisMonth ? <span className="sr-only"> (이번 달)</span> : null}
                       </span>
                       {m.endBalance < 0 ? (
-                        <span className={cx(styles.upBadge, shared.bad)}>
+                        <span className={styles.upBadge}>
                           <Icon name="alert-triangle" size={16} />
-                          {formatManShort(-m.endBalance)} 모자라요
+                          −{formatManShort(-m.endBalance)}
+                          <span className="sr-only"> 모자라요</span>
                         </span>
                       ) : null}
                     </button>
@@ -547,7 +544,6 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
           </div>
         </div>
 
-        {showShortage && projection.shortages.length > 0 ? <ShortagePanel projection={projection} fix={fix} today={today} /> : null}
       </div>
       <p className="sr-only" aria-live="polite">
         {announce}
@@ -630,9 +626,9 @@ function MonthDetail({
             {isThis ? ' · 이번 달' : ''}
           </h3>
           <span className={styles.detailSub}>
-            <span className={cx(shared.statusLine, short ? shared.bad : shared.ok)}>
+            <span className={cx(shared.statusLine, short ? shared.bad : shared.ok)} data-testid="ahead-month-status">
               <Icon name={short ? 'alert-triangle' : 'check-circle'} size={16} />
-              {short ? `${formatManShort(-month.endBalance)} 모자라요` : '모자라지 않아요'}
+              {monthShortLine(month, today) ?? '모자라지 않아요'}
             </span>
           </span>
         </div>

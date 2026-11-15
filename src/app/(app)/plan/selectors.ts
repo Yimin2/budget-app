@@ -1,5 +1,5 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { dateInMonth, formatDateKo, formatMan, formatManShort, formatMonthKo, formatShortDate, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
+import { dateInMonth, formatDateKo, formatMan, formatManShort, formatMonthKo, formatShortDate, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
   EventMonthUsage,
   LedgerData,
@@ -12,7 +12,6 @@ import type {
   PlannedEvent,
   ProjectionMonth,
   Repeat,
-  ShortageFix,
   Won,
   YearMonth,
 } from '@/domain';
@@ -391,76 +390,14 @@ export function summarizeEventNames(names: string[], maxGroups = 2): string {
   return `${labels.slice(0, maxGroups).join(' · ')} 외 ${restCount}건`;
 }
 
-export interface ShortageSummary {
-  month: YearMonth;
-  amount: Won;
-  /** '4월에 300,000원 모자라요' */
-  title: string;
-  /** '결혼식 4건 · 어버이날' (그달 일정이 없으면 '') */
-  names: string;
-  /** 첫 부족 달 말고 더 모자라는 달 수 */
-  others: number;
-  isThisMonth: boolean;
-}
-
-/** 첫 번째로 모자라는 달 요약. 부족이 없으면 null */
-export function shortageSummary(projection: EventProjection | null, today: ISODate): ShortageSummary | null {
-  if (!projection || projection.shortages.length === 0) return null;
-  const first = projection.shortages[0]!;
-  const m = projection.months.find((x) => x.month === first.month);
-  const isThisMonth = first.month === monthOf(today);
-  const label = monthLabel(first.month, today, '이번 달');
-  return {
-    month: first.month,
-    amount: first.amount,
-    title: `${label}에 ${formatWon(first.amount)} 모자라요`,
-    names: m ? summarizeEventNames(m.events.map((e) => e.name)) : '',
-    others: projection.shortages.length - 1,
-    isThisMonth,
-  };
-}
-
-export interface FixChoiceText {
-  title: string;
-  description: string;
-  /** 보조 줄 (예: '매달 300,000원 → 360,000원') */
-  note: string | null;
-  /** 고르면 안 되는 이유 (있으면 고를 수 없어요) */
-  blocked: string | null;
-}
-
-/** ① 지금부터 매달 적립액 늘리기 */
-export function increaseChoiceText(
-  fix: NonNullable<ShortageFix['increaseMonthly']>,
-  today: ISODate,
-  currentContribution: Won,
-): FixChoiceText {
-  const from = monthLabel(fix.fromMonth, today);
-  const to = monthLabel(fix.toMonth, today);
-  return {
-    title: `지금부터 매달 적립액 +${formatWon(fix.amount)}`,
-    description:
-      fix.fromMonth === fix.toMonth || fix.times <= 1
-        ? `${to} 적립 한 번으로 채워요`
-        : `${from}부터 ${to}까지 ${fix.times}번에 나눠 채워요`,
-    note:
-      currentContribution > 0
-        ? `매달 ${formatWon(currentContribution)} → ${formatWon(currentContribution + fix.amount)}`
-        : null,
-    blocked: null,
-  };
-}
-
-/** ② 그달에 저수지에서 옮기기 */
-export function reservoirChoiceText(fix: NonNullable<ShortageFix['fromReservoir']>, today: ISODate): FixChoiceText {
-  const label = monthLabel(fix.month, today, '이번 달');
-  const after = fix.reservoirProjected - fix.amount;
-  return {
-    title: `${label}에 저수지에서 ${formatWon(fix.amount)} 옮기기`,
-    description: `저수지 예상 잔액 ${formatWon(fix.reservoirProjected)}`,
-    note: after >= 0 ? `옮긴 뒤 저수지 ${formatWon(after)}` : null,
-    blocked: after < 0 ? `저수지 예상 잔액이 ${formatWon(-after)} 모자라서 고를 수 없어요` : null,
-  };
+/**
+ * 고른 달이 모자랄 때 상세 맨 위 한 줄: '2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날' (그달 일정이 없으면 이름 없이).
+ * 모자라지 않으면 null
+ */
+export function monthShortLine(m: Pick<ProjectionMonth, 'month' | 'endBalance' | 'events'>, today: ISODate): string | null {
+  if (m.endBalance >= 0) return null;
+  const names = summarizeEventNames(m.events.map((e) => e.name));
+  return `${monthLabel(m.month, today, '이번 달')}에 ${formatManShort(-m.endBalance)} 모자라요${names ? ` · ${names}` : ''}`;
 }
 
 /* ───────── 12개월 막대 ───────── */
@@ -540,11 +477,9 @@ export function barsGeometry(
   };
 }
 
-/** 처음 고를 달: 첫 부족 달 → 이번 달 */
+/** 처음 고를 달: 이번 달 (예측에 없으면 첫 달) */
 export function initialMonth(projection: EventProjection, today: ISODate): YearMonth | null {
   if (projection.months.length === 0) return null;
-  const first = projection.shortages[0]?.month;
-  if (first) return first;
   const now = monthOf(today);
   return projection.months.find((m) => m.month === now)?.month ?? projection.months[0]!.month;
 }

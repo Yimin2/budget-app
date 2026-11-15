@@ -75,7 +75,7 @@ describe('EventsView — 체험 가계부', () => {
     expect(within(card).queryByRole('table')).toBeNull();
   });
 
-  it('불러오는 동안 뼈대, 다 불러오면 잔액 · 매달 적립 · 12개월 막대 · 부족 알림', async () => {
+  it('불러오는 동안 뼈대, 다 불러오면 잔액 · 매달 적립 · 12개월 막대(처음엔 이번 달), 해결 방법 패널은 없어요', async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
     expect(screen.getByText('일정을 불러오는 중이에요')).toBeTruthy();
@@ -87,13 +87,14 @@ describe('EventsView — 체험 가계부', () => {
 
     const months = screen.getByRole('group', { name: '달 고르기' });
     expect(within(months).getAllByRole('button')).toHaveLength(12);
+    // 처음엔 이번 달을 보여 줘요 (모자라는 달이 있어도)
     const now = within(months).getByRole('button', { name: '11월 (이번 달) 자세히 보기' });
-    expect(now.getAttribute('aria-pressed')).toBe('false');
-    // 처음엔 첫 부족 달을 보여 줘요
-    const april = within(months).getByRole('button', { name: '2027년 4월 자세히 보기' });
-    expect(april.getAttribute('aria-pressed')).toBe('true');
+    expect(now.getAttribute('aria-pressed')).toBe('true');
+    expect(within(months).getByRole('button', { name: '2027년 4월 자세히 보기' }).getAttribute('aria-pressed')).toBe('false');
     const chart = screen.getByRole('region', { name: '앞으로 12개월' });
-    expect(within(chart).getByRole('heading', { level: 3, name: '2027년 4월' })).toBeTruthy();
+    expect(within(chart).getByRole('heading', { level: 3, name: '11월 · 이번 달' })).toBeTruthy();
+    fireEvent.click(within(months).getByRole('button', { name: '2027년 4월 자세히 보기' }));
+    expect(within(chart).getByTestId('ahead-month-status').textContent).toBe('2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날');
     expect(within(chart).getByRole('list', { name: '2027년 4월 나갈 돈' }).querySelectorAll('li')).toHaveLength(5);
 
     // 화면 읽기용 표
@@ -101,12 +102,10 @@ describe('EventsView — 체험 가계부', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(13);
     expect(within(table).getByText('-300,000원 (300,000원 모자라요)')).toBeTruthy();
 
-    expect(
-      screen.getByRole('heading', { name: /2027년 4월에 300,000원 모자라요 \(결혼식 4건 · 어버이날\)/ }),
-    ).toBeTruthy();
-    expect(screen.getByRole('radio', { name: /지금부터 매달 적립액 \+60,000원/ })).toBeTruthy();
-    expect(screen.getByRole('radio', { name: /2027년 4월에 저수지에서 300,000원 옮기기/ })).toBeTruthy();
-    expect((screen.getByRole('button', { name: '이 방법으로 반영하기' }) as HTMLButtonElement).disabled).toBe(true);
+    // 해결 방법(적립 늘리기 · 저수지에서 옮기기) 패널은 없어요
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('button', { name: '이 방법으로 반영하기' })).toBeNull();
+    expect(h.probe.ledger!.eventProjection!.shortages).toHaveLength(1);
   });
 
   it('막대를 누르면 그달 계산과 일정이 보여요 · 이전/다음 달 버튼', async () => {
@@ -131,30 +130,14 @@ describe('EventsView — 체험 가계부', () => {
     expect(document.activeElement).toBe(within(months).getByRole('button', { name: '2027년 2월 자세히 보기' }));
   });
 
-  it('② 저수지에서 옮기기를 반영하면 알림이 뜨고 부족이 사라져요', async () => {
+  it('저수지에서 옮길 예정 이체가 있으면 12개월 카드에 넣어서 계산했다고 알려요', async () => {
     const h = await renderEvents();
-    fireEvent.click(screen.getByRole('radio', { name: /저수지에서 300,000원 옮기기/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 방법으로 반영하기' }));
-    await screen.findByText('2027년 4월에 저수지에서 300,000원 옮기도록 넣어 뒀어요');
-    await waitFor(() => expect(screen.queryByText(/모자라요 \(결혼식/)).toBeNull());
-    expect(h.probe.ledger!.eventProjection!.shortages).toHaveLength(0);
-    const planned = h.probe.ledger!.data!.transfers.filter((t) => t.status === 'planned');
-    expect(planned).toHaveLength(1);
-    expect(planned[0]!.amount).toBe(300_000);
+    await act(async () => {
+      await h.probe.ledger!.applyFromReservoir(h.probe.ledger!.shortageFix!.fromReservoir!);
+    });
+    await waitFor(() => expect(h.probe.ledger!.eventProjection!.shortages).toHaveLength(0));
     expect(screen.getByText(/옮겨 올 예정인 30만을 넣어서 계산했어요/)).toBeTruthy();
     expect(screen.getByTestId('ahead-status').textContent).toMatch(/^12개월 동안 모자라는 달이 없어요/);
-  });
-
-  it('① 매달 적립액 늘리기를 반영하면 늘어난 적립이 보이고 부족이 사라져요', async () => {
-    const h = await renderEvents();
-    fireEvent.click(screen.getByRole('radio', { name: /매달 적립액 \+60,000원/ }));
-    fireEvent.click(screen.getByRole('button', { name: '이 방법으로 반영하기' }));
-    await screen.findByText('매달 적립액을 60,000원 늘렸어요');
-    await waitFor(() => expect(h.probe.ledger!.eventProjection!.shortages).toHaveLength(0));
-    const summary = screen.getByRole('region', { name: '이번 달 · 11월' });
-    // 체험 가계부의 적립 규칙은 이번 달에 시작해서 금액만 바뀌어요 (이번 달 적립은 이미 들어왔어요)
-    expect(within(summary).getByTestId('kpi-balance').textContent).toBe('이벤트통장 잔액75만매달 36만 적립');
-    expect(h.probe.ledger!.eventProjection!.months[1]!.contributions).toBe(360_000);
   });
 
   it('다가오는 일정은 달별로, 반복 · 작성자 · 카테고리를 함께 보여요', async () => {
