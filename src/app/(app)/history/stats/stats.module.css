@@ -6,6 +6,22 @@
   gap: var(--space-4);
 }
 
+/* 묶음 배치: 좁으면 한 줄, 1280px 이상은 두 줄 (막대가 화면 끝까지 늘어나 읽기 어렵지 않게) */
+.columns,
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+@media (min-width: 1280px) {
+  .columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
 /* ◀ 2026년 11월 ▶ */
 .monthBar {
   display: flex;
@@ -280,6 +296,12 @@
 @media (min-width: 768px) {
   .facts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* 두 줄 배치에서는 카드가 다시 좁아져서 한 줄씩 */
+@media (min-width: 1280px) {
+  .columns .facts {
+    grid-template-columns: 1fr;
   }
 }
 .facts > div {
