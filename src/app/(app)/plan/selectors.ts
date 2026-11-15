@@ -63,7 +63,7 @@ export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
 export interface SettleTileText {
   /** '11/21 정산' */
   label: string;
-  /** 이번 달 줄 돈 (만 단위). 줄 돈이 없으면 null → '정산할 돈 없어요' */
+  /** 이번에 이벤트통장 등에서 실제로 줄 돈 (넘어가는 돈 뺀 것, 만 단위). 돌려줄 날이 된 청구가 없으면 null → '정산할 돈 없어요' */
   value: string | null;
   /** '생활비 통장에서 2.4만 · 저수지에서 빌려 2.4만' / '다음 정산 12/1 2.4만' (없으면 null) */
   note: string | null;
@@ -100,10 +100,17 @@ export function settleTileText(u: Pick<EventMonthUsage, 'unpaid' | 'unpaidPeople
           : '';
     carry = `못 준 돈 ${formatManShort(u.unpaid)} → 다음 달${who}`;
   }
-  return { label, value: formatManShort(sum.total), note: parts.length > 0 ? parts.join(' · ') : null, carry };
+  // 이번에 실제로 줄 돈 = 정산일까지 돌려줄 날이 된 청구 − 다음 달로 넘어가는 돈 (넘어가는 돈은 carry 로 따로)
+  const payNow = Math.max(0, sum.total - (u?.unpaid ?? 0));
+  return { label, value: formatManShort(payNow), note: parts.length > 0 ? parts.join(' · ') : null, carry };
 }
 
-/** 숫자 띠 네 번째 칸: 12개월 중 가장 모자라는 달 (없으면 null) */
+/** 숫자 띠 네 번째 칸: 12개월 중 처음으로 모자라는 달 (없으면 null) */
+export function firstShortMonth(projection: EventProjection): ProjectionMonth | null {
+  return projection.months.find((m) => m.endBalance < 0) ?? null;
+}
+
+/** 12개월 중 가장 많이 모자라는 달 (없으면 null) */
 export function worstShortMonth(projection: EventProjection): ProjectionMonth | null {
   let worst: ProjectionMonth | null = null;
   for (const m of projection.months) if (m.endBalance < 0 && (!worst || m.endBalance < worst.endBalance)) worst = m;

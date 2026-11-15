@@ -259,7 +259,8 @@ describe('앞으로 12개월 카드 — 돌려줄 청구가 많을 때 (6~11월 
     expect(within(card).getByTestId('ahead-total').textContent).toContain(`앞으로 ${formatManShort(aheadTotals(nov).total)}`);
     const up = within(within(card).getByRole('list', { name: '다가오는 달' })).getAllByRole('button')[0]!;
     expect(up.textContent).toContain('돌려주기 470만');
-    expect(screen.getByTestId('kpi-spend').textContent).toContain('(돌려주기 470만)');
+    // 숫자 띠 '이번 달 쓴 돈'에는 지난 청구 돌려주기가 들어가지 않아요
+    expect(screen.getByTestId('kpi-spend').textContent).not.toContain('돌려주기');
   });
 
   it('펼치면 쓴 달별 한 줄(오래된 달 먼저, 항목은 숨김) → 달을 펼치면 5줄 + \'N건 더\'', async () => {
