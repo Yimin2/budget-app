@@ -1,0 +1,107 @@
+import { useCallback } from 'react';
+import {
+  adjustmentDelta, 
+  newId, 
+} from '@/domain';
+import type { Account, Id, Transfer, Won } from '@/domain/types';
+import type { LedgerApi } from '../types';
+import { nextOrder } from './helpers';
+import type { InstallmentActionsCtx } from './installments';
+
+/** 통장 · 이체 · 실제 잔액 맞추기 */
+export function useAccountActions(ctx: InstallmentActionsCtx) {
+  const {
+    todayRef, nowIso, requireData, upsertRow, insertRows, stamp, syncAutoNow,
+  } = ctx;
+  /* ---------- 통장·이체 ---------- */
+
+  const saveAccount = useCallback(
+    async (account: Account) => {
+      await upsertRow('accounts', account, '통장을 저장하지 못했어요');
+      await syncAutoNow();
+    },
+    [upsertRow, syncAutoNow],
+  );
+
+  const addAccount = useCallback<LedgerApi['addAccount']>(
+    async (input) => {
+      const { data: d } = requireData();
+      if (!input.name.trim()) throw new Error('통장 이름을 입력해 주세요');
+      const row: Account = {
+        id: newId(),
+        name: input.name.trim(),
+        role: input.role,
+        openingBalance: Math.round(input.openingBalance),
+        openingDate: todayRef.current,
+        order: nextOrder(d.accounts),
+        ownerName: input.ownerName?.trim() || null,
+        ownerEmail: input.ownerEmail?.trim() || null,
+        deleted: false,
+      };
+      await insertRows('accounts', [row], '통장을 추가하지 못했어요');
+      await syncAutoNow();
+      return row;
+    },
+    [requireData, todayRef, insertRows, syncAutoNow],
+  );
+
+  const addTransfer = useCallback<LedgerApi['addTransfer']>(
+    async (input) => {
+      if (!(input.amount > 0)) throw new Error('금액을 입력해 주세요');
+      if (input.kind === 'transfer' && input.fromAccountId === input.toAccountId)
+        throw new Error('보내는 통장과 받는 통장이 같아요');
+      const row: Transfer = {
+        id: newId(),
+        date: input.date,
+        kind: input.kind,
+        fromAccountId: input.fromAccountId,
+        toAccountId: input.toAccountId,
+        amount: Math.round(input.amount),
+        status: 'done',
+        ruleId: null,
+        memo: input.memo ?? '',
+        ...stamp(),
+      };
+      await insertRows('transfers', [row], '기록하지 못했어요');
+    },
+    [insertRows, stamp],
+  );
+
+  const deleteTransfer = useCallback(
+    async (id: Id) => {
+      const row = requireData().data.transfers.find((t) => t.id === id);
+      if (!row) throw new Error('기록을 찾을 수 없어요');
+      await upsertRow('transfers', { ...row, deleted: true, updatedAt: nowIso() }, '기록을 지우지 못했어요');
+    },
+    [requireData, upsertRow, nowIso],
+  );
+
+  const adjustBalance = useCallback(
+    async (accountId: Id, actual: Won) => {
+      const { data: d } = requireData();
+      const day = todayRef.current;
+      const delta = adjustmentDelta(d, accountId, Math.round(actual), day);
+      if (delta === 0) return;
+      const row: Transfer = {
+        id: newId(),
+        date: day,
+        kind: 'adjustment',
+        fromAccountId: delta < 0 ? accountId : null,
+        toAccountId: delta > 0 ? accountId : null,
+        amount: Math.abs(delta),
+        status: 'done',
+        ruleId: null,
+        memo: '잔액 맞추기',
+        ...stamp(),
+      };
+      await insertRows('transfers', [row], '잔액을 맞추지 못했어요');
+    },
+    [requireData, todayRef, stamp, insertRows],
+  );
+
+  return {
+    saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance,
+  };
+}
+
+export type AccountActionsCtx = InstallmentActionsCtx & ReturnType<typeof useAccountActions>;
