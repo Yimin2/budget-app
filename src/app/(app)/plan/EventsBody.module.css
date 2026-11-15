@@ -1,4 +1,5 @@
-/* EventsBody — 이벤트 화면 카드 배치. 폰: 한 줄로 쌓아요 · 1024px 이상: 위에 '이번 달' · '평소 쓰는 돈' 나란히, 아래 '앞으로 12개월' · '일정'은 한 줄 가득 */
+/* EventsBody — 이벤트 화면 배치. 맨 위 숫자 띠 → 지난 · 앞으로 12개월 → 평소 쓰는 돈 · 일정.
+   폰: 한 줄씩 쌓아요 · 1024px 이상: 평소 쓰는 돈 · 일정을 나란히 (높이를 맞춰 늘리지 않고 위에 붙여요) */
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -6,21 +7,21 @@
   align-items: start;
   min-width: 0;
 }
+.lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  min-width: 0;
+}
 @media (min-width: 768px) {
-  .grid {
+  .grid,
+  .lower {
     gap: var(--space-6);
   }
 }
 @media (min-width: 1024px) {
-  .grid {
+  .lower {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  /* 한 줄 가득이 기본, 위의 두 카드만 반씩 */
-  .grid > * {
-    grid-column: 1 / -1;
-  }
-  .grid > .half {
-    grid-column: auto;
-    align-self: stretch;
   }
 }

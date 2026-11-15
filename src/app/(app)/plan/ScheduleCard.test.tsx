@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-/** 이벤트 화면 카드 4 '일정': 일정 · 여행을 날짜순 한 목록 · [+ 추가] 메뉴 · 기록에서 찾은 일 안내 · 폰 접기 */
+/** 이벤트 화면 '일정' 카드: 일정 · 여행을 날짜순 한 목록(가까운 3개 달 + [N건 더]) · 화면 머리 [+ 추가 ▾] 메뉴 · 기록에서 찾은 일 안내 */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlannedEvent, TripStatus } from '@/domain';
 import { EventsView } from './EventsView';
 import { scheduleGroups } from './ScheduleCard';
-import { chooseScheduleAdd, makeHarness } from './testHarness';
+import { chooseScheduleAdd, headerAddButton, makeHarness } from './testHarness';
 import type { EventSections } from './selectors';
 
 vi.mock('next/navigation', () => ({
@@ -59,7 +59,7 @@ async function renderCard() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
   const card = await screen.findByRole('region', { name: /^일정 · / });
-  return { h, card, add: within(card).getByRole('button', { name: '추가' }) };
+  return { h, card, add: headerAddButton() };
 }
 
 /** 작년 12월 기록 → '기록에서 찾기' 제안 1건 */
@@ -73,29 +73,44 @@ async function withSuggestion(h: ReturnType<typeof makeHarness>) {
 const itemNames = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((el) => el.getAttribute('data-item-id'));
 
 describe('일정 카드', () => {
-  it('제목 줄에는 [+ 추가] 하나, 폰에서는 첫 달만 보이고 [펼치기]로 나머지', async () => {
+  it('카드에는 추가 버튼이 없고 화면 머리의 [+ 추가 ▾] 하나', async () => {
     const { card, add } = await renderCard();
     expect(within(card).getByRole('heading', { level: 2 }).textContent).toMatch(/^일정 · \d+건 .+만$/);
+    expect(within(card).queryByRole('button', { name: '추가' })).toBeNull();
+    expect(card.contains(add)).toBe(false);
+    expect(screen.getAllByRole('button', { name: /추가/ })).toHaveLength(1);
     expect(within(card).queryByRole('button', { name: '매년 일정 한 번에 등록' })).toBeNull();
     expect(within(card).queryByRole('button', { name: /^기록에서 찾기/ })).toBeNull();
     expect(add.getAttribute('aria-haspopup')).toBe('menu');
     expect(add.getAttribute('aria-expanded')).toBe('false');
-    const toggle = within(card).getByRole('button', { name: '일정 목록 펼치기' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    const list = document.getElementById(toggle.getAttribute('aria-controls')!)!;
-    expect(within(list).getByRole('region', { name: '다가오는 일정' })).toBeTruthy();
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('가까운 3개 달만 펼쳐 두고 [N건 더 ▾]로 나머지, 폰에서 CSS 로 접는 [펼치기]는 없어요', async () => {
+    const { card } = await renderCard();
+    const upcoming = within(card).getByRole('region', { name: '다가오는 일정' });
+    expect(within(upcoming).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['2027년 1월', '2027년 2월', '2027년 4월']);
+    expect(within(card).queryByRole('button', { name: '일정 목록 펼치기' })).toBeNull();
+    const more = within(upcoming).getByRole('button', { name: '다가오는 일정 1건 더 보기' });
+    expect(more.textContent).toBe('1건 더');
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(document.getElementById(more.getAttribute('aria-controls')!)).toBeTruthy();
+    fireEvent.click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(more.textContent).toBe('접기');
+    expect(within(upcoming).getAllByRole('heading', { level: 3 })).toHaveLength(4);
+    expect(within(upcoming).getByText('결혼기념일')).toBeTruthy();
+    fireEvent.click(within(upcoming).getByRole('button', { name: '다가오는 일정 접기' }));
+    expect(within(upcoming).queryByText('결혼기념일')).toBeNull();
   });
 });
 
-describe('일정 카드 — [+ 추가] 메뉴', () => {
+describe('이벤트 화면 머리 [+ 추가 ▾] 메뉴', () => {
   it('누르면 버튼에 붙은 메뉴(창 아님)가 열리고 첫 항목에 포커스, 다시 누르거나 바깥을 누르면 닫혀요', async () => {
     const { card, add } = await renderCard();
     fireEvent.click(add);
     expect(add.getAttribute('aria-expanded')).toBe('true');
     expect(screen.queryByRole('dialog')).toBeNull();
-    const menu = within(card).getByRole('menu', { name: '무엇을 추가할까요' });
+    const menu = screen.getByRole('menu', { name: '무엇을 추가할까요' });
     expect(add.getAttribute('aria-controls')).toBe(menu.id);
     // 찾은 기록이 없으면 '기록에서 찾기'는 없어요
     expect(itemNames(menu)).toEqual(['event', 'trip', 'annual']);
@@ -106,19 +121,19 @@ describe('일정 카드 — [+ 추가] 메뉴', () => {
     expect(within(menu).getByText('기간 · 예산을 정하고 지출을 묶어요')).toBeTruthy();
     expect(within(menu).getByText('설 · 추석 · 생신 · 어버이날')).toBeTruthy();
     fireEvent.click(add);
-    expect(within(card).queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(add.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(add);
-    expect(within(card).getByRole('menu')).toBeTruthy();
+    expect(screen.getByRole('menu')).toBeTruthy();
     fireEvent.pointerDown(document.body);
-    expect(within(card).queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('키보드: ↓ · ↑ (돌아가요) · Home · End 로 옮기고 Esc 는 닫고 버튼으로, Enter · Space 로 골라요', async () => {
     const { card, add } = await renderCard();
     add.focus();
     fireEvent.keyDown(add, { key: 'ArrowUp' });
-    let menu = within(card).getByRole('menu');
+    let menu = screen.getByRole('menu');
     const item = (name: string) => within(menu).getByRole('menuitem', { name });
     expect(document.activeElement).toBe(item('매년 일정 한 번에 등록'));
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
@@ -133,19 +148,19 @@ describe('일정 카드 — [+ 추가] 메뉴', () => {
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
     expect(document.activeElement).toBe(item('매년 일정 한 번에 등록'));
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    expect(within(card).queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(add);
 
     fireEvent.keyDown(add, { key: 'ArrowDown' });
-    menu = within(card).getByRole('menu');
+    menu = screen.getByRole('menu');
     expect(document.activeElement).toBe(item('새 일정'));
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
     fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
-    expect(within(card).queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(within(card).getByRole('region', { name: '매년 일정 한 번에 등록' })).toBeTruthy();
 
     fireEvent.keyDown(add, { key: 'ArrowDown' });
-    menu = within(card).getByRole('menu');
+    menu = screen.getByRole('menu');
     fireEvent.keyDown(document.activeElement!, { key: ' ' });
     expect(await screen.findByRole('dialog', { name: '일정 추가' })).toBeTruthy();
   });
@@ -158,14 +173,14 @@ describe('일정 카드 — [+ 추가] 메뉴', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     chooseScheduleAdd('여행 추가');
     expect(await screen.findByRole('dialog', { name: '여행 추가' })).toBeTruthy();
-    expect(within(card).queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('매년 일정 · 기록에서 찾기 N건 → 카드 안에서 펼치고(한 번에 하나), [닫기]로 접어요', async () => {
     const { h, card, add } = await renderCard();
     await withSuggestion(h);
     fireEvent.click(add);
-    const menu = within(card).getByRole('menu');
+    const menu = screen.getByRole('menu');
     expect(itemNames(menu)).toEqual(['event', 'trip', 'annual', 'recurring']);
     expect(within(menu).getByRole('menuitem', { name: /^기록에서 찾기,\s?1건$/ })).toBeTruthy();
     expect(within(menu).getByText('지난 지출에서 매년 반복되는 일 추천')).toBeTruthy();

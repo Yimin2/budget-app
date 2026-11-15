@@ -1,5 +1,5 @@
 /* 이벤트 화면에서 쓰는 순수 함수. 화면과 떼어 테스트해요. */
-import { dateInMonth, formatDateKo, formatMan, formatManShort, formatMonthKo, formatShortDate, formatWon, manWon, monthOf, nextOccurrenceDate } from '@/domain';
+import { dateInMonth, formatDateKo, formatMan, formatManShort, formatMonthKo, formatShortDate, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
   EventMonthUsage,
   LedgerData,
@@ -12,7 +12,6 @@ import type {
   PlannedEvent,
   ProjectionMonth,
   Repeat,
-  ShortageFix,
   Won,
   YearMonth,
 } from '@/domain';
@@ -59,32 +58,56 @@ export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
   { value: 'yearly', label: '매년' },
 ];
 
-/* ───────── 이번 달 카드 ───────── */
+/* ───────── 맨 위 숫자 띠 ───────── */
+
+export interface SettleTileText {
+  /** '11/21 정산' */
+  label: string;
+  /** 이번 달 줄 돈 (만 단위). 줄 돈이 없으면 null → '정산할 돈 없어요' */
+  value: string | null;
+  /** '생활비 통장에서 2.4만 · 저수지에서 빌려 2.4만' / '다음 정산 12/1 2.4만' (없으면 null) */
+  note: string | null;
+  /** '못 준 돈 55만 → 다음 달 (민구)' (사람이 하나면 이름, 둘이면 이름과 금액) */
+  carry: string | null;
+}
 
 /**
- * '이번 달' 카드의 정산 한 줄 (PLAN 4-9): '11/21 정산 30만 · 저수지에서 빌려 2.4만' /
- * '이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만'. 이벤트통장에서 줄 수 있는 돈에 안 들어 넘어가는 청구는 따로
- * carry: '못 준 돈 55만 → 다음 달 (민구)' (사람이 하나면 이름, 둘이면 이름과 금액)
+ * 숫자 띠 세 번째 칸 '11/21 정산 32.4만' (PLAN 4-9). 줄 돈 = 정산 기준일까지 돌려줄 날이 된 청구 합 (settlementSummary.total).
+ * 그중 이벤트통장 밖에서 나가는 돈은 아래 작은 줄로. 줄 돈이 없으면 '정산할 돈 없어요' + 다음 정산.
+ * 이벤트통장에서 줄 수 있는 돈에 안 들어 넘어가는 청구는 따로 carry
  */
-export function settleLineText(u: EventMonthUsage, sum: SettlementSummary): { text: string; carry: string | null } {
+export function settleTileText(u: Pick<EventMonthUsage, 'unpaid' | 'unpaidPeople'> | null, sum: SettlementSummary | null, date: ISODate): SettleTileText {
+  const label = `${formatShortDate(sum?.date ?? date)} 정산`;
+  if (!sum || sum.total <= 0) {
+    return {
+      label,
+      value: null,
+      note: sum?.next ? `다음 정산 ${formatShortDate(sum.next.date)} ${formatManShort(sum.next.amount)}` : null,
+      carry: null,
+    };
+  }
   const parts: string[] = [];
-  if (sum.total <= 0) parts.push('이번 달 정산할 돈은 없어요');
-  if (u.plannedClaims > 0) parts.push(`${formatShortDate(sum.date)} 정산 ${formatMan(u.plannedClaims)}`);
-  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatMan(sum.fromFixed)}`);
-  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatMan(sum.fromReservoir)}`);
-  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatMan(sum.borrow)}`);
-  if (sum.total <= 0 && sum.next) parts.push(`다음 정산 ${formatShortDate(sum.next.date)} ${formatMan(sum.next.amount)}`);
+  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatManShort(sum.fromFixed)}`);
+  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatManShort(sum.fromReservoir)}`);
+  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatManShort(sum.borrow)}`);
   let carry: string | null = null;
-  if (u.unpaid > 0) {
+  if (u && u.unpaid > 0) {
     const who =
       u.unpaidPeople.length === 1
         ? ` (${u.unpaidPeople[0]!.name})`
         : u.unpaidPeople.length === 2
-          ? ` (${u.unpaidPeople.map((p) => `${p.name} ${formatMan(p.amount)}`).join(' · ')})`
+          ? ` (${u.unpaidPeople.map((p) => `${p.name} ${formatManShort(p.amount)}`).join(' · ')})`
           : '';
-    carry = `못 준 돈 ${formatMan(u.unpaid)} → 다음 달${who}`;
+    carry = `못 준 돈 ${formatManShort(u.unpaid)} → 다음 달${who}`;
   }
-  return { text: parts.join(' · '), carry };
+  return { label, value: formatManShort(sum.total), note: parts.length > 0 ? parts.join(' · ') : null, carry };
+}
+
+/** 숫자 띠 네 번째 칸: 12개월 중 가장 모자라는 달 (없으면 null) */
+export function worstShortMonth(projection: EventProjection): ProjectionMonth | null {
+  let worst: ProjectionMonth | null = null;
+  for (const m of projection.months) if (m.endBalance < 0 && (!worst || m.endBalance < worst.endBalance)) worst = m;
+  return worst;
 }
 
 /* ───────── 평소 쓰는 돈 카드 ───────── */
@@ -367,76 +390,14 @@ export function summarizeEventNames(names: string[], maxGroups = 2): string {
   return `${labels.slice(0, maxGroups).join(' · ')} 외 ${restCount}건`;
 }
 
-export interface ShortageSummary {
-  month: YearMonth;
-  amount: Won;
-  /** '4월에 300,000원 모자라요' */
-  title: string;
-  /** '결혼식 4건 · 어버이날' (그달 일정이 없으면 '') */
-  names: string;
-  /** 첫 부족 달 말고 더 모자라는 달 수 */
-  others: number;
-  isThisMonth: boolean;
-}
-
-/** 첫 번째로 모자라는 달 요약. 부족이 없으면 null */
-export function shortageSummary(projection: EventProjection | null, today: ISODate): ShortageSummary | null {
-  if (!projection || projection.shortages.length === 0) return null;
-  const first = projection.shortages[0]!;
-  const m = projection.months.find((x) => x.month === first.month);
-  const isThisMonth = first.month === monthOf(today);
-  const label = monthLabel(first.month, today, '이번 달');
-  return {
-    month: first.month,
-    amount: first.amount,
-    title: `${label}에 ${formatWon(first.amount)} 모자라요`,
-    names: m ? summarizeEventNames(m.events.map((e) => e.name)) : '',
-    others: projection.shortages.length - 1,
-    isThisMonth,
-  };
-}
-
-export interface FixChoiceText {
-  title: string;
-  description: string;
-  /** 보조 줄 (예: '매달 300,000원 → 360,000원') */
-  note: string | null;
-  /** 고르면 안 되는 이유 (있으면 고를 수 없어요) */
-  blocked: string | null;
-}
-
-/** ① 지금부터 매달 적립액 늘리기 */
-export function increaseChoiceText(
-  fix: NonNullable<ShortageFix['increaseMonthly']>,
-  today: ISODate,
-  currentContribution: Won,
-): FixChoiceText {
-  const from = monthLabel(fix.fromMonth, today);
-  const to = monthLabel(fix.toMonth, today);
-  return {
-    title: `지금부터 매달 적립액 +${formatWon(fix.amount)}`,
-    description:
-      fix.fromMonth === fix.toMonth || fix.times <= 1
-        ? `${to} 적립 한 번으로 채워요`
-        : `${from}부터 ${to}까지 ${fix.times}번에 나눠 채워요`,
-    note:
-      currentContribution > 0
-        ? `매달 ${formatWon(currentContribution)} → ${formatWon(currentContribution + fix.amount)}`
-        : null,
-    blocked: null,
-  };
-}
-
-/** ② 그달에 저수지에서 옮기기 */
-export function reservoirChoiceText(fix: NonNullable<ShortageFix['fromReservoir']>, today: ISODate): FixChoiceText {
-  const label = monthLabel(fix.month, today, '이번 달');
-  const after = fix.reservoirProjected - fix.amount;
-  return {
-    title: `${label}에 저수지에서 ${formatWon(fix.amount)} 옮기기`,
-    description: `저수지 예상 잔액 ${formatWon(fix.reservoirProjected)}`,
-    note: after >= 0 ? `옮긴 뒤 저수지 ${formatWon(after)}` : null,
-    blocked: after < 0 ? `저수지 예상 잔액이 ${formatWon(-after)} 모자라서 고를 수 없어요` : null,
-  };
+/**
+ * 고른 달이 모자랄 때 상세 맨 위 한 줄: '2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날' (그달 일정이 없으면 이름 없이).
+ * 모자라지 않으면 null
+ */
+export function monthShortLine(m: Pick<ProjectionMonth, 'month' | 'endBalance' | 'events'>, today: ISODate): string | null {
+  if (m.endBalance >= 0) return null;
+  const names = summarizeEventNames(m.events.map((e) => e.name));
+  return `${monthLabel(m.month, today, '이번 달')}에 ${formatManShort(-m.endBalance)} 모자라요${names ? ` · ${names}` : ''}`;
 }
 
 /* ───────── 12개월 막대 ───────── */
@@ -516,11 +477,9 @@ export function barsGeometry(
   };
 }
 
-/** 처음 고를 달: 첫 부족 달 → 이번 달 */
+/** 처음 고를 달: 이번 달 (예측에 없으면 첫 달) */
 export function initialMonth(projection: EventProjection, today: ISODate): YearMonth | null {
   if (projection.months.length === 0) return null;
-  const first = projection.shortages[0]?.month;
-  if (first) return first;
   const now = monthOf(today);
   return projection.months.find((m) => m.month === now)?.month ?? projection.months[0]!.month;
 }

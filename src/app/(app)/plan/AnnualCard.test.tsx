@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventsView } from './EventsView';
-import { chooseScheduleAdd, makeHarness } from './testHarness';
+import { chooseScheduleAdd, headerAddButton, makeHarness } from './testHarness';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -13,7 +13,7 @@ vi.mock('next/navigation', () => ({
 
 afterEach(cleanup);
 
-/** '일정' 카드의 [+ 추가] 메뉴에서 '매년 일정 한 번에 등록'을 눌러 같은 자리에서 펼쳐요 */
+/** 화면 머리 [+ 추가 ▾] 메뉴에서 '매년 일정 한 번에 등록'을 눌러 같은 자리에서 펼쳐요 */
 async function renderCard() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
@@ -24,7 +24,7 @@ async function renderCard() {
 }
 
 describe('매년 일정 한 번에 등록', () => {
-  it("'일정' 카드의 [+ 추가] → 매년 일정 한 번에 등록으로 같은 자리에서 체크 목록을 펼치고, [닫기]로 접으면 [+ 추가]로 돌아가요 (창 없음)", async () => {
+  it("머리의 [+ 추가 ▾] → 매년 일정 한 번에 등록으로 '일정' 카드 안에서 체크 목록을 펼치고, [닫기]로 접으면 [+ 추가]로 돌아가요 (창 없음)", async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
     const schedule = await screen.findByRole('region', { name: /^일정/ });
@@ -41,7 +41,7 @@ describe('매년 일정 한 번에 등록', () => {
     expect(within(card).getByRole('checkbox', { name: /설날/ })).toBeTruthy();
     fireEvent.click(within(schedule).getByRole('button', { name: '매년 일정 한 번에 등록 닫기' }));
     expect(screen.queryByRole('region', { name: '매년 일정 한 번에 등록' })).toBeNull();
-    expect(document.activeElement).toBe(within(schedule).getByRole('button', { name: '추가' }));
+    expect(document.activeElement).toBe(headerAddButton());
   });
 
   it('체크하고 금액을 넣어 등록하면 매년 반복 예정 일정이 되고, 그 줄은 등록됨 + 고치기로 바뀌어요', async () => {

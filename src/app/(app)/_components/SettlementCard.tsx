@@ -47,7 +47,7 @@ export function peopleManText(people: { name: string; amount: number }[]): strin
 }
 
 /**
- * 홈의 이번 달 이벤트통장 한 줄 (PLAN 4-9). 이벤트 화면의 정산 한 줄은 '이번 달' 카드(plan/ThisMonthCard)에 있어요.
+ * 홈의 이번 달 이벤트통장 한 줄 (PLAN 4-9). 이벤트 화면의 정산은 맨 위 숫자 띠(plan/KpiStrip)에 있어요.
  * 쓴 돈 = 이번 달 오늘까지 쓴 이벤트통장 지출(청구 포함, 쓴 날 기준), 예정 = 남은 일정 · 할부 + 미리 기록한 이번 달 지출 (eventMonthUsage)
  */
 export function SettlementCard({ className }: { home?: boolean; className?: string }) {

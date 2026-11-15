@@ -74,123 +74,12 @@ export function useLoanActions() {
   return { act, lock };
 }
 
-/**
- * '이번 달' 카드 안의 저수지 한 줄 (PLAN 4-9). 저수지에 '줄' 돈은 없고, 빌린 돈을 '갚을' 돈만 있어요:
- * '저수지 갚을 돈 365만 · 매달 16만씩 · 2028년 9월에 끝' (매달 금액 · 끝나는 달은 추천 타협안에서 고른 갚는 개월 수로).
- * 그 아래에 늘 펼쳐서 '빌린 돈 · 갚은 돈 · 남은 갚을 돈',
- * '이번 달 10만 갚기 [갚았어요]'(갚았으면 '이번 달 10만 갚았어요 · [되돌리기]'), 저수지에서 이미 지급한 이벤트 청구를 한 번에 바꾸는 버튼,
- * 정산 화면(/plan/settle#loan) 링크. 창은 띄우지 않고, 자동으로 옮기지 않아요
- */
-/** 저수지 한 줄을 보일지: 저수지통장이 있고 빌리거나 갚은 기록 · 바꿀 지출 · 이미 지급한 이벤트 청구가 있을 때 */
+/** 숫자 띠 정산 칸 안의 저수지 한 줄을 보일지: 저수지통장이 있고 빌리거나 갚은 기록 · 바꿀 지출 · 이미 지급한 이벤트 청구가 있을 때 */
 export function hasLoanLine(ledger: Pick<LedgerApi, 'settlement' | 'data' | 'loanCandidates'>): boolean {
   const s = ledger.settlement;
   if (!s || !ledger.data || !s.reservoirAccountId) return false;
   const { loan } = s;
   return loan.borrowed !== 0 || loan.repaid !== 0 || ledger.loanCandidates.length > 0 || settledReservoirEventClaims(ledger.data).length > 0;
-}
-
-export function LoanLine({ repayMonths }: { repayMonths: number }) {
-  const ledger = useLedger();
-  const { act, lock } = useLoanActions();
-  const s = ledger.settlement;
-  const data = ledger.data;
-  if (!s || !data || !s.reservoirAccountId) return null;
-  const { loan, repay } = s;
-  const candidates = ledger.loanCandidates;
-  const settled = settledReservoirEventClaims(data);
-  if (loan.borrowed === 0 && loan.repaid === 0 && candidates.length === 0 && settled.length === 0) return null;
-
-  const settledIds = settled.map((e) => e.id);
-  const settledTotal = settled.reduce((t, e) => t + e.amount, 0);
-  const history = loan.entries.length + loan.repayments.length;
-  const linkText = [history > 0 ? `빌리고 갚은 기록 ${history}건` : null, candidates.length > 0 ? `바꿀 수 있는 지출 ${candidates.length}건` : null]
-    .filter(Boolean)
-    .join(' · ');
-  const payoff = loanPayoff(loan.balance, repayMonths, monthOf(ledger.today));
-
-  return (
-    <div role="group" aria-label="저수지 갚을 돈" className={styles.loanLine}>
-      <div className={styles.summaryRow}>
-        <p className={styles.oneLine} data-testid="loan-line">
-          저수지 갚을 돈 <strong>{formatManShort(loan.balance)}</strong>
-          {payoff ? (
-            <span className={styles.oneLineSub}>
-              {' '}
-              · 매달 {formatManShort(payoff.monthly)}씩 · {formatMonthKo(payoff.endMonth, Number(ledger.today.slice(0, 4)))}에 끝
-            </span>
-          ) : null}
-        </p>
-      </div>
-
-      {/* 카드 아래 여백이 남아 [자세히] 없이 늘 펼쳐 둬요 (사용자 결정) */}
-      {(
-        <div className={styles.expandBody}>
-          <p className={styles.summaryText} data-testid="loan-summary">
-            {loanSummaryText(loan)}
-          </p>
-          {loan.repaidThisMonth ? (
-            <div className={styles.lineRow}>
-              <p className={styles.rowText}>이번 달 {formatMan(loan.repaidThisMonth.amount)} 갚았어요</p>
-              <Button
-                variant="ghost"
-                className={styles.lineBtn}
-                {...lock('undoRepay')}
-                onClick={() => void act('undoRepay', () => ledger.undoRepayLoan(), '갚은 기록을 되돌렸어요')}
-                aria-label={`이번 달 ${formatWon(loan.repaidThisMonth.amount)} 갚은 기록 되돌리기`}
-              >
-                되돌리기
-              </Button>
-            </div>
-          ) : null}
-
-          {repay ? (
-            <div className={styles.lineRow}>
-              <p className={styles.rowText}>이번 달 {formatMan(repay.amount)} 갚기</p>
-              <Button
-                icon="check"
-                className={styles.lineBtn}
-                {...lock('repay')}
-                onClick={() =>
-                  void act('repay', () => ledger.repayLoan(repay.amount), `저수지에 ${formatWon(repay.amount)} 갚았다고 기록했어요`, () =>
-                    ledger.undoRepayLoan(),
-                  )
-                }
-                aria-label={`저수지에 ${formatWon(repay.amount)} 갚았어요`}
-              >
-                갚았어요
-              </Button>
-            </div>
-          ) : null}
-
-          {settled.length > 0 ? (
-            <Button
-              variant="outline"
-              icon="arrow-right"
-              className={styles.convertBtn}
-              {...lock('convert')}
-              onClick={() =>
-                void act(
-                  'convert',
-                  () => ledger.convertSettledReservoirClaims(settledIds),
-                  `${settledIds.length}건 ${formatWon(settledTotal)}을 저수지에 갚을 돈으로 바꿨어요`,
-                  () => ledger.undoReservoirClaims(settledIds, 'converted'),
-                )
-              }
-            >
-              저수지에서 이미 지급한 이벤트 청구 {settled.length}건 {formatWon(settledTotal)}을 갚을 돈으로 바꾸기
-            </Button>
-          ) : null}
-
-          {linkText ? (
-            <Link href={LOAN_HREF} className={styles.lineLink}>
-              {linkText}
-              <Icon name="chevron-right" size={18} />
-            </Link>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /**

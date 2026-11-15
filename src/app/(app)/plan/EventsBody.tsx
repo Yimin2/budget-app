@@ -8,16 +8,16 @@ import {
   recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { ExclusionDraft, Id, PlannedEvent, RepayMonths, TripStatus } from '@/domain';
+import type { ExclusionDraft, Id, PlannedEvent, RepayMonths, TripStatus, YearMonth } from '@/domain';
 import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
 import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import type { EventPreset } from './EventDialog';
 import { NoEventAccount } from './NoEventAccount';
-import { AheadCard } from './AheadCard';
+import { AHEAD_ID, AheadCard } from './AheadCard';
+import { KpiStrip } from './KpiStrip';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
-import { ScheduleCard } from './ScheduleCard';
-import { ThisMonthCard } from './ThisMonthCard';
+import { ScheduleCard, type SchedulePanel } from './ScheduleCard';
 import { UsualCard } from './UsualCard';
 import styles from './EventsBody.module.css';
 
@@ -30,10 +30,28 @@ export interface EventsBodyProps {
   onEdit: (event: PlannedEvent) => void;
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
-  onAddTrip: () => void;
+  /** '일정' 카드 안에 펼친 칸 (머리 [+ 추가] 메뉴로 열어요) */
+  panel: SchedulePanel;
+  focusReq: number;
+  /** 기록에서 찾은 매년 반복되는 일 수 */
+  recurring: number;
+  onOpenPanel: (p: Exclude<SchedulePanel, null>) => void;
+  onClosePanel: () => void;
 }
 
-export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip }: EventsBodyProps) {
+export function EventsBody({
+  ledger,
+  busyId,
+  onAdd,
+  onEdit,
+  onComplete,
+  onCancel,
+  panel,
+  focusReq,
+  recurring,
+  onOpenPanel,
+  onClosePanel,
+}: EventsBodyProps) {
   const { data, today } = ledger;
   const projection = ledger.eventProjection;
   const sections = useMemo(() => sectionEvents(data.events, today), [data.events, today]);
@@ -62,56 +80,74 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
     [data, today, draft],
   );
   const shown = tried ?? projection;
+  // 12개월 카드에서 고른 달 (숫자 띠의 '가장 모자라는 달'로도 골라요). null = 처음 달
+  const [aheadPicked, setAheadPicked] = useState<YearMonth | null>(null);
+  const pickFromStrip = (month: YearMonth) => {
+    setAheadPicked(month);
+    document.getElementById(AHEAD_ID)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  };
 
+  const schedule = (
+    <ScheduleCard
+      sections={sections}
+      today={today}
+      categories={data.categories}
+      spent={spent}
+      displayName={ledger.displayName}
+      busyId={busyId}
+      trips={hasEventAccount ? ledger.trips : NO_TRIPS}
+      data={data}
+      emptyCategories={eventCategories(ledger.activeCategories)}
+      panel={panel}
+      focusReq={focusReq}
+      recurring={recurring}
+      onOpenPanel={onOpenPanel}
+      onClosePanel={onClosePanel}
+      onAdd={onAdd}
+      onEdit={onEdit}
+      onComplete={onComplete}
+      onCancel={onCancel}
+    />
+  );
+
+  // 숫자 띠 → 지난 · 앞으로 12개월 → (넓은 화면) 평소 쓰는 돈 · 일정 나란히, 폰은 쌓아요
   return (
     <div className={styles.grid}>
       {projection && hasEventAccount ? (
         <>
-          <ThisMonthCard projection={projection} repayMonths={repayMonths} className={styles.half} />
-          <UsualCard
-            data={data}
-            projection={projection}
-            insight={insight}
-            today={today}
-            compromise={compromise}
-            repayMonths={repayMonths}
-            onRepayMonths={chooseMonths}
-            candidates={candidates}
-            tried={tried}
-            draft={draft}
-            onDraft={setDraft}
-            className={styles.half}
-          />
+          <KpiStrip projection={projection} data={data} today={today} repayMonths={repayMonths} onPickMonth={pickFromStrip} />
           <HashTarget />
           <AheadCard
             projection={shown ?? projection}
             data={data}
             today={today}
             badge={tried ? '미리 보는 중' : undefined}
-            fix={ledger.shortageFix}
-            showShortage={!tried}
+            picked={aheadPicked}
+            onPick={setAheadPicked}
           />
+          <div className={styles.lower}>
+            <UsualCard
+              data={data}
+              projection={projection}
+              insight={insight}
+              today={today}
+              compromise={compromise}
+              repayMonths={repayMonths}
+              onRepayMonths={chooseMonths}
+              candidates={candidates}
+              tried={tried}
+              draft={draft}
+              onDraft={setDraft}
+            />
+            {schedule}
+          </div>
         </>
       ) : (
-        <NoEventAccount ledger={ledger} />
+        <>
+          <NoEventAccount ledger={ledger} />
+          {schedule}
+        </>
       )}
-      <ScheduleCard
-        sections={sections}
-        today={today}
-        categories={data.categories}
-        spent={spent}
-        displayName={ledger.displayName}
-        busyId={busyId}
-        trips={hasEventAccount ? ledger.trips : NO_TRIPS}
-        planning={Boolean(projection && hasEventAccount)}
-        data={data}
-        emptyCategories={eventCategories(ledger.activeCategories)}
-        onAdd={onAdd}
-        onAddTrip={onAddTrip}
-        onEdit={onEdit}
-        onComplete={onComplete}
-        onCancel={onCancel}
-      />
     </div>
   );
 }

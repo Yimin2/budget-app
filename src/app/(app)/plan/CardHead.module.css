@@ -1,4 +1,4 @@
-/* FoldCard — 이벤트 화면 네 카드의 틀. 폰(1024px 아래)은 본문을 접고, 넓은 화면은 늘 펼쳐요 */
+/* CardHead — 이벤트 화면 카드의 틀과 제목 줄 */
 :global(.card).card {
   display: flex;
   flex-direction: column;
@@ -35,19 +35,4 @@
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
-}
-.toggle {
-  display: flex;
-  justify-content: center;
-  margin: calc(var(--space-2) * -1) 0;
-}
-@media (max-width: 1023.98px) {
-  .folded {
-    display: none !important;
-  }
-}
-@media (min-width: 1024px) {
-  .toggle {
-    display: none !important;
-  }
 }

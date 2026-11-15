@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventsView } from './EventsView';
-import { chooseScheduleAdd, makeHarness } from './testHarness';
+import { chooseScheduleAdd, headerAddButton, makeHarness } from './testHarness';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -49,17 +49,16 @@ describe('범위 띠 (아끼면 ~ 많이 쓰면)', () => {
   });
 });
 
-describe('매년 돌아오는 일 (일정 카드의 [+ 추가] → 기록에서 찾기)', () => {
-  /** '일정' 카드의 [+ 추가] 메뉴에서 '기록에서 찾기'를 눌러 같은 자리에서 펼쳐요 */
+describe('매년 돌아오는 일 (머리의 [+ 추가 ▾] → 기록에서 찾기)', () => {
+  /** 머리의 [+ 추가 ▾] 메뉴에서 '기록에서 찾기'를 눌러 '일정' 카드 안에서 펼쳐요 */
   function openRecurring() {
     chooseScheduleAdd(/^기록에서 찾기/);
     const schedule = screen.getByRole('region', { name: /^일정 · / });
     return { card: within(schedule).getByRole('region', { name: '매년 돌아오는 일' }) };
   }
   const addMenu = () => {
-    const schedule = screen.getByRole('region', { name: /^일정 · / });
-    fireEvent.click(within(schedule).getByRole('button', { name: '추가' }));
-    return within(schedule).getByRole('menu');
+    fireEvent.click(headerAddButton());
+    return screen.getByRole('menu');
   };
 
   it('작년 기록을 찾아 제안하고 [넣기]는 같은 날 매년 일정으로, 그 뒤엔 제안이 사라져요', async () => {
@@ -145,8 +144,6 @@ describe('예외 지출 빼기', () => {
     fireEvent.click(box);
     expect(box.checked).toBe(true);
     expect(within(chart()).getByText('미리 보는 중')).toBeTruthy();
-    // 미리 보는 중에는 부족 알림(반영 버튼)을 숨겨요
-    expect(within(chart()).queryByTestId('shortage-panel')).toBeNull();
     expect(card.textContent).toMatch(/평소 쓰는 돈 한 달 평균 [\d.]+만원 → [\d.]+만원/);
     expect(card.textContent).toContain('1건을 바꿔 봤어요');
     // 미리 보는 중에는 접을 수 없고 다른 단계로 바꿀 수도 없어요, 칩에도 바꾼 대로
@@ -161,7 +158,6 @@ describe('예외 지출 빼기', () => {
 
     fireEvent.click(within(card).getByRole('button', { name: '되돌리기' }));
     expect(within(chart()).queryByText('미리 보는 중')).toBeNull();
-    expect(within(chart()).getByTestId('shortage-panel')).toBeTruthy();
     expect(box.checked).toBe(false);
     expect(h.probe.ledger!.data!.expenses.find((e) => e.memo === '친구 결혼식')!.excluded).toBeUndefined();
     // 미리 보기가 끝나면 [접기]로 다시 접혀요

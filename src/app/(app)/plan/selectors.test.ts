@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { createDemoLedger, projectEventAccount, suggestShortageFixes } from '@/domain';
-import type { Category, Expense, PlannedEvent, ProjectionMonth } from '@/domain';
+import { createDemoLedger, projectEventAccount } from '@/domain';
+import type { Category, EventProjection, Expense, PlannedEvent, ProjectionMonth, SettlementSummary } from '@/domain';
 import {
+  settleTileText,
+  worstShortMonth,
   usualCategoriesText,
   barsGeometry,
   compactWon,
   dateLabel,
   defaultCompleteDate,
   eventCategories,
-  increaseChoiceText,
   initialMonth,
   aheadInflowText,
   compromiseHeadline,
@@ -22,9 +23,8 @@ import {
   monthLabel,
   nextContribution,
   nextOccurrence,
-  reservoirChoiceText,
   sectionEvents,
-  shortageSummary,
+  monthShortLine,
   spentByEvent,
   summarizeEventNames,
   weekdayShort,
@@ -156,47 +156,22 @@ describe('summarizeEventNames', () => {
   });
 });
 
-describe('체험 가계부 부족 알림 문구', () => {
+describe('체험 가계부 모자라는 달', () => {
   const data = createDemoLedger(TODAY, NOW);
   const projection = projectEventAccount(data, TODAY);
-  const fix = suggestShortageFixes(data, TODAY, projection);
 
-  it('첫 부족 달 · 금액 · 그달 일정 요약', () => {
-    const s = shortageSummary(projection, TODAY)!;
-    expect(s.title).toBe('2027년 4월에 300,000원 모자라요');
-    expect(s.names).toBe('결혼식 4건 · 어버이날');
-    expect(s.others).toBe(0);
-    expect(s.isThisMonth).toBe(false);
+  it('고른 달 맨 위 한 줄: 그달 · 모자라는 금액(만 단위) · 그달 일정 요약, 모자라지 않으면 null', () => {
+    const april = projection.months.find((m) => m.month === '2027-04')!;
+    expect(monthShortLine(april, TODAY)).toBe('2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날');
+    expect(monthShortLine({ ...april, events: [] }, TODAY)).toBe('2027년 4월에 30만 모자라요');
+    expect(monthShortLine({ ...april, month: '2026-11' }, TODAY)).toMatch(/^이번 달에 30만 모자라요/);
+    expect(monthShortLine(projection.months[0]!, TODAY)).toBeNull();
   });
 
-  it('① 매달 적립액 늘리기 문구', () => {
-    const t = increaseChoiceText(fix.increaseMonthly!, TODAY, projection.monthlyContribution);
-    expect(t.title).toBe('지금부터 매달 적립액 +60,000원');
-    expect(t.description).toBe('12월부터 2027년 4월까지 5번에 나눠 채워요');
-    expect(t.note).toBe('매달 300,000원 → 360,000원');
-    expect(t.blocked).toBeNull();
-  });
-
-  it('② 저수지에서 옮기기 문구 · 저수지가 모자라면 고를 수 없어요', () => {
-    const r = fix.fromReservoir!;
-    const t = reservoirChoiceText(r, TODAY);
-    expect(t.title).toBe('2027년 4월에 저수지에서 300,000원 옮기기');
-    expect(t.description).toContain('저수지 예상 잔액');
-    expect(t.blocked).toBeNull();
-    const poor = reservoirChoiceText({ ...r, reservoirProjected: 100_000 }, TODAY);
-    expect(poor.blocked).toBe('저수지 예상 잔액이 200,000원 모자라서 고를 수 없어요');
-    expect(poor.note).toBeNull();
-  });
-
-  it('처음 고르는 달은 첫 부족 달 · 다음 달 적립 변화 없음', () => {
-    expect(initialMonth(projection, TODAY)).toBe('2027-04');
+  it('처음 고르는 달은 모자라는 달이 있어도 이번 달 · 다음 달 적립 변화 없음', () => {
+    expect(projection.shortages.length).toBeGreaterThan(0);
+    expect(initialMonth(projection, TODAY)).toBe('2026-11');
     expect(nextContribution(projection)).toBeNull();
-  });
-
-  it('부족이 없으면 이번 달을 골라요', () => {
-    const ok = { ...projection, shortages: [] };
-    expect(shortageSummary(ok, TODAY)).toBeNull();
-    expect(initialMonth(ok, TODAY)).toBe('2026-11');
   });
 });
 
@@ -386,5 +361,48 @@ describe('compromiseHeadline', () => {
       }),
     ).toBe('적립 55만 + 경조사 −3만 외 1개');
     expect(compromiseHeadline({ recommended: 300_000, cut: { cuts: [] } })).toBe('적립 30만');
+  });
+});
+
+describe('숫자 띠', () => {
+  const sum = (o: Partial<SettlementSummary>): SettlementSummary => ({
+    total: 0,
+    people: [],
+    date: '2026-11-21',
+    fromEvent: 0,
+    fromFixed: 0,
+    fromReservoir: 0,
+    borrow: 0,
+    rest: 0,
+    payable: 0,
+    next: null,
+    carry: null,
+    hasClaims: true,
+    ...o,
+  });
+
+  it('settleTileText: 줄 돈 합 · 이벤트통장 밖에서 나가는 돈 · 넘어가는 돈, 없으면 다음 정산', () => {
+    expect(settleTileText(null, sum({ total: 324_000, fromFixed: 24_000 }), '2026-11-20')).toEqual({
+      label: '11/21 정산',
+      value: '32.4만',
+      note: '생활비 통장에서 2.4만',
+      carry: null,
+    });
+    const u = { unpaid: 550_000, unpaidPeople: [{ name: '민구', amount: 550_000 }] };
+    expect(settleTileText(u, sum({ total: 850_000 }), '2026-11-20').carry).toBe('못 준 돈 55만 → 다음 달 (민구)');
+    expect(settleTileText(null, sum({ next: { date: '2026-12-01', amount: 24_000 } }), '2026-11-20')).toEqual({
+      label: '11/21 정산',
+      value: null,
+      note: '다음 정산 12/1 2.4만',
+      carry: null,
+    });
+    expect(settleTileText(null, null, '2026-11-21').value).toBeNull();
+  });
+
+  it('worstShortMonth: 가장 많이 모자라는 달, 없으면 null', () => {
+    const m = (month: string, endBalance: number) => ({ month, endBalance }) as ProjectionMonth;
+    const p = (months: ProjectionMonth[]) => ({ months }) as EventProjection;
+    expect(worstShortMonth(p([m('2026-11', 10), m('2027-02', -100), m('2027-04', -300), m('2027-05', -200)]))!.month).toBe('2027-04');
+    expect(worstShortMonth(p([m('2026-11', 0), m('2026-12', 5)]))).toBeNull();
   });
 });

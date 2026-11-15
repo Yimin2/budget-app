@@ -31,11 +31,10 @@ import type {
   PastMonth,
   ProjectionMonth,
   ProjectionRangeMonth,
-  ShortageFix,
   YearMonth,
 } from '@/domain';
 import { Badge, Button, Card, Icon, cx, useMediaQuery } from '@/ui';
-import { FoldHead, useMobileFold, foldStyles } from './FoldCard';
+import { CardHead, cardStyles } from './CardHead';
 import {
   aheadInflowText,
   aheadMonthItems,
@@ -50,14 +49,17 @@ import {
   hasUsual,
   initialMonth,
   monthLabel,
+  monthShortLine,
   rangeNote,
   yOf,
   type AheadItem,
 } from './selectors';
-import { ShortagePanel } from './ShortagePanel';
 import { tripHref } from './trips/selectors';
 import shared from './events.module.css';
 import styles from './AheadCard.module.css';
+
+/** 카드 id (숫자 띠의 '가장 모자라는 달'에서 스크롤해 와요) */
+export const AHEAD_ID = 'ahead';
 
 /** 고른 달 옆 '다가오는 달' 목록에 보일 달 수 */
 export const AHEAD_UPCOMING = 4;
@@ -80,27 +82,26 @@ export interface AheadCardProps {
   today: ISODate;
   /** 미리 보는 중이면(예외 지출 빼기) 제목 옆에 붙일 표시 */
   badge?: string;
-  /** 부족 알림의 두 가지 방법 (미리 보는 중이 아니고 모자라는 달이 있을 때만 알림을 보여요) */
-  fix?: ShortageFix | null;
-  showShortage?: boolean;
+  /** 고른 달 (밖에서 들고 있을 때. 없으면 카드 안에서) */
+  picked?: YearMonth | null;
+  onPick?: (month: YearMonth) => void;
   className?: string;
 }
 
 /**
- * 이벤트 화면 카드 2 '앞으로 12개월' (PLAN 4-2): 왼쪽은 지난 12개월 실제 달 말 잔액(회색 막대, 기록으로 계산) + 그때 예상한 잔액(점선, 예측 기록),
+ * 이벤트 화면 '지난 · 앞으로 12개월' 카드 (PLAN 4-2, 지난 달 막대가 없으면 '앞으로 12개월'): 왼쪽은 지난 12개월 실제 달 말 잔액(회색 막대, 기록으로 계산) + 그때 예상한 잔액(점선, 예측 기록),
  * 이번 달부터는 달 말 예상 잔액 막대(범위 띠 · 미리 보는 중 표시). 0 이상은 기준선 위(파랑), 0 아래는 기준선 아래(빨강) + 모자라는 금액.
- * 이번 달은 달 숫자에 파란 동그라미. 막대를 누르면(마우스는 올리기만 해도) 아래에 그달이 보여요:
+ * 이번 달은 달 숫자에 파란 동그라미. 처음엔 이번 달을 골라 두고, 막대를 누르면(마우스는 올리기만 해도) 아래에 그달이 보여요:
  * - 지난 달: 시작 잔액 · 들어온 돈 · 나간 돈 · 끝 잔액, 그때 예상과 견주기, 정산 화면 링크
- * - 이번 달 · 앞으로 달: 나갈 돈 합계(굵게) → 새로 나갈 돈 · 지난 지출 돌려주기 두 묶음 → 들어오는 돈 · 그 달 끝 예상 잔액
- * 옆에 다가오는 달 한 줄씩(합계 먼저) → 모자라는 달이 있으면 부족 알림(두 가지 방법). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
- * 폰에서는 상태 한 줄만 보이고 [펼치기]로 나머지. 막대는 가로로 밀어 지난 달을 봐요
+ * - 이번 달 · 앞으로 달: 모자라면 맨 위 한 줄 '4월에 30만 모자라요 · 결혼식 4건 · 어버이날' → 나갈 돈 합계(굵게) → 새로 나갈 돈 · 지난 지출 돌려주기 두 묶음 → 들어오는 돈 · 그 달 끝 예상 잔액
+ * 옆에 다가오는 달 한 줄씩(합계 먼저, 모자라는 달은 경고 색 '−30만'). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
+ * 폰에서도 막대 · 고른 달(이번 달 합계)이 늘 보여요 (접기 없음). 막대는 가로로 밀어 지난 달을 봐요
  */
-export function AheadCard({ projection, data, today, badge, fix = null, showShortage = false, className }: AheadCardProps) {
+export function AheadCard({ projection, data, today, badge, picked: pickedProp, onPick, className }: AheadCardProps) {
   const ids = useId().replace(/:/g, '');
   const titleId = `${ids}-title`;
   const months = projection.months;
   const thisMonth = monthOf(today);
-  const fold = useMobileFold('앞으로 12개월');
   // 할부 이름: 월별 이벤트 비용(eventMonthlyCosts)의 앞으로 달 할부 줄
   const installmentsByMonth = useMemo(() => {
     const map = new Map<YearMonth, { key: string; label: string; amount: number }[]>();
@@ -129,7 +130,9 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
     [past, months],
   );
 
-  const [picked, setPicked] = useState<YearMonth | null>(null);
+  const [pickedOwn, setPickedOwn] = useState<YearMonth | null>(null);
+  const picked = pickedProp !== undefined ? pickedProp : pickedOwn;
+  const setPicked = (month: YearMonth) => (onPick ? onPick(month) : setPickedOwn(month));
   const [hover, setHover] = useState<YearMonth | null>(null);
   const [announce, setAnnounce] = useState('');
   const colRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -179,7 +182,7 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
     if (!el || past.length === 0 || el.scrollWidth <= el.clientWidth) return;
     const colW = el.scrollWidth / Math.max(1, cols.length);
     el.scrollLeft = Math.max(0, colW * (past.length - 2));
-  }, [fold.open, past.length, cols.length, wide]);
+  }, [past.length, cols.length, wide]);
 
   if (months.length === 0) return null;
 
@@ -231,8 +234,8 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
   const lowest = months.reduce((lo, m) => (m.endBalance < lo.endBalance ? m : lo), months[0]!);
   const caption =
     shortages.length > 0
-      ? `${months.length}개월 중 ${shortages.length}개월이 모자라요 · 가장 모자라는 달 ${label(lowest.month)} ${formatWon(-lowest.endBalance)}`
-      : `${months.length}개월 동안 모자라는 달이 없어요 · 가장 적은 달 ${label(lowest.month)} ${formatWon(lowest.endBalance)}`;
+      ? `${months.length}개월 중 ${shortages.length}개월이 모자라요 · 가장 모자라는 달 ${label(lowest.month)} ${formatManShort(-lowest.endBalance)}`
+      : `${months.length}개월 동안 모자라는 달이 없어요 · 가장 적은 달 ${label(lowest.month)} ${formatManShort(lowest.endBalance)}`;
   const selIndex = cols.findIndex((c) => c.month === selected);
 
   const upcoming = months.slice(0, AHEAD_UPCOMING);
@@ -240,10 +243,10 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
   const hasPrevMarks = prevMarks.some(Boolean);
 
   return (
-    <Card as="section" className={cx(foldStyles.card, className)} aria-labelledby={titleId}>
-      <FoldHead
+    <Card as="section" id={AHEAD_ID} className={cx(cardStyles.card, className)} aria-labelledby={titleId}>
+      <CardHead
         titleId={titleId}
-        title={`앞으로 ${months.length}개월`}
+        title={past.length > 0 ? `지난 · 앞으로 ${months.length}개월` : `앞으로 ${months.length}개월`}
         badge={
           badge ? (
             <Badge tone="info" size="sm">
@@ -251,14 +254,13 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
             </Badge>
           ) : undefined
         }
-        actions={<span className={styles.chartHint}>막대를 누르면 그달 항목이 보여요</span>}
+        actions={<span className={styles.chartHint}>막대를 누르면 그 달이 아래에 · 처음엔 이번 달</span>}
       />
       <p className={cx(styles.caption, shortages.length > 0 ? shared.bad : shared.ok)} data-testid="ahead-status">
         <Icon name={shortages.length > 0 ? 'alert-triangle' : 'check-circle'} size={16} />
         <span>{caption}</span>
       </p>
-      {fold.toggle}
-      <div id={fold.bodyId} className={cx(foldStyles.body, fold.bodyClass)}>
+      <div className={cardStyles.body}>
         <figure className={cx(styles.figure, canDropUnit && styles.canDropUnit)}>
           <ul className={styles.legend} aria-hidden>
             {past.length > 0 ? (
@@ -405,7 +407,7 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
             </p>
           ) : null}
           {transfersIn > 0 ? (
-            <p className={shared.foot}>저수지 등에서 옮겨 올 예정인 {formatWon(transfersIn)}을 넣어서 계산했어요</p>
+            <p className={shared.foot}>저수지 등에서 옮겨 올 예정인 {formatManShort(transfersIn)}을 넣어서 계산했어요</p>
           ) : null}
 
           {/* 표는 width: 1px 로 줄어들지 않아서, 숨김 상자로 한 번 감싸요 (가로 스크롤 방지) */}
@@ -522,9 +524,10 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
                         {m.month === thisMonth ? <span className="sr-only"> (이번 달)</span> : null}
                       </span>
                       {m.endBalance < 0 ? (
-                        <span className={cx(styles.upBadge, shared.bad)}>
+                        <span className={styles.upBadge}>
                           <Icon name="alert-triangle" size={16} />
-                          {formatManShort(-m.endBalance)} 모자라요
+                          −{formatManShort(-m.endBalance)}
+                          <span className="sr-only"> 모자라요</span>
                         </span>
                       ) : null}
                     </button>
@@ -539,7 +542,6 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
           </div>
         </div>
 
-        {showShortage && projection.shortages.length > 0 ? <ShortagePanel projection={projection} fix={fix} today={today} /> : null}
       </div>
       <p className="sr-only" aria-live="polite">
         {announce}
@@ -558,8 +560,20 @@ function ItemRow({ item, today }: { item: AheadItem; today: ISODate }) {
         {item.date && !claim && item.date < today ? <span className="sr-only"> (날짜 지남)</span> : null}
         {item.note ? <span className={styles.note}>{item.kind === 'usual' ? ` (${item.note})` : ` · ${item.note}`}</span> : null}
       </span>
-      <span className={styles.a}>{formatWon(item.amount)}</span>
+      <span className={styles.a}>
+        <Man value={item.amount} />
+      </span>
     </li>
+  );
+}
+
+/** 보이는 금액은 만 단위, 화면 읽기는 정확한 원 단위 */
+function Man({ value }: { value: number }) {
+  return (
+    <>
+      <span aria-hidden>{formatManShort(value)}</span>
+      <span className="sr-only">{formatWon(value)}</span>
+    </>
   );
 }
 
@@ -610,9 +624,9 @@ function MonthDetail({
             {isThis ? ' · 이번 달' : ''}
           </h3>
           <span className={styles.detailSub}>
-            <span className={cx(shared.statusLine, short ? shared.bad : shared.ok)}>
+            <span className={cx(shared.statusLine, short ? shared.bad : shared.ok)} data-testid="ahead-month-status">
               <Icon name={short ? 'alert-triangle' : 'check-circle'} size={16} />
-              {short ? `${formatWon(-month.endBalance)} 모자라요` : '모자라지 않아요'}
+              {monthShortLine(month, today) ?? '모자라지 않아요'}
             </span>
           </span>
         </div>
@@ -627,7 +641,7 @@ function MonthDetail({
         <div className={styles.group}>
           {repay.length > 0 ? (
             <h4 className={styles.groupTitle}>
-              새로 나갈 돈 <span className={styles.groupAmount}>{formatWon(totals.spend)}</span>
+              새로 나갈 돈 <span className={styles.groupAmount}>{formatManShort(totals.spend)}</span>
             </h4>
           ) : null}
           <ul className={styles.items} aria-label={`${label} 나갈 돈`}>
@@ -665,25 +679,27 @@ function MonthDetail({
         </div>
         <div className={cx(styles.calcRow, styles.calcTotal)}>
           <dt>그 달 끝 예상 잔액</dt>
-          <dd className={short ? shared.bad : undefined}>{formatWon(month.endBalance)}</dd>
+          <dd className={short ? shared.bad : undefined}>
+            <Man value={month.endBalance} />
+          </dd>
         </div>
         {range ? (
           <div className={cx(styles.calcRow, styles.calcMuted)}>
             <dt>아끼면 · 많이 쓰면</dt>
             <dd>
-              {formatWon(range.endLow)} · <span className={range.endHigh < 0 ? shared.bad : undefined}>{formatWon(range.endHigh)}</span>
+              {formatManShort(range.endLow)} · <span className={range.endHigh < 0 ? shared.bad : undefined}>{formatManShort(range.endHigh)}</span>
             </dd>
           </div>
         ) : null}
         {prevForecast ? (
           <div className={cx(styles.calcRow, styles.calcMuted)}>
             <dt>지난달 예상</dt>
-            <dd data-testid="ahead-prev-forecast">{formatWon(prevForecast.expected)}</dd>
+            <dd data-testid="ahead-prev-forecast">{formatManShort(prevForecast.expected)}</dd>
           </div>
         ) : null}
       </dl>
       {range && range.endHigh < 0 && !short && highCount > 0 ? (
-        <p className={styles.detailWarn}>많이 쓰면 이 달에 {formatWon(-range.endHigh)} 모자라요</p>
+        <p className={styles.detailWarn}>많이 쓰면 이 달에 {formatManShort(-range.endHigh)} 모자라요</p>
       ) : null}
     </div>
   );
@@ -717,19 +733,27 @@ function PastDetail({
       <dl className={styles.calc}>
         <div className={styles.calcRow}>
           <dt>시작 잔액</dt>
-          <dd>{formatWon(past.startBalance)}</dd>
+          <dd>
+            <Man value={past.startBalance} />
+          </dd>
         </div>
         <div className={styles.calcRow}>
           <dt>들어온 돈</dt>
-          <dd>+{formatWon(past.inflow)}</dd>
+          <dd>
+            +<Man value={past.inflow} />
+          </dd>
         </div>
         <div className={styles.calcRow}>
           <dt>나간 돈</dt>
-          <dd>−{formatWon(past.outflow)}</dd>
+          <dd>
+            −<Man value={past.outflow} />
+          </dd>
         </div>
         <div className={cx(styles.calcRow, styles.calcTotal)}>
           <dt>끝 잔액</dt>
-          <dd className={past.endBalance < 0 ? shared.bad : undefined}>{formatWon(past.endBalance)}</dd>
+          <dd className={past.endBalance < 0 ? shared.bad : undefined}>
+            <Man value={past.endBalance} />
+          </dd>
         </div>
       </dl>
       {cmp ? (

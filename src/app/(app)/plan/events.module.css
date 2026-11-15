@@ -119,18 +119,6 @@
   flex: none;
   display: flex;
 }
-.panelHead {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-.panelHead .txt {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 .applyRow {
   display: flex;
   flex-direction: column;
