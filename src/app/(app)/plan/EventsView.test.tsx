@@ -31,7 +31,7 @@ describe('EventsView — 체험 가계부', () => {
     await waitFor(() => expect(within(card).queryByTestId('usual-empty')).toBeNull());
     expect(within(card).getByTestId('savings-status').textContent).toMatch(/^.+만 넘어요/);
     expect(within(card).getByTestId('usual-step-table')).toBeTruthy();
-    const chart = screen.getByRole('region', { name: '앞으로 12개월' });
+    const chart = screen.getByRole('region', { name: '지난 · 앞으로 12개월' });
     expect(within(chart).getByText(/작년 같은 달 기록 30%와 최근 12개월 평균 70%를 섞어요 \(작년 기록이 없으면 최근 12개월 평균\)/)).toBeTruthy();
     expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
   });

@@ -743,3 +743,59 @@
 .repayMonth .items {
   padding-left: var(--space-3);
 }
+/* ───────── 통장 시작 전 달: 쓴 돈만 (빗금 막대, 잔액 축과 따로) ───────── */
+/* 높이 기준은 이 달들 중 가장 많이 쓴 달. 바닥은 잔액 기준선이 아니라 차트 바닥이에요 */
+.spentSeg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  /* 오른쪽(이번 달 쪽)에 붙여요: 폰은 처음에 이번 달 바로 앞 두 달부터 보여서 */
+  min-width: max-content;
+  padding: 0 var(--space-1);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.spentArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  border-bottom: 1px dashed var(--border);
+}
+.spentLabel {
+  margin-bottom: 2px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.spentUnit {
+  font-size: 10px;
+}
+.barSpent,
+.swatch.spentSwatch {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--chart-6) 50%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chart-6) 60%, transparent);
+}
+.barSpent {
+  display: block;
+  flex: none;
+  width: min(20px, 62%);
+  border-radius: 4px 4px 0 0;
+}
+.spentCol .monthNum {
+  color: var(--text-muted);
+}

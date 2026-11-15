@@ -20,7 +20,7 @@ async function renderEvents() {
   return h;
 }
 
-const chart = () => screen.getByRole('region', { name: '앞으로 12개월' });
+const chart = () => screen.getByRole('region', { name: /앞으로 12개월$/ });
 
 describe('범위 띠 (아끼면 ~ 많이 쓰면)', () => {
   it('기록이 없으면 띠 없이 보통 막대만, 표에도 범위 칸이 없어요', async () => {
@@ -38,7 +38,7 @@ describe('범위 띠 (아끼면 ~ 많이 쓰면)', () => {
     });
     await waitFor(() => expect(within(chart()).getByTestId('projection-band')).toBeTruthy());
     expect(within(chart()).getAllByTestId('projection-whisker').length).toBeGreaterThan(0);
-    const table = screen.getByRole('table');
+    const table = screen.getByRole('table', { name: '이벤트통장 달별 예상 잔액' });
     expect(within(table).getByRole('columnheader', { name: '아끼면' })).toBeTruthy();
     expect(within(table).getByRole('columnheader', { name: '많이 쓰면' })).toBeTruthy();
     expect(within(chart()).getByText(/띠는 평소 쓰는 돈을 아끼면 · 많이 쓰면이에요. 지난 2개월 기록의 표준편차만큼 넓혔어요/)).toBeTruthy();

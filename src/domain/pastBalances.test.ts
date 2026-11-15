@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { accountBalance } from './balances';
 import { createDemoLedger } from './defaults';
-import { accountFlow, accountStartMonth, pastMonthEnds, spentSoFarThisMonth } from './pastBalances';
+import { accountFlow, accountStartMonth, pastMonthBars, pastMonthEnds, preStartSpentMonths, spentSoFarThisMonth } from './pastBalances';
 import { account, emptyLedger, expense, transfer } from './_fixtures';
 
 const EV = 'acc-event';
@@ -72,5 +72,68 @@ describe('지난 달 실제 달 말 잔액', () => {
     expect(accountBalance(d, 'demo-acc-event', '2026-11-20')).toBe(accountBalance(plain, 'demo-acc-event', '2026-11-20'));
     expect(d.forecasts).toHaveLength(6);
     expect(d.forecasts.every((f) => f.outflow! >= 0)).toBe(true);
+  });
+});
+
+describe('통장 시작 전 달: 쓴 돈만', () => {
+  // 통장은 11월에 시작, 노션에서 가져온 지난 이벤트 지출은 그 전부터
+  function imported() {
+    return emptyLedger({
+      accounts: [account('event', { openingBalance: 500_000, openingDate: '2026-11-01' }), account('income'), account('reservoir')],
+      categories: [
+        { id: 'c-occ', name: '경조사', group: 'event', budget: 0, deleted: false } as never,
+        { id: 'c-gift', name: '선물', group: 'event', budget: 0, deleted: false } as never,
+      ],
+      expenses: [
+        // 12개월 창 밖 (2025-11 전)
+        expense({ date: '2025-10-30', amount: 999_000, accountId: EV, categoryId: 'c-occ' }),
+        expense({ date: '2026-05-03', amount: 100_000, accountId: EV, categoryId: 'c-occ' }),
+        expense({ date: '2026-05-20', amount: 50_000, accountId: EV, categoryId: 'c-occ' }),
+        expense({ date: '2026-05-21', amount: 30_000, accountId: EV, categoryId: 'c-gift' }),
+        // 지운 지출 · 다른 통장 지출은 세지 않아요
+        expense({ date: '2026-06-01', amount: 70_000, accountId: EV, deleted: true }),
+        expense({ date: '2026-06-02', amount: 70_000, accountId: 'acc-income' }),
+        // 청구(개인 돈으로 냄)도 쓴 날의 달에 세요
+        expense({ date: '2026-09-09', amount: 40_000, accountId: EV, categoryId: 'c-gift', paidBy: '민지', claimAccountId: 'acc-income' }),
+        // 시작 달부터는 잔액 막대
+        expense({ date: '2026-11-03', amount: 30_000, accountId: EV }),
+      ],
+    });
+  }
+
+  it('시작 달 전 · 12개월 창 안 · 기록이 있는 달만, 쓴 날 기준 합과 eventRecordGroup 줄', () => {
+    const data = imported();
+    const pre = preStartSpentMonths(data, EV, '2026-11-20');
+    expect(pre.map((m) => [m.month, m.kind, m.spent, m.count])).toEqual([
+      ['2026-05', 'spentOnly', 180_000, 3],
+      ['2026-09', 'spentOnly', 40_000, 1],
+    ]);
+    expect(pre[0]!.items.map((i) => [i.label, i.amount, i.expenseIds.length])).toEqual([
+      ['경조사', 150_000, 2],
+      ['선물', 30_000, 1],
+    ]);
+    // 시작 달이 이번 달이니 잔액 막대는 없고, 합친 막대는 쓴 돈 달만
+    expect(pastMonthEnds(data, EV, '2026-11-20')).toEqual([]);
+    expect(pastMonthBars(data, EV, '2026-11-20').map((b) => [b.month, b.kind])).toEqual([
+      ['2026-05', 'spentOnly'],
+      ['2026-09', 'spentOnly'],
+    ]);
+  });
+
+  it('시작 달이 창 안에 있으면 그 전은 쓴 돈, 시작 달부터는 잔액 · count 를 따라요', () => {
+    const data = imported();
+    data.accounts[0] = { ...data.accounts[0]!, openingDate: '2026-08-01' };
+    const bars = pastMonthBars(data, EV, '2026-11-20');
+    expect(bars.map((b) => [b.month, b.kind])).toEqual([
+      ['2026-05', 'spentOnly'],
+      ['2026-08', 'balance'],
+      ['2026-09', 'balance'],
+      ['2026-10', 'balance'],
+    ]);
+    expect(preStartSpentMonths(data, EV, '2026-11-20', 4)).toEqual([]);
+    // 시작일이 비면 첫 기록의 달이 시작이라 그 전 기록은 없어요
+    data.accounts[0] = { ...data.accounts[0]!, openingDate: '' };
+    expect(preStartSpentMonths(data, EV, '2026-11-20')).toEqual([]);
+    expect(preStartSpentMonths(data, 'nope', '2026-11-20')).toEqual([]);
   });
 });
