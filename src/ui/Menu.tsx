@@ -22,8 +22,11 @@ export interface MenuButtonProps {
   /** 버튼 글자 */
   label: string;
   icon?: IconName;
+  /** 버튼 글자 오른쪽 아이콘 (예: 'chevron-down') */
+  iconRight?: IconName;
   variant?: ButtonVariant;
   items: MenuItem[];
+  disabled?: boolean;
   /** 메뉴 이름 (없으면 버튼 글자) */
   menuLabel?: string;
   className?: string;
@@ -40,7 +43,7 @@ type Place = 'down' | 'up';
  * 항목을 고르면 메뉴를 닫고 버튼으로 포커스를 돌린 뒤 onSelect 를 불러요 (onSelect 가 포커스를 옮겨도 돼요).
  * 버튼 오른쪽 끝에 맞춰 아래로 열고, 아래 자리가 모자라면 위로 열어요. 왼쪽이 화면 밖으로 나가면 화면 안으로 밀어요
  */
-export function MenuButton({ label, icon, variant = 'primary', items, menuLabel, className, buttonRef }: MenuButtonProps) {
+export function MenuButton({ label, icon, iconRight, variant = 'primary', items, menuLabel, className, buttonRef, disabled }: MenuButtonProps) {
   const ids = useId().replace(/:/g, '');
   const buttonId = `${ids}-btn`;
   const menuId = `${ids}-menu`;
@@ -161,6 +164,8 @@ export function MenuButton({ label, icon, variant = 'primary', items, menuLabel,
         id={buttonId}
         variant={variant}
         icon={icon}
+        iconRight={iconRight}
+        disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}

@@ -231,8 +231,8 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
   const lowest = months.reduce((lo, m) => (m.endBalance < lo.endBalance ? m : lo), months[0]!);
   const caption =
     shortages.length > 0
-      ? `${months.length}개월 중 ${shortages.length}개월이 모자라요 · 가장 모자라는 달 ${label(lowest.month)} ${formatWon(-lowest.endBalance)}`
-      : `${months.length}개월 동안 모자라는 달이 없어요 · 가장 적은 달 ${label(lowest.month)} ${formatWon(lowest.endBalance)}`;
+      ? `${months.length}개월 중 ${shortages.length}개월이 모자라요 · 가장 모자라는 달 ${label(lowest.month)} ${formatManShort(-lowest.endBalance)}`
+      : `${months.length}개월 동안 모자라는 달이 없어요 · 가장 적은 달 ${label(lowest.month)} ${formatManShort(lowest.endBalance)}`;
   const selIndex = cols.findIndex((c) => c.month === selected);
 
   const upcoming = months.slice(0, AHEAD_UPCOMING);
@@ -405,7 +405,7 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
             </p>
           ) : null}
           {transfersIn > 0 ? (
-            <p className={shared.foot}>저수지 등에서 옮겨 올 예정인 {formatWon(transfersIn)}을 넣어서 계산했어요</p>
+            <p className={shared.foot}>저수지 등에서 옮겨 올 예정인 {formatManShort(transfersIn)}을 넣어서 계산했어요</p>
           ) : null}
 
           {/* 표는 width: 1px 로 줄어들지 않아서, 숨김 상자로 한 번 감싸요 (가로 스크롤 방지) */}
@@ -558,8 +558,20 @@ function ItemRow({ item, today }: { item: AheadItem; today: ISODate }) {
         {item.date && !claim && item.date < today ? <span className="sr-only"> (날짜 지남)</span> : null}
         {item.note ? <span className={styles.note}>{item.kind === 'usual' ? ` (${item.note})` : ` · ${item.note}`}</span> : null}
       </span>
-      <span className={styles.a}>{formatWon(item.amount)}</span>
+      <span className={styles.a}>
+        <Man value={item.amount} />
+      </span>
     </li>
+  );
+}
+
+/** 보이는 금액은 만 단위, 화면 읽기는 정확한 원 단위 */
+function Man({ value }: { value: number }) {
+  return (
+    <>
+      <span aria-hidden>{formatManShort(value)}</span>
+      <span className="sr-only">{formatWon(value)}</span>
+    </>
   );
 }
 
@@ -612,7 +624,7 @@ function MonthDetail({
           <span className={styles.detailSub}>
             <span className={cx(shared.statusLine, short ? shared.bad : shared.ok)}>
               <Icon name={short ? 'alert-triangle' : 'check-circle'} size={16} />
-              {short ? `${formatWon(-month.endBalance)} 모자라요` : '모자라지 않아요'}
+              {short ? `${formatManShort(-month.endBalance)} 모자라요` : '모자라지 않아요'}
             </span>
           </span>
         </div>
@@ -627,7 +639,7 @@ function MonthDetail({
         <div className={styles.group}>
           {repay.length > 0 ? (
             <h4 className={styles.groupTitle}>
-              새로 나갈 돈 <span className={styles.groupAmount}>{formatWon(totals.spend)}</span>
+              새로 나갈 돈 <span className={styles.groupAmount}>{formatManShort(totals.spend)}</span>
             </h4>
           ) : null}
           <ul className={styles.items} aria-label={`${label} 나갈 돈`}>
@@ -665,25 +677,27 @@ function MonthDetail({
         </div>
         <div className={cx(styles.calcRow, styles.calcTotal)}>
           <dt>그 달 끝 예상 잔액</dt>
-          <dd className={short ? shared.bad : undefined}>{formatWon(month.endBalance)}</dd>
+          <dd className={short ? shared.bad : undefined}>
+            <Man value={month.endBalance} />
+          </dd>
         </div>
         {range ? (
           <div className={cx(styles.calcRow, styles.calcMuted)}>
             <dt>아끼면 · 많이 쓰면</dt>
             <dd>
-              {formatWon(range.endLow)} · <span className={range.endHigh < 0 ? shared.bad : undefined}>{formatWon(range.endHigh)}</span>
+              {formatManShort(range.endLow)} · <span className={range.endHigh < 0 ? shared.bad : undefined}>{formatManShort(range.endHigh)}</span>
             </dd>
           </div>
         ) : null}
         {prevForecast ? (
           <div className={cx(styles.calcRow, styles.calcMuted)}>
             <dt>지난달 예상</dt>
-            <dd data-testid="ahead-prev-forecast">{formatWon(prevForecast.expected)}</dd>
+            <dd data-testid="ahead-prev-forecast">{formatManShort(prevForecast.expected)}</dd>
           </div>
         ) : null}
       </dl>
       {range && range.endHigh < 0 && !short && highCount > 0 ? (
-        <p className={styles.detailWarn}>많이 쓰면 이 달에 {formatWon(-range.endHigh)} 모자라요</p>
+        <p className={styles.detailWarn}>많이 쓰면 이 달에 {formatManShort(-range.endHigh)} 모자라요</p>
       ) : null}
     </div>
   );
@@ -717,19 +731,27 @@ function PastDetail({
       <dl className={styles.calc}>
         <div className={styles.calcRow}>
           <dt>시작 잔액</dt>
-          <dd>{formatWon(past.startBalance)}</dd>
+          <dd>
+            <Man value={past.startBalance} />
+          </dd>
         </div>
         <div className={styles.calcRow}>
           <dt>들어온 돈</dt>
-          <dd>+{formatWon(past.inflow)}</dd>
+          <dd>
+            +<Man value={past.inflow} />
+          </dd>
         </div>
         <div className={styles.calcRow}>
           <dt>나간 돈</dt>
-          <dd>−{formatWon(past.outflow)}</dd>
+          <dd>
+            −<Man value={past.outflow} />
+          </dd>
         </div>
         <div className={cx(styles.calcRow, styles.calcTotal)}>
           <dt>끝 잔액</dt>
-          <dd className={past.endBalance < 0 ? shared.bad : undefined}>{formatWon(past.endBalance)}</dd>
+          <dd className={past.endBalance < 0 ? shared.bad : undefined}>
+            <Man value={past.endBalance} />
+          </dd>
         </div>
       </dl>
       {cmp ? (

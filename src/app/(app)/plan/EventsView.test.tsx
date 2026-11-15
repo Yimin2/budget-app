@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventsView } from './EventsView';
-import { makeHarness } from './testHarness';
+import { chooseScheduleAdd, headerAddButton, makeHarness } from './testHarness';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -141,7 +141,7 @@ describe('EventsView — 체험 가계부', () => {
     const planned = h.probe.ledger!.data!.transfers.filter((t) => t.status === 'planned');
     expect(planned).toHaveLength(1);
     expect(planned[0]!.amount).toBe(300_000);
-    expect(screen.getByText(/옮겨 올 예정인 300,000원을 넣어서 계산했어요/)).toBeTruthy();
+    expect(screen.getByText(/옮겨 올 예정인 30만을 넣어서 계산했어요/)).toBeTruthy();
     expect(screen.getByTestId('ahead-status').textContent).toMatch(/^12개월 동안 모자라는 달이 없어요/);
   });
 
@@ -166,6 +166,9 @@ describe('EventsView — 체험 가계부', () => {
     const jan = within(upcoming).getByRole('list', { name: '2027년 1월' });
     expect(within(jan).getByText('명절 부모님 용돈')).toBeTruthy();
     expect(within(jan).getByText('민지 · 명절')).toBeTruthy();
+    // 금액은 만 단위 (정확한 금액은 화면 읽기용 글과 일정 창에)
+    expect(within(upcoming).getByText('1건 · 40만')).toBeTruthy();
+    expect(within(jan).getByRole('button', { name: /명절 부모님 용돈/ }).textContent).toContain('40만400,000원');
     expect(within(upcoming).getByText('매년')).toBeTruthy();
     // 지난 일정은 없어요
     expect(screen.queryByText(/지난 일정 \d+건/)).toBeNull();
@@ -173,7 +176,7 @@ describe('EventsView — 체험 가계부', () => {
 
   it('일정 추가: 비우고 누르면 안내, 채우면 목록과 예측에 들어가요', async () => {
     const h = await renderEvents();
-    fireEvent.click(screen.getByRole('button', { name: '일정 추가' }));
+    chooseScheduleAdd('새 일정');
     const dialog = await screen.findByRole('dialog', { name: '일정 추가' });
     fireEvent.click(within(dialog).getByRole('button', { name: '추가하기' }));
     expect(within(dialog).getByText('일정 이름을 입력해 주세요')).toBeTruthy();
@@ -268,7 +271,7 @@ describe('EventsView — 체험 가계부', () => {
     await waitFor(() => expect(within(upcoming).queryByText('지수 결혼식')).toBeNull());
   });
 
-  it('일정 카드의 여행 줄: 여행 표시 · 쓴 돈 / 예산 · 남은 예산, 누르면 여행 화면, [+ 추가] 메뉴로 여행 추가', async () => {
+  it('일정 카드의 여행 줄: 여행 표시 · 쓴 돈 / 예산 · 남은 예산, 누르면 여행 화면, 머리의 [+ 추가 ▾] 메뉴로 여행 추가', async () => {
     const h = await renderEvents();
     const card = screen.getByRole('region', { name: /^일정 · / });
     const link = within(card).getByRole('link', { name: /제주 여행/ });
@@ -286,16 +289,17 @@ describe('EventsView — 체험 가계부', () => {
     const feb = h.probe.ledger!.eventProjection!.months.find((m) => m.tripList?.length)!;
     expect(feb.trips).toBe(450_000);
 
-    // [+ 추가] 메뉴의 '여행 추가'로 여행 창을 열어요
-    const add = within(card).getByRole('button', { name: '추가' });
+    // 머리의 [+ 추가 ▾] 메뉴의 '여행 추가'로 여행 창을 열어요 (카드에는 추가 버튼이 없어요)
+    expect(within(card).queryByRole('button', { name: '추가' })).toBeNull();
+    const add = headerAddButton();
     expect(add.getAttribute('aria-haspopup')).toBe('menu');
     expect(add.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(add);
     expect(add.getAttribute('aria-expanded')).toBe('true');
-    const menu = within(card).getByRole('menu');
+    const menu = screen.getByRole('menu', { name: '무엇을 추가할까요' });
     expect(within(menu).getByRole('menuitem', { name: '새 일정' })).toBeTruthy();
     fireEvent.click(within(menu).getByRole('menuitem', { name: '여행 추가' }));
-    expect(within(card).queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     const dialog = await screen.findByRole('dialog', { name: '여행 추가' });
     fireEvent.click(within(dialog).getByRole('button', { name: '추가하기' }));
     expect(await within(dialog).findByText('여행 이름을 입력해 주세요')).toBeTruthy();

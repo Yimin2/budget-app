@@ -15,6 +15,8 @@ import styles from './UsualCard.module.css';
 
 type Step = 'table' | 'compromise' | 'exceptions';
 
+const EMPTY_HINT = '아직 일정 아닌 이벤트 지출 기록이 없어요. 기록이 쌓이면 항목별 평균과 도넛이 나와요';
+
 const STEP_TITLE: Record<Step, string> = {
   table: '항목별 평균 표',
   compromise: '추천 타협안',
@@ -42,7 +44,7 @@ export interface UsualCardProps {
 
 /**
  * 이벤트 화면 카드 3 '평소 쓰는 돈' (PLAN 4-2, 정보만 · 바꾸는 버튼 없음).
- * 접힌 요약: 작은 도넛 + 범례 · 적립 대비 막대(넘는 몫 · 바닥나는 달) · 단계 칩 셋
+ * 접힌 요약: 작은 도넛 + 범례(기록이 없으면 빈 도넛 대신 안내 한 줄) · 적립 대비 막대(넘는 몫 · 바닥나는 달) · 단계 칩 셋
  * [① 항목별 평균 표] [② 추천 타협안 '적립 70만 + 선물 −5만'] [③ 예외 지출 빼기 '후보 4건'].
  * 칩이나 [자세히]를 누르면 그 단계가 같은 자리에서 펼쳐져요(창 없음). 같은 칩을 다시 누르거나 [접기]로 접어요.
  * 예외를 체크해 미리 보는 동안에는 ③ 이 펼친 채로 있고, '앞으로 12개월' 카드에 '미리 보는 중'이 붙어요
@@ -70,6 +72,8 @@ export function UsualCard({
   const { breakdown, slices } = useUsualBreakdown(data, accountId, today, null);
   const previewing = useMemo(() => effectiveExclusions(data, draft).length > 0, [data, draft]);
   const counts = exceptionCounts(candidates, draft);
+  // 평소 쓰는 돈 기록이 없으면 빈 도넛 대신 안내 한 줄 (막대 · 칩은 그대로)
+  const hasSlices = slices.length > 0 && breakdown.monthlyTotal > 0;
 
   const steps: Step[] = [];
   if (insight) steps.push('table');
@@ -113,9 +117,9 @@ export function UsualCard({
 
       {insight ? (
         <>
-          <div className={styles.donutWrap}>
-            <UsualDonut slices={slices} total={breakdown.monthlyTotal} size="sm" />
-            {slices.length > 0 ? (
+          {hasSlices ? (
+            <div className={styles.donutWrap}>
+              <UsualDonut slices={slices} total={breakdown.monthlyTotal} size="sm" />
               <ul className={styles.legend} aria-label="평소 쓰는 돈 항목 (한 달 평균)">
                 {slices.map((s) => (
                   <li key={s.key}>
@@ -125,8 +129,12 @@ export function UsualCard({
                   </li>
                 ))}
               </ul>
-            ) : null}
-          </div>
+            </div>
+          ) : (
+            <p className={shared.foot} data-testid="usual-no-records">
+              {EMPTY_HINT}
+            </p>
+          )}
           <SavingsBarView
             contribution={insight.monthlyContribution}
             usual={insight.monthlyUsual}
@@ -137,7 +145,7 @@ export function UsualCard({
         </>
       ) : (
         <p className={shared.foot} data-testid="usual-empty">
-          일정이나 여행에 묶지 않은 이벤트통장 지출이 쌓이면 한 달에 얼마쯤 쓰는지 여기서 보여 드려요
+          {EMPTY_HINT}
         </p>
       )}
 

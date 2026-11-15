@@ -5,12 +5,12 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { eventRecordStatus, formatMan, formatManShort, formatShortDate, formatWon, liveTransferIds, lunarRepeatLabel, monthOf, tripPeriodText } from '@/domain';
 import type { Category, EventRecordStatus, Expense, Id, ISODate, LedgerData, PlannedEvent, TripStatus, Won, YearMonth } from '@/domain';
 import { RECURRING_HINT_KEY } from '@/state';
-import { Badge, Button, Card, Icon, MenuButton, cx, type MenuItem } from '@/ui';
+import { Badge, Button, Card, Icon, cx } from '@/ui';
 import { AnnualCard } from './AnnualCard';
 import { EmptyEvents } from './EmptyEvents';
 import type { EventPreset } from './EventDialog';
 import { FoldHead, foldStyles, useMobileFold } from './FoldCard';
-import { RecurringCard, recurringList } from './RecurringCard';
+import { RecurringCard } from './RecurringCard';
 import { dateLabel, monthLabel, REPEAT_LABEL, weekdayShort, type EventSections } from './selectors';
 import { remainingText, tripHref, tripPhaseText } from './trips/selectors';
 import shared from './events.module.css';
@@ -27,13 +27,18 @@ export interface ScheduleCardProps {
   busyId: Id | null;
   /** 여행 (이벤트통장이 없으면 빈 목록) */
   trips: TripStatus[];
-  /** [+ 추가] 메뉴에 여행 추가 · 매년 일정 한 번에 등록 · 기록에서 찾기를 보일지 (이벤트통장이 있을 때) */
-  planning: boolean;
   data: LedgerData;
   /** 일정이 하나도 없을 때 빈 상태의 예시 카테고리 */
   emptyCategories: Category[];
+  /** 카드 안에 펼친 칸 (화면 머리 [+ 추가] 메뉴 · 안내 [보기]로 열어요) */
+  panel: SchedulePanel;
+  /** 칸을 열 때마다 늘어요 → 그 칸으로 포커스 */
+  focusReq: number;
+  /** 기록에서 찾은 매년 반복되는 일 수 (0이면 안내 없음) */
+  recurring: number;
+  onOpenPanel: (p: Exclude<SchedulePanel, null>) => void;
+  onClosePanel: () => void;
   onAdd: (preset?: EventPreset) => void;
-  onAddTrip: () => void;
   onEdit: (event: PlannedEvent) => void;
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
@@ -60,7 +65,7 @@ function writeHintDismissed(): void {
   }
 }
 
-type Panel = 'annual' | 'recurring' | null;
+export type SchedulePanel = 'annual' | 'recurring' | null;
 
 /** 다가오는 줄: 일정 또는 여행 (날짜순으로 섞어요) */
 type Entry = { kind: 'event'; date: ISODate; event: PlannedEvent } | { kind: 'trip'; date: ISODate; trip: TripStatus };
@@ -100,25 +105,19 @@ export function scheduleGroups(sections: EventSections, trips: TripStatus[], tod
 }
 
 /**
- * 이벤트 화면 카드 4 '일정 · 10건 170만' (PLAN 4-3 · 4-11).
- * 제목 줄 버튼은 [+ 추가] 하나: 버튼에 붙는 작은 메뉴(창 아님)로 새 일정 · 여행 추가 · 매년 일정 한 번에 등록 · 기록에서 찾기 N건(0건이면 없음).
- * 매년 일정 · 기록에서 찾기는 카드 안에서 펼쳐요 ([닫기]로 접음). 기록에서 찾은 게 있으면 목록 위에 '… N건을 찾았어요 [보기]' 안내(이 기기에서 닫을 수 있음).
+ * 이벤트 화면 카드 4 '일정 · 10건 170만' (PLAN 4-3 · 4-11). 금액은 만 단위(formatManShort), 정확한 금액은 일정 창과 화면 읽기용 글에.
+ * 추가 버튼은 카드에 없고 화면 머리의 [+ 추가 ▾] 하나예요. 그 메뉴의 매년 일정 · 기록에서 찾기는 이 카드 안에서 펼쳐요 ([닫기]로 접음). 기록에서 찾은 게 있으면 목록 위에 '… N건을 찾았어요 [보기]' 안내(이 기기에서 닫을 수 있음).
  * 날짜가 지난 예정 일정(썼어요 / 취소됐어요) → 다가오는 일정과 여행(달별, 날짜순. 여행은 여행 달에 한 줄: '여행' 표시 · '쓴 돈 45만 / 예산 90만 · 미리 낸 돈 2건 포함' · 막대 · '남은 45만', 누르면 여행 화면, [펼치기]로 미리 낸 돈)
  * → 지난 일정(접힘). 넓은 카드는 달 묶음을 두 칸으로 흘려요. 폰에서는 첫 달만 보이고 [펼치기]로 나머지
  */
 export function ScheduleCard(props: ScheduleCardProps) {
-  const { sections, today, trips, planning, data, onAdd, onAddTrip, onEdit } = props;
+  const { sections, today, trips, data, panel, focusReq, recurring, onOpenPanel, onClosePanel, onAdd, onEdit } = props;
   const titleId = useId();
   const ids = useId().replace(/:/g, '');
-  const [panel, setPanel] = useState<Panel>(null);
   const [hintHidden, setHintHidden] = useState(readHintDismissed);
-  const addBtn = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  /** 메뉴 · 안내로 칸을 펼칠 때마다 1씩 늘려 그 칸으로 포커스를 옮겨요 */
-  const [focusReq, setFocusReq] = useState(0);
   const fold = useMobileFold('일정 목록');
   const groups = useMemo(() => scheduleGroups(sections, trips, today), [sections, trips, today]);
-  const recurring = useMemo(() => (planning ? recurringList(data, today).length : 0), [planning, data, today]);
   const count = groups.reduce((s, g) => s + g.entries.length, 0);
   const total = groups.reduce((s, g) => s + g.total, 0);
   const pastTrips = trips.filter((t) => t.phase === 'past').length;
@@ -130,39 +129,11 @@ export function ScheduleCard(props: ScheduleCardProps) {
     if (focusReq > 0) panelRef.current?.focus();
   }, [focusReq]);
 
-  const openPanel = (p: Exclude<Panel, null>) => {
-    setPanel(p);
-    setFocusReq((n) => n + 1);
-  };
-  const closePanel = () => {
-    setPanel(null);
-    addBtn.current?.focus();
-  };
   const dismissHint = () => {
     setHintHidden(true);
     writeHintDismissed();
   };
 
-  const items: MenuItem[] = [
-    { id: 'event', label: '새 일정', hint: '결혼식 · 생신처럼 한 번 있는 일', icon: 'calendar', onSelect: () => onAdd() },
-  ];
-  if (planning) {
-    items.push(
-      { id: 'trip', label: '여행 추가', hint: '기간 · 예산을 정하고 지출을 묶어요', icon: 'plane', onSelect: onAddTrip },
-      { id: 'annual', label: '매년 일정 한 번에 등록', hint: '설 · 추석 · 생신 · 어버이날', icon: 'repeat', onSelect: () => openPanel('annual') },
-    );
-    // 기록에서 찾은 게 없으면 메뉴에 두지 않아요
-    if (recurring > 0) {
-      items.push({
-        id: 'recurring',
-        label: '기록에서 찾기',
-        badge: `${recurring}건`,
-        hint: '지난 지출에서 매년 반복되는 일 추천',
-        icon: 'search',
-        onSelect: () => openPanel('recurring'),
-      });
-    }
-  }
   const panelName = panel === 'annual' ? '매년 일정 한 번에 등록' : '매년 돌아오는 일';
   const showHint = recurring > 0 && !hintHidden && panel !== 'recurring';
 
@@ -171,21 +142,12 @@ export function ScheduleCard(props: ScheduleCardProps) {
       <FoldHead
         titleId={titleId}
         title={count > 0 ? `일정 · ${count}건 ${formatMan(total)}` : '일정'}
-        actions={
-          <MenuButton
-            label="추가"
-            icon="plus"
-            menuLabel="무엇을 추가할까요"
-            items={items}
-            buttonRef={addBtn}
-          />
-        }
       />
 
       {panel ? (
         <div id={`${ids}-panel`} ref={panelRef} tabIndex={-1} className={styles.panelWrap}>
           <div className={styles.panelBar}>
-            <Button variant="ghost" plain icon="x" onClick={closePanel} aria-label={`${panelName} 닫기`}>
+            <Button variant="ghost" plain icon="x" onClick={onClosePanel} aria-label={`${panelName} 닫기`}>
               닫기
             </Button>
           </div>
@@ -199,7 +161,7 @@ export function ScheduleCard(props: ScheduleCardProps) {
           <Icon name="sparkles" size={20} className={styles.hintIcon} />
           <p className={styles.hintText}>지난 기록에서 매년 반복되는 일 {recurring}건을 찾았어요</p>
           <div className={styles.hintActions}>
-            <Button variant="ghost" onClick={() => openPanel('recurring')}>
+            <Button variant="ghost" onClick={() => onOpenPanel('recurring')}>
               보기
             </Button>
             <Button variant="ghost" plain iconOnly icon="x" aria-label="매년 반복되는 일 안내 닫기" onClick={dismissHint} />
@@ -227,7 +189,7 @@ export function ScheduleCard(props: ScheduleCardProps) {
                             {g.month === thisMonth ? ' · 이번 달' : ''}
                           </h3>
                           <span className={styles.groupTotal}>
-                            {g.entries.length}건 · {formatWon(g.total)}
+                            {g.entries.length}건 · {formatManShort(g.total)}
                           </span>
                         </div>
                         <ul className={styles.rows} aria-labelledby={headId}>
@@ -356,7 +318,10 @@ function TripEntryRow({ status: s, data, displayName }: { status: TripStatus; da
                       ) : null}
                     </span>
                   </span>
-                  <span className={styles.preAmt}>{formatWon(e.amount)}</span>
+                  <span className={styles.preAmt}>
+                    <span aria-hidden>{formatManShort(e.amount)}</span>
+                    <span className="sr-only">{formatWon(e.amount)}</span>
+                  </span>
                 </li>
               );
             })}
@@ -490,9 +455,15 @@ function EventRow({
         <span className={styles.amt}>
           <span>
             {canceled ? <span className="sr-only">예상 </span> : null}
-            {formatWon(shownAmount)}
+            <span aria-hidden>{formatManShort(shownAmount)}</span>
+            <span className="sr-only">{formatWon(shownAmount)}</span>
           </span>
-          {done && actual !== event.amount ? <span className={styles.was}>예상 {formatWon(event.amount)}</span> : null}
+          {done && actual !== event.amount ? (
+            <span className={styles.was}>
+              <span aria-hidden>예상 {formatManShort(event.amount)}</span>
+              <span className="sr-only">예상 {formatWon(event.amount)}</span>
+            </span>
+          ) : null}
         </span>
         <span className="sr-only">, 고치기</span>
       </button>

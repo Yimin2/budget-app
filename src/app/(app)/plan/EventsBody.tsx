@@ -16,7 +16,7 @@ import type { EventPreset } from './EventDialog';
 import { NoEventAccount } from './NoEventAccount';
 import { AheadCard } from './AheadCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
-import { ScheduleCard } from './ScheduleCard';
+import { ScheduleCard, type SchedulePanel } from './ScheduleCard';
 import { ThisMonthCard } from './ThisMonthCard';
 import { UsualCard } from './UsualCard';
 import styles from './EventsBody.module.css';
@@ -30,10 +30,28 @@ export interface EventsBodyProps {
   onEdit: (event: PlannedEvent) => void;
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
-  onAddTrip: () => void;
+  /** '일정' 카드 안에 펼친 칸 (머리 [+ 추가] 메뉴로 열어요) */
+  panel: SchedulePanel;
+  focusReq: number;
+  /** 기록에서 찾은 매년 반복되는 일 수 */
+  recurring: number;
+  onOpenPanel: (p: Exclude<SchedulePanel, null>) => void;
+  onClosePanel: () => void;
 }
 
-export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel, onAddTrip }: EventsBodyProps) {
+export function EventsBody({
+  ledger,
+  busyId,
+  onAdd,
+  onEdit,
+  onComplete,
+  onCancel,
+  panel,
+  focusReq,
+  recurring,
+  onOpenPanel,
+  onClosePanel,
+}: EventsBodyProps) {
   const { data, today } = ledger;
   const projection = ledger.eventProjection;
   const sections = useMemo(() => sectionEvents(data.events, today), [data.events, today]);
@@ -103,11 +121,14 @@ export function EventsBody({ ledger, busyId, onAdd, onEdit, onComplete, onCancel
         displayName={ledger.displayName}
         busyId={busyId}
         trips={hasEventAccount ? ledger.trips : NO_TRIPS}
-        planning={Boolean(projection && hasEventAccount)}
         data={data}
         emptyCategories={eventCategories(ledger.activeCategories)}
+        panel={panel}
+        focusReq={focusReq}
+        recurring={recurring}
+        onOpenPanel={onOpenPanel}
+        onClosePanel={onClosePanel}
         onAdd={onAdd}
-        onAddTrip={onAddTrip}
         onEdit={onEdit}
         onComplete={onComplete}
         onCancel={onCancel}

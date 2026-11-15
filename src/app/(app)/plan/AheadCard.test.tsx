@@ -31,8 +31,9 @@ describe('앞으로 12개월 카드', () => {
     const list = within(detail).getByRole('list', { name: '2027년 4월 나갈 돈' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(april.events.length);
     for (const e of april.events) expect(list.textContent).toContain(e.name);
-    expect(detail.textContent).toContain(`그 달 끝 예상 잔액${formatWon(april.endBalance)}`);
-    expect(detail.textContent).toContain(`${formatWon(-april.endBalance)} 모자라요`);
+    // 보이는 금액은 만 단위, 화면 읽기용 글에는 정확한 금액
+    expect(detail.textContent).toContain(`그 달 끝 예상 잔액${formatManShort(april.endBalance)}${formatWon(april.endBalance)}`);
+    expect(detail.textContent).toContain(`${formatManShort(-april.endBalance)} 모자라요`);
   });
 
   it('평소 쓰는 돈은 근거와 함께 마지막 줄, 금액은 예측 그대로', async () => {
@@ -45,7 +46,7 @@ describe('앞으로 12개월 카드', () => {
     fireEvent.click(within(card).getByRole('button', { name: '12월 자세히 보기' }));
     const items = within(within(card).getByRole('list', { name: '12월 나갈 돈' })).getAllByRole('listitem');
     const last = items[items.length - 1]!;
-    expect(last.textContent).toBe(`평소 쓰는 돈 (${USUAL_BASIS_NOTE[dec.usualBasis ?? 'recent']})${formatWon(dec.usual)}`);
+    expect(last.textContent).toBe(`평소 쓰는 돈 (${USUAL_BASIS_NOTE[dec.usualBasis ?? 'recent']})${formatManShort(dec.usual)}${formatWon(dec.usual)}`);
   });
 
   it('다가오는 달: 이번 달부터 4개월 한 줄씩, 누르면 그 달을 골라요 · 지난 달 쓴 돈은 정산 화면 링크', async () => {
@@ -146,10 +147,10 @@ describe('앞으로 12개월 카드 — 지난 달 실제 잔액 · 예측 기�
     fireEvent.click(within(card).getByRole('button', { name: '10월 (지난 달) 자세히 보기' }));
     const detail = within(card).getByTestId('ahead-past-month');
     expect(within(detail).getByRole('heading', { level: 3, name: '10월 · 지난 달' })).toBeTruthy();
-    expect(detail.textContent).toContain(`시작 잔액${formatWon(oct.startBalance)}`);
-    expect(detail.textContent).toContain(`들어온 돈+${formatWon(oct.inflow)}`);
-    expect(detail.textContent).toContain(`나간 돈−${formatWon(oct.outflow)}`);
-    expect(detail.textContent).toContain(`끝 잔액${formatWon(oct.endBalance)}`);
+    expect(detail.textContent).toContain(`시작 잔액${formatManShort(oct.startBalance)}${formatWon(oct.startBalance)}`);
+    expect(detail.textContent).toContain(`들어온 돈+${formatManShort(oct.inflow)}${formatWon(oct.inflow)}`);
+    expect(detail.textContent).toContain(`나간 돈−${formatManShort(oct.outflow)}${formatWon(oct.outflow)}`);
+    expect(detail.textContent).toContain(`끝 잔액${formatManShort(oct.endBalance)}${formatWon(oct.endBalance)}`);
     const snap = data.forecasts.find((f) => f.targetMonth === '2026-10')!;
     const cmp = forecastCompare(snap, oct);
     const compare = within(detail).getByTestId('ahead-compare');
