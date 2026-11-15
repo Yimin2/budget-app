@@ -43,6 +43,9 @@ import {
   aheadTotals,
   barsGeometry,
   isNewSpend,
+  capList,
+  repayByMonth,
+  repayPayersLine,
   repaySummary,
   compactWon,
   hasRange,
@@ -68,6 +71,9 @@ export const AHEAD_UPCOMING = 4;
 export const PAST_RECORDS_HREF = '/plan/settle#paid';
 /** 정산 화면 (돌려줄 돈) */
 export const SETTLE_SCREEN_HREF = '/plan/settle';
+/** 긴 목록: 이 줄 수를 넘으면 앞 AHEAD_LIST_KEEP 줄 + 'N건 더' */
+export const AHEAD_LIST_LIMIT = 6;
+export const AHEAD_LIST_KEEP = 5;
 /** 차트 왼쪽 지난 달 실제 잔액 막대 수 (폰은 가로로 밀어 봐요) */
 export const AHEAD_PAST_MONTHS = 12;
 
@@ -484,6 +490,7 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
         <div className={styles.monthsRow}>
           {shownCol?.kind === 'ahead' ? (
             <MonthDetail
+              key={shownCol.month}
               month={shownCol.m}
               items={aheadMonthItems(shownCol.m, installmentsByMonth.get(shownCol.m.month))}
               range={range?.find((r) => r.month === shownCol.month) ?? null}
@@ -510,6 +517,7 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
             <ul className={styles.upList} aria-labelledby={`${ids}-up`}>
               {upcoming.map((m) => {
                 const sum = aheadMonthSummary(m, today);
+                const full = sum.tail ? `${sum.head} · ${sum.tail}` : sum.head;
                 return (
                   <li key={m.month}>
                     <button
@@ -518,7 +526,7 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
                       aria-pressed={m.month === selected}
                       onClick={() => pick(m.month)}
                     >
-                      <span className={styles.upText}>
+                      <span className={styles.upText} title={full}>
                         <strong className={styles.upHead}>{sum.head}</strong>
                         {sum.tail ? ` · ${sum.tail}` : ''}
                         {m.month === thisMonth ? <span className="sr-only"> (이번 달)</span> : null}
@@ -577,6 +585,124 @@ function Man({ value }: { value: number }) {
   );
 }
 
+/** 'N건 더' (누르면 나머지를 보여요) */
+function MoreButton({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button type="button" className={styles.moreBtn} onClick={onClick}>
+      {count}건 더
+      <Icon name="chevron-down" size={16} />
+    </button>
+  );
+}
+
+/**
+ * 지난 지출 돌려주기 묶음 (PLAN 4-2): 처음엔 접어서 머리 한 줄 '지난 지출 돌려주기 440만 · 25건 (6~10월에 쓴 것)' +
+ * 낸 사람별 합 '민구 420만 · 기쁜 20만' + [펼치기] · 정산 화면 링크. 펼치면 쓴 달별 한 줄 '6월 · 3건 45만'(오래된 달 먼저),
+ * 달을 누르면 그달 항목(5줄 + 'N건 더'). 청구 한 건씩 목록이 없으면(합만) 한 줄 그대로
+ */
+function RepayGroup({ month, items, label, today }: { month: ProjectionMonth; items: AheadItem[]; label: string; today: ISODate }) {
+  const ids = useId().replace(/:/g, '');
+  const [open, setOpen] = useState(false);
+  const [openMonths, setOpenMonths] = useState<ReadonlySet<YearMonth>>(new Set());
+  const [allMonths, setAllMonths] = useState<ReadonlySet<YearMonth>>(new Set());
+  const groups = repayByMonth(items, month);
+  const payers = repayPayersLine(month);
+  const head = repaySummary(month) ?? '지난 지출 돌려주기';
+  const toggleMonth = (m: YearMonth) =>
+    setOpenMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m);
+      else next.add(m);
+      return next;
+    });
+  const listId = `${ids}-repay`;
+  return (
+    <div className={styles.group} data-testid="ahead-repay">
+      <h4 className={styles.groupTitle} data-testid="ahead-repay-head">
+        {head}
+      </h4>
+      {payers ? (
+        <p className={styles.repayPayers} data-testid="ahead-repay-payers">
+          {payers}
+        </p>
+      ) : null}
+      <div className={styles.repayActions}>
+        {groups.length > 0 ? (
+          <button
+            type="button"
+            className={styles.toggleBtn}
+            aria-expanded={open}
+            aria-controls={listId}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? '접기' : '펼치기'}
+            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
+          </button>
+        ) : null}
+        <Link href={SETTLE_SCREEN_HREF} className={styles.repayLink}>
+          정산 화면
+          <Icon name="chevron-right" size={16} />
+        </Link>
+      </div>
+      {groups.length === 0 ? (
+        <ul className={styles.items} aria-label={`${label} 지난 지출 돌려주기`}>
+          {items.map((i) => (
+            <ItemRow key={i.key} item={i} today={today} />
+          ))}
+        </ul>
+      ) : open ? (
+        <ul id={listId} className={styles.repayMonths} aria-label={`${label} 지난 지출 돌려주기`}>
+          {groups.map((g) => {
+            const mOpen = openMonths.has(g.month);
+            const rows = allMonths.has(g.month) ? { shown: g.items, more: 0 } : capList(g.items, AHEAD_LIST_LIMIT, AHEAD_LIST_KEEP);
+            const rowsId = `${ids}-repay-${g.month}`;
+            return (
+              <li key={g.month} className={styles.repayMonth}>
+                <button
+                  type="button"
+                  className={styles.monthToggle}
+                  aria-expanded={mOpen}
+                  aria-controls={rowsId}
+                  onClick={() => toggleMonth(g.month)}
+                >
+                  <span className={styles.monthToggleText}>
+                    {g.label}에 쓴 것 · {g.count}건
+                  </span>
+                  <span className={styles.groupAmount}>
+                    <Man value={g.amount} />
+                  </span>
+                  <Icon name={mOpen ? 'chevron-up' : 'chevron-down'} size={16} />
+                </button>
+                {mOpen ? (
+                  <>
+                    <ul id={rowsId} className={styles.items} aria-label={`${g.label}에 쓴 것`}>
+                      {rows.shown.map((i) => (
+                        <li key={i.key}>
+                          <span className={styles.d}>{i.date ? formatShortDate(i.date) : ''}</span>
+                          <span className={styles.n}>{i.payer ?? i.label}</span>
+                          <span className={styles.a}>
+                            <Man value={i.amount} />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {rows.more > 0 ? (
+                      <MoreButton count={rows.more} onClick={() => setAllMonths((prev) => new Set(prev).add(g.month))} />
+                    ) : null}
+                  </>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {open || groups.length === 0 ? (
+        <p className={styles.groupNote}>이미 쓴 돈이라 지출은 그때 달에 세고, 여기선 통장에서 돈이 나가는 날로 잡아요</p>
+      ) : null}
+    </div>
+  );
+}
+
 function DetailNav({ onPrev, onNext }: { onPrev?: () => void; onNext?: () => void }) {
   return (
     <div className={shared.nav}>
@@ -614,7 +740,8 @@ function MonthDetail({
   const repay = items.filter((i) => !isNewSpend(i));
   const totals = aheadTotals(month);
   const lines = aheadTotalLines(month, today, spentSoFar);
-  const repayLine = repaySummary(month);
+  const [spendAll, setSpendAll] = useState(false);
+  const spendShown = spendAll ? { shown: spend, more: 0 } : capList(spend, AHEAD_LIST_LIMIT, AHEAD_LIST_KEEP);
   return (
     <div className={styles.detail} data-testid="ahead-month">
       <div className={shared.detailHead}>
@@ -645,33 +772,16 @@ function MonthDetail({
             </h4>
           ) : null}
           <ul className={styles.items} aria-label={`${label} 나갈 돈`}>
-            {spend.map((i) => (
+            {spendShown.shown.map((i) => (
               <ItemRow key={i.key} item={i} today={today} />
             ))}
           </ul>
+          {spendShown.more > 0 ? <MoreButton count={spendShown.more} onClick={() => setSpendAll(true)} /> : null}
         </div>
       ) : (
         <p className={styles.detailEmpty}>{repay.length > 0 ? '새로 나갈 돈은 없어요' : '이 달에는 나갈 돈이 없어요'}</p>
       )}
-      {repay.length > 0 ? (
-        <div className={styles.group} data-testid="ahead-repay">
-          <h4 className={styles.groupTitle}>
-            {repayLine ?? '지난 지출 돌려주기'}
-          </h4>
-          <ul className={styles.items} aria-label={`${label} 지난 지출 돌려주기`}>
-            {repay.map((i) => (
-              <ItemRow key={i.key} item={i} today={today} />
-            ))}
-          </ul>
-          <p className={styles.groupNote}>
-            이미 쓴 돈이라 지출은 그때 달에 세고, 여기선 통장에서 돈이 나가는 날로 잡아요{' '}
-            <Link href={SETTLE_SCREEN_HREF} className={styles.inlineLink}>
-              정산 화면
-              <Icon name="chevron-right" size={16} />
-            </Link>
-          </p>
-        </div>
-      ) : null}
+      {repay.length > 0 ? <RepayGroup month={month} items={repay} label={label} today={today} /> : null}
       <dl className={styles.calc}>
         <div className={cx(styles.calcRow, styles.calcMuted)}>
           <dt>들어오는 돈</dt>
