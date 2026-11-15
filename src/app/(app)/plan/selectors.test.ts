@@ -17,8 +17,12 @@ import {
   aheadMonthLine,
   aheadMonthSummary,
   aheadOutflow,
-  aheadTotalLines,
+  aheadSpendSplit,
   aheadTotals,
+  claimBadges,
+  futureSpendLines,
+  pastSpendTitle,
+  thisMonthSpendLines,
   repaySummary,
   repayPayersLine,
   repayByMonth,
@@ -288,9 +292,17 @@ describe('앞으로 12개월: 고른 달 항목', () => {
     expect(aheadMonthLine(weddings, TODAY)).toBe('2027년 4월 · 30만 · 결혼식 2건');
     expect(aheadMonthLine({ ...month, events: [], usual: 52_400 }, TODAY)).toBe('2027년 4월 · 5.2만');
     expect(aheadMonthLine({ ...month, events: [], installments: 50_000 }, TODAY)).toBe('2027년 4월 · 5만 · 할부');
-    // 돌려주기는 나갈 돈 이름에 섞지 않고 '돌려주기 ○'로 뒤에 (합계에는 들어가요)
+    // 돌려주기 · 여행은 쓸 돈에 섞지 않고 '여행 ○' · '돌려주기 ○'로 뒤에 (합계에도 넣지 않아요)
     expect(aheadMonthSummary({ ...month, events: [], usual: 20_000, claims: 300_000 }, TODAY)).toEqual({
-      head: '2027년 4월 · 32만',
+      head: '2027년 4월 · 2만',
+      tail: '돌려주기 30만',
+    });
+    expect(
+      aheadMonthLine({ ...month, events: [], usual: 20_000, trips: 400_000, tripList: [{ id: 't', name: '제주', amount: 400_000 }], transfersOut: 50_000 }, TODAY),
+    ).toBe('2027년 4월 · 2만 · 여행 40만');
+    // 이번 달은 이번 달 쓴 돈(지금까지 + 예정)을 넘겨요
+    expect(aheadMonthSummary({ ...month, month: '2026-11', events: [], claims: 300_000 }, TODAY, 155_000)).toEqual({
+      head: '11월 · 15.5만',
       tail: '돌려주기 30만',
     });
   });
@@ -343,19 +355,44 @@ describe('앞으로 12개월: 고른 달 항목', () => {
     expect(capList([1, 2, 3, 4, 5, 6, 7], 6, 5)).toEqual({ shown: [1, 2, 3, 4, 5], more: 2 });
   });
 
-  it("고른 달 합계 줄: '12월 나갈 돈 합계 87.8만' · 이번 달은 '이미 나간 돈 10만 + 앞으로 77.8만'", () => {
-    expect(aheadTotalLines({ ...claimMonth, month: '2026-12' }, TODAY, 100_000)).toEqual({
-      title: '12월 나갈 돈 합계 87.8만',
-      split: null,
-      parts: '새로 나갈 돈 20.6만 · 지난 지출 돌려주기 67.2만',
+  it('쓸 돈 · 여행 · 통장에서 나갈 돈으로 나누기 (셋을 더하면 예측이 빼는 돈)', () => {
+    const m: ProjectionMonth = {
+      ...claimMonth,
+      month: '2026-12',
+      usual: 100_000,
+      transfersOut: 50_000,
+      trips: 400_000,
+      tripList: [{ id: 't', name: '제주', amount: 400_000 }],
+    };
+    const split = aheadSpendSplit(m);
+    expect(split.spend.map((i) => i.kind)).toEqual(['event', 'usual']);
+    expect([split.spendTotal, split.tripTotal, split.repay, split.transferOut]).toEqual([306_000, 400_000, 672_000, 50_000]);
+    expect(split.spendTotal + split.tripTotal + split.repay + split.transferOut).toBe(aheadTotals(m).total);
+  });
+
+  it("고른 달 합계 줄: 이번 달 '이번 달 쓴 돈 = 지금까지 + 예정' · 앞으로 달 '쓸 돈 (예정)' · 지난 달 '쓴 돈'", () => {
+    expect(thisMonthSpendLines({ spent: 100_000, planned: 778_000, total: 878_000, trip: 0 })).toEqual({
+      title: '이번 달 쓴 돈 87.8만',
+      split: '지금까지 10만 + 예정 77.8만',
+      trip: null,
     });
-    const now = { ...claimMonth, events: [{ id: 'a', name: '지수 결혼식', date: '2026-11-22', amount: 106_000 }], planned: 106_000 };
-    expect(aheadTotalLines(now, TODAY, 100_000)).toEqual({
-      title: '이번 달 나갈 돈 87.8만',
-      split: '이미 나간 돈 10만 + 앞으로 77.8만',
-      parts: '새로 나갈 돈 10.6만 · 지난 지출 돌려주기 67.2만',
-    });
-    expect(aheadTotalLines(month, TODAY, null).parts).toBeNull();
+    expect(thisMonthSpendLines({ spent: 0, planned: 0, total: 0, trip: 400_000 }).trip).toBe('여행 40만');
+    // 앞으로 달: 돌려주기는 합계에 넣지 않아요
+    expect(futureSpendLines({ ...claimMonth, month: '2026-12' }, TODAY)).toEqual({ title: '12월 쓸 돈 (예정) 20.6만', split: null, trip: null });
+    expect(pastSpendTitle('2026-09', TODAY, 372_000)).toBe('9월 쓴 돈 37.2만');
+  });
+
+  it('청구 정산 상태 배지: 한 상태면 글자만 · 섞이면 금액도 · 청구가 없으면 없음', () => {
+    expect(claimBadges(null, 10_000)).toEqual([]);
+    expect(claimBadges({ pending: 50_000, paid: 0, paidOn: null, borrowed: 0 }, 50_000)).toEqual([{ text: '줄 돈', tone: 'warning' }]);
+    expect(claimBadges({ pending: 0, paid: 175_000, paidOn: '2026-11-10', borrowed: 0 }, 175_000)).toEqual([{ text: '11/10 지급', tone: 'success' }]);
+    expect(claimBadges({ pending: 0, paid: 0, paidOn: null, borrowed: 30_000 }, 30_000)).toEqual([{ text: '저수지에서 빌려 줌', tone: 'info' }]);
+    // 그냥 지출이 섞인 줄 · 여러 상태
+    expect(claimBadges({ pending: 0, paid: 175_000, paidOn: '2026-11-10', borrowed: 0 }, 205_000)).toEqual([{ text: '11/10 지급 17.5만', tone: 'success' }]);
+    expect(claimBadges({ pending: 50_000, paid: 20_000, paidOn: null, borrowed: 0 }, 70_000)).toEqual([
+      { text: '줄 돈 5만', tone: 'warning' },
+      { text: '지급함 2만', tone: 'success' },
+    ]);
   });
   it('평소 쓰는 돈 카테고리 줄', () => {
     expect(

@@ -2,10 +2,10 @@
 /** 이벤트 화면 '지난 · 앞으로 12개월' 카드: 막대 · 고른 달 항목(모자라면 맨 위 한 줄) · 다가오는 달 */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { forecastCompare, formatManShort, formatWon, pastMonthEnds } from '@/domain';
+import { forecastCompare, formatManShort, formatWon, monthSpentItems, pastMonthEnds } from '@/domain';
 import { EventsView } from './EventsView';
 import { makeHarness } from './testHarness';
-import { aheadMonthItems, aheadTotalLines, aheadTotals, repayByMonth, USUAL_BASIS_NOTE } from './selectors';
+import { aheadMonthItems, aheadSpendSplit, aheadTotals, repayByMonth, USUAL_BASIS_NOTE } from './selectors';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -33,7 +33,7 @@ describe('앞으로 12개월 카드', () => {
     const detail = within(card).getByTestId('ahead-month');
     expect(within(detail).getByTestId('ahead-month-status').textContent).toBe('2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날');
     expect(within(detail).getByRole('heading', { level: 3, name: '2027년 4월' })).toBeTruthy();
-    const list = within(detail).getByRole('list', { name: '2027년 4월 나갈 돈' });
+    const list = within(detail).getByRole('list', { name: '2027년 4월 쓸 돈' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(april.events.length);
     for (const e of april.events) expect(list.textContent).toContain(e.name);
     // 보이는 금액은 만 단위, 화면 읽기용 글에는 정확한 금액
@@ -51,7 +51,7 @@ describe('앞으로 12개월 카드', () => {
     const dec = h.probe.ledger!.eventProjection!.months.find((m) => m.month === '2026-12')!;
     expect(dec.usual).toBeGreaterThan(0);
     fireEvent.click(within(card).getByRole('button', { name: '12월 자세히 보기' }));
-    const items = within(within(card).getByRole('list', { name: '12월 나갈 돈' })).getAllByRole('listitem');
+    const items = within(within(card).getByRole('list', { name: '12월 쓸 돈' })).getAllByRole('listitem');
     const last = items[items.length - 1]!;
     expect(last.textContent).toBe(`평소 쓰는 돈 (${USUAL_BASIS_NOTE[dec.usualBasis ?? 'recent']})${formatManShort(dec.usual)}${formatWon(dec.usual)}`);
   });
@@ -96,23 +96,37 @@ describe('앞으로 12개월 카드', () => {
     // 카드 접기 버튼은 없어요 (지난 지출 돌려주기 묶음의 [펼치기]만)
     expect(within(card).queryAllByRole('button', { name: /펼치기$/ }).filter((b) => !b.closest('[data-testid="ahead-repay"]'))).toHaveLength(0);
     expect(within(card).getByRole('group', { name: '달 고르기' })).toBeTruthy();
-    expect(within(card).getByTestId('ahead-total').textContent).toMatch(/^이번 달 나갈 돈 /);
+    expect(within(card).getByTestId('ahead-total').textContent).toMatch(/^이번 달 쓴 돈 /);
     expect(card.querySelector('[class*="folded"]')).toBeNull();
   });
 
-  it('고른 달 맨 위에 나갈 돈 합계(굵게): 앞으로 달은 합계, 이번 달은 이미 나간 돈 + 앞으로', async () => {
+  it('고른 달 맨 위 합계(굵게): 앞으로 달은 쓸 돈 (예정), 이번 달은 숫자 띠와 같은 이번 달 쓴 돈 = 지금까지 + 예정 · 여행 따로', async () => {
     const { h, card } = await renderCard();
     const proj = h.probe.ledger!.eventProjection!;
     const april = proj.months.find((m) => m.month === '2027-04')!;
     fireEvent.click(within(card).getByRole('button', { name: '2027년 4월 자세히 보기' }));
     const total = within(within(card).getByTestId('ahead-month')).getByTestId('ahead-total');
-    expect(total.textContent).toContain(`2027년 4월 나갈 돈 합계 ${formatManShort(aheadTotals(april).total)}`);
+    expect(total.textContent).toContain(`2027년 4월 쓸 돈 (예정) ${formatManShort(aheadSpendSplit(april).spendTotal)}`);
+    // 이번 달 일정 · 미리 기록한 지출을 더해 봐요
+    await act(async () => {
+      await h.probe.ledger!.addEvent({ date: '2026-11-27', name: '동기 결혼식', amount: 100_000 });
+    });
+    await act(async () => {
+      await h.probe.ledger!.addExpense({ date: '2026-11-05', amount: 40_000, accountId: 'demo-acc-event', categoryId: 'demo-cat-gift', memo: '' });
+    });
     fireEvent.click(within(card).getByRole('button', { name: '11월 (이번 달) 자세히 보기' }));
-    const now = within(within(card).getByTestId('ahead-month')).getByTestId('ahead-total');
-    const lines = aheadTotalLines(proj.months[0]!, '2026-11-20', null);
-    expect(now.textContent).toMatch(/^이번 달 나갈 돈 [\d.]+만= 이미 나간 돈 [\d.]+만 \+ 앞으로 /);
-    expect(now.textContent).toContain(`앞으로 ${formatManShort(aheadTotals(proj.months[0]!).total)}`);
-    expect(lines.title).toMatch(/나갈 돈 합계/);
+    const detail = within(card).getByTestId('ahead-month');
+    const now = within(detail).getByTestId('ahead-total');
+    expect(now.textContent).toMatch(/^이번 달 쓴 돈 [\d.]+만= 지금까지 4만 \+ 예정 10만/);
+    // 숫자 띠 '이번 달 쓴 돈'과 같은 합 · 여행은 둘 다 따로
+    const kpi = screen.getByTestId('kpi-spend');
+    expect(now.querySelector('p')!.textContent).toBe(`이번 달 쓴 돈 ${kpi.querySelector('strong')!.textContent}`);
+    expect(within(now).getByTestId('ahead-trip').textContent).toBe(within(kpi).getByTestId('kpi-trip').textContent);
+    // 목록: 지금까지 쓴 줄(날짜 순) → 예정 줄
+    const rows = within(within(detail).getByRole('list', { name: '11월 쓴 돈' })).getAllByRole('listitem');
+    expect(rows.map((r) => r.textContent)).toEqual([`11/5선물4만${formatWon(40_000)}`, `11/27동기 결혼식10만${formatWon(100_000)}`]);
+    // 여행은 '합계에 안 넣은 돈'
+    expect(within(detail).getByTestId('ahead-aside').textContent).toContain('여행');
   });
 
   it('돌려줄 청구는 새로 나갈 돈과 따로 \'지난 지출 돌려주기\' 묶음 (쓴 달 · 낸 사람), 정산 화면 링크', async () => {
@@ -185,6 +199,44 @@ describe('앞으로 12개월 카드 — 지난 달 실제 잔액 · 예측 기�
     expect(within(card).getByTestId('ahead-past-month').textContent).toContain('그때 남긴 예측 기록이 없어요');
   });
 
+  it('지난 달은 그달 쓴 돈(쓴 날 기준) 먼저: 9월에 쓴 청구는 9월 항목으로 \'줄 돈\' 배지, 이번 달 쓴 돈 목록엔 없어요 · 잔액은 아래 작은 묶음', async () => {
+    const { h, card } = await renderCard({ history: true });
+    await act(async () => {
+      await h.probe.ledger!.addExpense({
+        date: '2026-09-14',
+        amount: 175_000,
+        accountId: 'demo-acc-event',
+        categoryId: null,
+        memo: '돌잔치',
+        paidBy: '민구',
+        claimAccountId: 'demo-acc-living',
+        claimDue: '2026-10-21',
+      } as never);
+    });
+    const data = h.probe.ledger!.data!;
+    const sep = monthSpentItems(data, 'demo-acc-event', '2026-09');
+    fireEvent.click(within(card).getByRole('button', { name: '9월 (지난 달) 자세히 보기' }));
+    const detail = within(card).getByTestId('ahead-past-month');
+    expect(within(detail).getByTestId('ahead-total').textContent).toMatch(new RegExp(`^9월 쓴 돈 ${formatManShort(sep.total).replace('.', '\\.')}`));
+    const list = within(detail).getByRole('list', { name: '9월 쓴 돈' });
+    const rows = within(list).getAllByRole('listitem');
+    expect(rows.length).toBe(sep.rows.length > 6 ? 5 : sep.rows.length);
+    const claimRow = sep.rows.find((r) => r.claims?.pending === 175_000)!;
+    expect(claimRow).toBeTruthy();
+    const shown = rows.find((li) => li.textContent!.startsWith(claimRow.label))!;
+    expect(shown.textContent).toContain('줄 돈');
+    // 잔액 숫자는 아래 작은 묶음, 나간 돈 설명
+    const balance = within(detail).getByTestId('ahead-balance');
+    expect(balance.textContent).toContain('시작 잔액');
+    expect(within(detail).getByTestId('ahead-outflow-note').textContent).toContain('앞서 쓴 돈을 이 달에 돌려준 것도 들어 있어요');
+    // 이번 달: 9월 청구는 쓴 돈 목록이 아니라 '통장에서 나갈 돈'(지난 지출 돌려주기)
+    fireEvent.click(within(card).getByRole('button', { name: '11월 (이번 달) 자세히 보기' }));
+    const now = within(card).getByTestId('ahead-month');
+    const nowList = within(now).queryByRole('list', { name: '11월 쓴 돈' });
+    if (nowList) expect(nowList.textContent).not.toContain('돌잔치');
+    expect(within(now).getByTestId('ahead-repay-head').textContent).toMatch(/9~11월에 쓴 것/);
+  });
+
   it('예측 기록이 있는 지난 달에만 그때 예상한 잔액 점선, 범례도 함께', async () => {
     const { card } = await renderCard({ history: true });
     const bars = within(card).getAllByTestId('ahead-past-bar');
@@ -255,8 +307,11 @@ describe('앞으로 12개월 카드 — 돌려줄 청구가 많을 때 (6~11월 
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(within(repay).queryAllByRole('listitem')).toHaveLength(0);
     expect(within(repay).getByRole('link', { name: /정산 화면/ }).getAttribute('href')).toBe('/plan/settle');
-    // 합계 · 다가오는 달 · 숫자 띠는 그대로
-    expect(within(card).getByTestId('ahead-total').textContent).toContain(`앞으로 ${formatManShort(aheadTotals(nov).total)}`);
+    // 돌려주기는 이번 달 쓴 돈 합계 · 목록에 넣지 않아요 (아래 잔액 묶음 '통장에서 나갈 돈'에만)
+    expect(within(card).getByTestId('ahead-total').textContent).not.toContain('470만');
+    expect(within(card).getByTestId('ahead-balance').contains(repay)).toBe(true);
+    expect(within(card).getByTestId('ahead-balance').textContent).toContain('통장에서 나갈 돈');
+    expect(aheadTotals(nov).repay).toBe(4_700_000);
     const up = within(within(card).getByRole('list', { name: '다가오는 달' })).getAllByRole('button')[0]!;
     expect(up.textContent).toContain('돌려주기 470만');
     // 숫자 띠 '이번 달 쓴 돈'에는 지난 청구 돌려주기가 들어가지 않아요
@@ -300,20 +355,20 @@ describe('앞으로 12개월 카드 — 돌려줄 청구가 많을 때 (6~11월 
     expect(within(repay).queryByRole('list', { name: '11월 지난 지출 돌려주기' })).toBeNull();
   });
 
-  it('새로 나갈 돈이 6줄을 넘으면 앞 5줄 + \'N건 더\'', async () => {
+  it('쓸 돈이 6줄을 넘으면 앞 5줄 + \'N건 더\'', async () => {
     const { h, card } = await renderCard();
     await act(async () => {
       for (let i = 0; i < 8; i++) await h.probe.ledger!.addEvent({ date: `2027-02-${String(i + 1).padStart(2, '0')}`, name: `모임 ${i + 1}`, amount: 50_000 });
     });
     fireEvent.click(within(card).getByRole('button', { name: '2027년 2월 자세히 보기' }));
     const feb = h.probe.ledger!.eventProjection!.months.find((m) => m.month === '2027-02')!;
-    const all = aheadMonthItems(feb).filter((i) => i.kind !== 'claims');
+    const all = aheadSpendSplit(feb).spend;
     expect(all.length).toBeGreaterThan(6);
     const detail = within(card).getByTestId('ahead-month');
-    const list = within(detail).getByRole('list', { name: '2027년 2월 나갈 돈' });
+    const list = within(detail).getByRole('list', { name: '2027년 2월 쓸 돈' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(5);
     fireEvent.click(within(detail).getByRole('button', { name: `${all.length - 5}건 더` }));
-    expect(within(within(detail).getByRole('list', { name: '2027년 2월 나갈 돈' })).getAllByRole('listitem')).toHaveLength(all.length);
+    expect(within(within(detail).getByRole('list', { name: '2027년 2월 쓸 돈' })).getAllByRole('listitem')).toHaveLength(all.length);
   });
 });
 
@@ -365,7 +420,7 @@ describe('앞으로 12개월 카드 — 통장 시작 전 달은 쓴 돈만', ()
     fireEvent.click(within(card).getByRole('button', { name: '6월 (통장 기록 전) 자세히 보기' }));
     const detail = within(card).getByTestId('ahead-spent-month');
     expect(within(detail).getByRole('heading', { level: 3, name: '6월 · 통장 기록 전' })).toBeTruthy();
-    expect(within(detail).getByTestId('ahead-spent-total').textContent).toBe(`18만${formatWon(180_000)}`);
+    expect(within(detail).getByTestId('ahead-spent-total').textContent).toBe(`6월 쓴 돈 18만6월 쓴 돈 ${formatWon(180_000)}`);
     const items = within(within(detail).getByRole('list', { name: '6월 쓴 돈' })).getAllByRole('listitem');
     expect(items.map((i) => i.textContent)).toEqual([`경조사 · 2건15만${formatWon(150_000)}`, `선물3만${formatWon(30_000)}`]);
     expect(within(detail).getByRole('link', { name: /그 달 쓴 돈은 정산 화면에서/ }).getAttribute('href')).toBe('/plan/settle#paid');
