@@ -224,12 +224,16 @@
   line-height: 22px;
 }
 .calcRow dt {
+  flex: none;
   color: var(--text-muted);
-  min-width: 0;
 }
+/* 긴 값(들어오는 돈 한 줄)은 줄바꿈해요. 이름 칸이 글자 하나씩 세로로 접히지 않게 */
 .calcRow dd {
   margin: 0;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }

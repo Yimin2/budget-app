@@ -3,11 +3,6 @@
 .card {
   container-type: inline-size;
 }
-/* [+ 추가] 메뉴가 열려 있으면 아래 카드 위로 */
-.card:has([role='menu']) {
-  position: relative;
-  z-index: var(--z-dropdown);
-}
 /* 메뉴로 펼친 칸 (매년 일정 · 기록에서 찾기) */
 .panelWrap {
   display: flex;
@@ -102,13 +97,10 @@
 .moreLink:hover {
   text-decoration: underline;
 }
-/* 폰에서 접혀 있으면 첫 달만 */
-@media (max-width: 1023.98px) {
-  .foldedList .group:nth-child(n + 2),
-  .foldedList .pastSec,
-  .foldedList .moreLink {
-    display: none;
-  }
+/* 가까운 3개 달 아래 [N건 더 ▾] */
+.moreToggle {
+  align-self: flex-start;
+  margin-top: var(--space-1);
 }
 .cardTitle {
   margin: 0;

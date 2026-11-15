@@ -34,7 +34,7 @@ import type {
   YearMonth,
 } from '@/domain';
 import { Badge, Button, Card, Icon, cx, useMediaQuery } from '@/ui';
-import { FoldHead, useMobileFold, foldStyles } from './FoldCard';
+import { CardHead, cardStyles } from './CardHead';
 import {
   aheadInflowText,
   aheadMonthItems,
@@ -95,14 +95,13 @@ export interface AheadCardProps {
  * - 지난 달: 시작 잔액 · 들어온 돈 · 나간 돈 · 끝 잔액, 그때 예상과 견주기, 정산 화면 링크
  * - 이번 달 · 앞으로 달: 모자라면 맨 위 한 줄 '4월에 30만 모자라요 · 결혼식 4건 · 어버이날' → 나갈 돈 합계(굵게) → 새로 나갈 돈 · 지난 지출 돌려주기 두 묶음 → 들어오는 돈 · 그 달 끝 예상 잔액
  * 옆에 다가오는 달 한 줄씩(합계 먼저, 모자라는 달은 경고 색 '−30만'). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
- * 폰에서는 상태 한 줄만 보이고 [펼치기]로 나머지. 막대는 가로로 밀어 지난 달을 봐요
+ * 폰에서도 막대 · 고른 달(이번 달 합계)이 늘 보여요 (접기 없음). 막대는 가로로 밀어 지난 달을 봐요
  */
 export function AheadCard({ projection, data, today, badge, picked: pickedProp, onPick, className }: AheadCardProps) {
   const ids = useId().replace(/:/g, '');
   const titleId = `${ids}-title`;
   const months = projection.months;
   const thisMonth = monthOf(today);
-  const fold = useMobileFold('앞으로 12개월');
   // 할부 이름: 월별 이벤트 비용(eventMonthlyCosts)의 앞으로 달 할부 줄
   const installmentsByMonth = useMemo(() => {
     const map = new Map<YearMonth, { key: string; label: string; amount: number }[]>();
@@ -183,7 +182,7 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
     if (!el || past.length === 0 || el.scrollWidth <= el.clientWidth) return;
     const colW = el.scrollWidth / Math.max(1, cols.length);
     el.scrollLeft = Math.max(0, colW * (past.length - 2));
-  }, [fold.open, past.length, cols.length, wide]);
+  }, [past.length, cols.length, wide]);
 
   if (months.length === 0) return null;
 
@@ -244,8 +243,8 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
   const hasPrevMarks = prevMarks.some(Boolean);
 
   return (
-    <Card as="section" id={AHEAD_ID} className={cx(foldStyles.card, className)} aria-labelledby={titleId}>
-      <FoldHead
+    <Card as="section" id={AHEAD_ID} className={cx(cardStyles.card, className)} aria-labelledby={titleId}>
+      <CardHead
         titleId={titleId}
         title={past.length > 0 ? `지난 · 앞으로 ${months.length}개월` : `앞으로 ${months.length}개월`}
         badge={
@@ -261,8 +260,7 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
         <Icon name={shortages.length > 0 ? 'alert-triangle' : 'check-circle'} size={16} />
         <span>{caption}</span>
       </p>
-      {fold.toggle}
-      <div id={fold.bodyId} className={cx(foldStyles.body, fold.bodyClass)}>
+      <div className={cardStyles.body}>
         <figure className={cx(styles.figure, canDropUnit && styles.canDropUnit)}>
           <ul className={styles.legend} aria-hidden>
             {past.length > 0 ? (

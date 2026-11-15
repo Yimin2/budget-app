@@ -87,24 +87,35 @@ export function EventsBody({
     document.getElementById(AHEAD_ID)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   };
 
+  const schedule = (
+    <ScheduleCard
+      sections={sections}
+      today={today}
+      categories={data.categories}
+      spent={spent}
+      displayName={ledger.displayName}
+      busyId={busyId}
+      trips={hasEventAccount ? ledger.trips : NO_TRIPS}
+      data={data}
+      emptyCategories={eventCategories(ledger.activeCategories)}
+      panel={panel}
+      focusReq={focusReq}
+      recurring={recurring}
+      onOpenPanel={onOpenPanel}
+      onClosePanel={onClosePanel}
+      onAdd={onAdd}
+      onEdit={onEdit}
+      onComplete={onComplete}
+      onCancel={onCancel}
+    />
+  );
+
+  // 숫자 띠 → 지난 · 앞으로 12개월 → (넓은 화면) 평소 쓰는 돈 · 일정 나란히, 폰은 쌓아요
   return (
     <div className={styles.grid}>
       {projection && hasEventAccount ? (
         <>
           <KpiStrip projection={projection} data={data} today={today} repayMonths={repayMonths} onPickMonth={pickFromStrip} />
-          <UsualCard
-            data={data}
-            projection={projection}
-            insight={insight}
-            today={today}
-            compromise={compromise}
-            repayMonths={repayMonths}
-            onRepayMonths={chooseMonths}
-            candidates={candidates}
-            tried={tried}
-            draft={draft}
-            onDraft={setDraft}
-          />
           <HashTarget />
           <AheadCard
             projection={shown ?? projection}
@@ -114,30 +125,29 @@ export function EventsBody({
             picked={aheadPicked}
             onPick={setAheadPicked}
           />
+          <div className={styles.lower}>
+            <UsualCard
+              data={data}
+              projection={projection}
+              insight={insight}
+              today={today}
+              compromise={compromise}
+              repayMonths={repayMonths}
+              onRepayMonths={chooseMonths}
+              candidates={candidates}
+              tried={tried}
+              draft={draft}
+              onDraft={setDraft}
+            />
+            {schedule}
+          </div>
         </>
       ) : (
-        <NoEventAccount ledger={ledger} />
+        <>
+          <NoEventAccount ledger={ledger} />
+          {schedule}
+        </>
       )}
-      <ScheduleCard
-        sections={sections}
-        today={today}
-        categories={data.categories}
-        spent={spent}
-        displayName={ledger.displayName}
-        busyId={busyId}
-        trips={hasEventAccount ? ledger.trips : NO_TRIPS}
-        data={data}
-        emptyCategories={eventCategories(ledger.activeCategories)}
-        panel={panel}
-        focusReq={focusReq}
-        recurring={recurring}
-        onOpenPanel={onOpenPanel}
-        onClosePanel={onClosePanel}
-        onAdd={onAdd}
-        onEdit={onEdit}
-        onComplete={onComplete}
-        onCancel={onCancel}
-      />
     </div>
   );
 }

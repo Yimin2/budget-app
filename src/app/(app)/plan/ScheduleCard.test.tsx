@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** 이벤트 화면 카드 4 '일정': 일정 · 여행을 날짜순 한 목록 · 화면 머리 [+ 추가 ▾] 메뉴 · 기록에서 찾은 일 안내 · 폰 접기 */
+/** 이벤트 화면 '일정' 카드: 일정 · 여행을 날짜순 한 목록(가까운 3개 달 + [N건 더]) · 화면 머리 [+ 추가 ▾] 메뉴 · 기록에서 찾은 일 안내 */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlannedEvent, TripStatus } from '@/domain';
@@ -73,7 +73,7 @@ async function withSuggestion(h: ReturnType<typeof makeHarness>) {
 const itemNames = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((el) => el.getAttribute('data-item-id'));
 
 describe('일정 카드', () => {
-  it('카드에는 추가 버튼이 없고 화면 머리의 [+ 추가 ▾] 하나, 폰에서는 첫 달만 보이고 [펼치기]로 나머지', async () => {
+  it('카드에는 추가 버튼이 없고 화면 머리의 [+ 추가 ▾] 하나', async () => {
     const { card, add } = await renderCard();
     expect(within(card).getByRole('heading', { level: 2 }).textContent).toMatch(/^일정 · \d+건 .+만$/);
     expect(within(card).queryByRole('button', { name: '추가' })).toBeNull();
@@ -83,12 +83,24 @@ describe('일정 카드', () => {
     expect(within(card).queryByRole('button', { name: /^기록에서 찾기/ })).toBeNull();
     expect(add.getAttribute('aria-haspopup')).toBe('menu');
     expect(add.getAttribute('aria-expanded')).toBe('false');
-    const toggle = within(card).getByRole('button', { name: '일정 목록 펼치기' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    const list = document.getElementById(toggle.getAttribute('aria-controls')!)!;
-    expect(within(list).getByRole('region', { name: '다가오는 일정' })).toBeTruthy();
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('가까운 3개 달만 펼쳐 두고 [N건 더 ▾]로 나머지, 폰에서 CSS 로 접는 [펼치기]는 없어요', async () => {
+    const { card } = await renderCard();
+    const upcoming = within(card).getByRole('region', { name: '다가오는 일정' });
+    expect(within(upcoming).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['2027년 1월', '2027년 2월', '2027년 4월']);
+    expect(within(card).queryByRole('button', { name: '일정 목록 펼치기' })).toBeNull();
+    const more = within(upcoming).getByRole('button', { name: '다가오는 일정 1건 더 보기' });
+    expect(more.textContent).toBe('1건 더');
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(document.getElementById(more.getAttribute('aria-controls')!)).toBeTruthy();
+    fireEvent.click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(more.textContent).toBe('접기');
+    expect(within(upcoming).getAllByRole('heading', { level: 3 })).toHaveLength(4);
+    expect(within(upcoming).getByText('결혼기념일')).toBeTruthy();
+    fireEvent.click(within(upcoming).getByRole('button', { name: '다가오는 일정 접기' }));
+    expect(within(upcoming).queryByText('결혼기념일')).toBeNull();
   });
 });
 

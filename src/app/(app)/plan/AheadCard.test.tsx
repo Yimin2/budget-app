@@ -90,16 +90,13 @@ describe('앞으로 12개월 카드', () => {
     expect(row.textContent).toContain(`−${formatManShort(-dec.endBalance)} 모자라요`);
   });
 
-  it('폰에서는 상태 한 줄만, [펼치기]로 막대 · 항목 (넓은 화면은 CSS 로 늘 펼침)', async () => {
+  it('폰에서도 접지 않아요: 상태 한 줄 · 막대 · 고른 달(이번 달 합계)이 늘 보여요', async () => {
     const { card } = await renderCard();
     expect(within(card).getByTestId('ahead-status').textContent).toMatch(/^12개월 중 1개월이 모자라요/);
-    const toggle = within(card).getByRole('button', { name: '앞으로 12개월 펼치기' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    const body = document.getElementById(toggle.getAttribute('aria-controls')!)!;
-    expect(within(body).getByRole('group', { name: '달 고르기' })).toBeTruthy();
-    expect(body.contains(within(card).getByTestId('ahead-status'))).toBe(false);
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(within(card).queryByRole('button', { name: /펼치기$/ })).toBeNull();
+    expect(within(card).getByRole('group', { name: '달 고르기' })).toBeTruthy();
+    expect(within(card).getByTestId('ahead-total').textContent).toMatch(/^이번 달 나갈 돈 /);
+    expect(card.querySelector('[class*="folded"]')).toBeNull();
   });
 
   it('고른 달 맨 위에 나갈 돈 합계(굵게): 앞으로 달은 합계, 이번 달은 이미 나간 돈 + 앞으로', async () => {

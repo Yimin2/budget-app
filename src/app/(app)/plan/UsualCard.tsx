@@ -7,7 +7,7 @@ import { Card, cx } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
 import { CompromisePanel } from './CompromisePanel';
 import { ExceptionPanel, exceptionCounts } from './ExceptionPanel';
-import { FoldHead, foldStyles } from './FoldCard';
+import { CardHead, cardStyles } from './CardHead';
 import { compromiseHeadline } from './selectors';
 import { SavingsBarView, UsualDetails, UsualDonut, sliceColor, useUsualBreakdown } from './UsualSpendingViz';
 import shared from './events.module.css';
@@ -97,8 +97,8 @@ export function UsualCard({
   };
 
   return (
-    <Card as="section" className={cx(foldStyles.card, className)} aria-labelledby={titleId} data-testid="usual-card">
-      <FoldHead
+    <Card as="section" className={cx(cardStyles.card, className)} aria-labelledby={titleId} data-testid="usual-card">
+      <CardHead
         titleId={titleId}
         title="평소 쓰는 돈"
         actions={

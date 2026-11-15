@@ -152,6 +152,10 @@ describe('EventsView — 체험 가계부', () => {
     // 금액은 만 단위 (정확한 금액은 화면 읽기용 글과 일정 창에)
     expect(within(upcoming).getByText('1건 · 40만')).toBeTruthy();
     expect(within(jan).getByRole('button', { name: /명절 부모님 용돈/ }).textContent).toContain('40만400,000원');
+    // 가까운 3개 달(1월 · 2월 · 4월)만 펼쳐 두고, 8월 결혼기념일(매년)은 [1건 더]로
+    expect(within(upcoming).queryByRole('list', { name: '2027년 8월' })).toBeNull();
+    fireEvent.click(within(upcoming).getByRole('button', { name: '다가오는 일정 1건 더 보기' }));
+    expect(within(upcoming).getByRole('list', { name: '2027년 8월' })).toBeTruthy();
     expect(within(upcoming).getByText('매년')).toBeTruthy();
     // 지난 일정은 없어요
     expect(screen.queryByText(/지난 일정 \d+건/)).toBeNull();

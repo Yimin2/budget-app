@@ -9,7 +9,7 @@ import { Badge, Button, Card, Icon, cx } from '@/ui';
 import { AnnualCard } from './AnnualCard';
 import { EmptyEvents } from './EmptyEvents';
 import type { EventPreset } from './EventDialog';
-import { FoldHead, foldStyles, useMobileFold } from './FoldCard';
+import { CardHead, cardStyles } from './CardHead';
 import { RecurringCard } from './RecurringCard';
 import { dateLabel, monthLabel, REPEAT_LABEL, weekdayShort, type EventSections } from './selectors';
 import { remainingText, tripHref, tripPhaseText } from './trips/selectors';
@@ -47,6 +47,8 @@ export interface ScheduleCardProps {
 type RowProps = Pick<ScheduleCardProps, 'today' | 'categories' | 'spent' | 'displayName' | 'busyId' | 'onEdit' | 'onComplete' | 'onCancel'>;
 
 const PAST_PAGE = 10;
+/** 처음 펼쳐 두는 다가오는 달 수 (일정 · 여행이 있는 달) */
+export const SHOWN_MONTHS = 3;
 
 /** '매년 반복되는 일 N건을 찾았어요' 안내를 이 기기에서 닫았는지 (못 읽으면 안 닫은 것으로) */
 function readHintDismissed(): boolean {
@@ -108,7 +110,7 @@ export function scheduleGroups(sections: EventSections, trips: TripStatus[], tod
  * 이벤트 화면 카드 4 '일정 · 10건 170만' (PLAN 4-3 · 4-11). 금액은 만 단위(formatManShort), 정확한 금액은 일정 창과 화면 읽기용 글에.
  * 추가 버튼은 카드에 없고 화면 머리의 [+ 추가 ▾] 하나예요. 그 메뉴의 매년 일정 · 기록에서 찾기는 이 카드 안에서 펼쳐요 ([닫기]로 접음). 기록에서 찾은 게 있으면 목록 위에 '… N건을 찾았어요 [보기]' 안내(이 기기에서 닫을 수 있음).
  * 날짜가 지난 예정 일정(썼어요 / 취소됐어요) → 다가오는 일정과 여행(달별, 날짜순. 여행은 여행 달에 한 줄: '여행' 표시 · '쓴 돈 45만 / 예산 90만 · 미리 낸 돈 2건 포함' · 막대 · '남은 45만', 누르면 여행 화면, [펼치기]로 미리 낸 돈)
- * → 지난 일정(접힘). 넓은 카드는 달 묶음을 두 칸으로 흘려요. 폰에서는 첫 달만 보이고 [펼치기]로 나머지
+ * → 지난 일정(접힘). 다가오는 달은 가까운 3개만 펼쳐 두고 [N건 더 ▾]로 나머지 (폰 · 넓은 화면 같아요). 넓은 카드는 달 묶음을 두 칸으로 흘려요
  */
 export function ScheduleCard(props: ScheduleCardProps) {
   const { sections, today, trips, data, panel, focusReq, recurring, onOpenPanel, onClosePanel, onAdd, onEdit } = props;
@@ -116,14 +118,16 @@ export function ScheduleCard(props: ScheduleCardProps) {
   const ids = useId().replace(/:/g, '');
   const [hintHidden, setHintHidden] = useState(readHintDismissed);
   const panelRef = useRef<HTMLDivElement>(null);
-  const fold = useMobileFold('일정 목록');
+  const [showAll, setShowAll] = useState(false);
   const groups = useMemo(() => scheduleGroups(sections, trips, today), [sections, trips, today]);
   const count = groups.reduce((s, g) => s + g.entries.length, 0);
   const total = groups.reduce((s, g) => s + g.total, 0);
   const pastTrips = trips.filter((t) => t.phase === 'past').length;
   const empty = sections.total === 0;
   const thisMonth = monthOf(today);
-  const foldable = groups.length > 1 || sections.past.length > 0 || pastTrips > 0;
+  // 가까운 3개 달만 펼쳐 두고 나머지는 [N건 더]로
+  const shownGroups = showAll ? groups : groups.slice(0, SHOWN_MONTHS);
+  const hiddenCount = groups.slice(SHOWN_MONTHS).reduce((s, g) => s + g.entries.length, 0);
 
   useEffect(() => {
     if (focusReq > 0) panelRef.current?.focus();
@@ -138,8 +142,8 @@ export function ScheduleCard(props: ScheduleCardProps) {
   const showHint = recurring > 0 && !hintHidden && panel !== 'recurring';
 
   return (
-    <Card as="section" className={cx(foldStyles.card, styles.card)} aria-labelledby={titleId}>
-      <FoldHead
+    <Card as="section" className={cx(cardStyles.card, styles.card)} aria-labelledby={titleId}>
+      <CardHead
         titleId={titleId}
         title={count > 0 ? `일정 · ${count}건 ${formatMan(total)}` : '일정'}
       />
@@ -173,13 +177,13 @@ export function ScheduleCard(props: ScheduleCardProps) {
       {empty && count === 0 ? null : (
         <>
           {sections.overdue.length > 0 ? <OverdueSection {...props} /> : null}
-          <div id={fold.bodyId} className={cx(styles.listArea, fold.bodyClass && styles.foldedList)}>
+          <div className={styles.listArea}>
             <section aria-label="다가오는 일정" className={styles.upcoming}>
               {groups.length === 0 ? (
                 <p className={styles.emptyLine}>새 일정을 넣으면 여기에 달별로 보여요</p>
               ) : (
-                <div className={styles.groupsFlow}>
-                  {groups.map((g) => {
+                <div id={`${ids}-groups`} className={styles.groupsFlow}>
+                  {shownGroups.map((g) => {
                     const headId = `${ids}-${g.month}`;
                     return (
                       <div key={g.month} className={styles.group}>
@@ -206,6 +210,19 @@ export function ScheduleCard(props: ScheduleCardProps) {
                   })}
                 </div>
               )}
+              {hiddenCount > 0 ? (
+                <Button
+                  variant="ghost"
+                  iconRight={showAll ? 'chevron-up' : 'chevron-down'}
+                  className={styles.moreToggle}
+                  aria-expanded={showAll}
+                  aria-controls={`${ids}-groups`}
+                  aria-label={showAll ? '다가오는 일정 접기' : `다가오는 일정 ${hiddenCount}건 더 보기`}
+                  onClick={() => setShowAll((v) => !v)}
+                >
+                  {showAll ? '접기' : `${hiddenCount}건 더`}
+                </Button>
+              ) : null}
             </section>
             {sections.past.length > 0 ? <PastSection {...props} /> : null}
             {pastTrips > 0 ? (
@@ -215,7 +232,6 @@ export function ScheduleCard(props: ScheduleCardProps) {
               </Link>
             ) : null}
           </div>
-          {foldable ? fold.toggle : null}
         </>
       )}
     </Card>
