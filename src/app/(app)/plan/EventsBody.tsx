@@ -8,16 +8,16 @@ import {
   recommendCompromise,
   usualSpendingInsight,
 } from '@/domain';
-import type { ExclusionDraft, Id, PlannedEvent, RepayMonths, TripStatus } from '@/domain';
+import type { ExclusionDraft, Id, PlannedEvent, RepayMonths, TripStatus, YearMonth } from '@/domain';
 import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
 import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import type { EventPreset } from './EventDialog';
 import { NoEventAccount } from './NoEventAccount';
-import { AheadCard } from './AheadCard';
+import { AHEAD_ID, AheadCard } from './AheadCard';
+import { KpiStrip } from './KpiStrip';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
 import { ScheduleCard, type SchedulePanel } from './ScheduleCard';
-import { ThisMonthCard } from './ThisMonthCard';
 import { UsualCard } from './UsualCard';
 import styles from './EventsBody.module.css';
 
@@ -80,12 +80,18 @@ export function EventsBody({
     [data, today, draft],
   );
   const shown = tried ?? projection;
+  // 12개월 카드에서 고른 달 (숫자 띠의 '가장 모자라는 달'로도 골라요). null = 처음 달
+  const [aheadPicked, setAheadPicked] = useState<YearMonth | null>(null);
+  const pickFromStrip = (month: YearMonth) => {
+    setAheadPicked(month);
+    document.getElementById(AHEAD_ID)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <div className={styles.grid}>
       {projection && hasEventAccount ? (
         <>
-          <ThisMonthCard projection={projection} repayMonths={repayMonths} className={styles.half} />
+          <KpiStrip projection={projection} data={data} today={today} repayMonths={repayMonths} onPickMonth={pickFromStrip} />
           <UsualCard
             data={data}
             projection={projection}
@@ -98,7 +104,6 @@ export function EventsBody({
             tried={tried}
             draft={draft}
             onDraft={setDraft}
-            className={styles.half}
           />
           <HashTarget />
           <AheadCard
@@ -108,6 +113,8 @@ export function EventsBody({
             badge={tried ? '미리 보는 중' : undefined}
             fix={ledger.shortageFix}
             showShortage={!tried}
+            picked={aheadPicked}
+            onPick={setAheadPicked}
           />
         </>
       ) : (

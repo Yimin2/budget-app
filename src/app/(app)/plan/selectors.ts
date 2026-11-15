@@ -59,32 +59,56 @@ export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
   { value: 'yearly', label: '매년' },
 ];
 
-/* ───────── 이번 달 카드 ───────── */
+/* ───────── 맨 위 숫자 띠 ───────── */
+
+export interface SettleTileText {
+  /** '11/21 정산' */
+  label: string;
+  /** 이번 달 줄 돈 (만 단위). 줄 돈이 없으면 null → '정산할 돈 없어요' */
+  value: string | null;
+  /** '생활비 통장에서 2.4만 · 저수지에서 빌려 2.4만' / '다음 정산 12/1 2.4만' (없으면 null) */
+  note: string | null;
+  /** '못 준 돈 55만 → 다음 달 (민구)' (사람이 하나면 이름, 둘이면 이름과 금액) */
+  carry: string | null;
+}
 
 /**
- * '이번 달' 카드의 정산 한 줄 (PLAN 4-9): '11/21 정산 30만 · 저수지에서 빌려 2.4만' /
- * '이번 달 정산할 돈은 없어요 · 다음 정산 12/1 2.4만'. 이벤트통장에서 줄 수 있는 돈에 안 들어 넘어가는 청구는 따로
- * carry: '못 준 돈 55만 → 다음 달 (민구)' (사람이 하나면 이름, 둘이면 이름과 금액)
+ * 숫자 띠 세 번째 칸 '11/21 정산 32.4만' (PLAN 4-9). 줄 돈 = 정산 기준일까지 돌려줄 날이 된 청구 합 (settlementSummary.total).
+ * 그중 이벤트통장 밖에서 나가는 돈은 아래 작은 줄로. 줄 돈이 없으면 '정산할 돈 없어요' + 다음 정산.
+ * 이벤트통장에서 줄 수 있는 돈에 안 들어 넘어가는 청구는 따로 carry
  */
-export function settleLineText(u: EventMonthUsage, sum: SettlementSummary): { text: string; carry: string | null } {
+export function settleTileText(u: Pick<EventMonthUsage, 'unpaid' | 'unpaidPeople'> | null, sum: SettlementSummary | null, date: ISODate): SettleTileText {
+  const label = `${formatShortDate(sum?.date ?? date)} 정산`;
+  if (!sum || sum.total <= 0) {
+    return {
+      label,
+      value: null,
+      note: sum?.next ? `다음 정산 ${formatShortDate(sum.next.date)} ${formatManShort(sum.next.amount)}` : null,
+      carry: null,
+    };
+  }
   const parts: string[] = [];
-  if (sum.total <= 0) parts.push('이번 달 정산할 돈은 없어요');
-  if (u.plannedClaims > 0) parts.push(`${formatShortDate(sum.date)} 정산 ${formatMan(u.plannedClaims)}`);
-  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatMan(sum.fromFixed)}`);
-  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatMan(sum.fromReservoir)}`);
-  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatMan(sum.borrow)}`);
-  if (sum.total <= 0 && sum.next) parts.push(`다음 정산 ${formatShortDate(sum.next.date)} ${formatMan(sum.next.amount)}`);
+  if (sum.fromFixed > 0) parts.push(`생활비 통장에서 ${formatManShort(sum.fromFixed)}`);
+  if (sum.fromReservoir > 0) parts.push(`저수지에서 ${formatManShort(sum.fromReservoir)}`);
+  if (sum.borrow > 0) parts.push(`저수지에서 빌려 ${formatManShort(sum.borrow)}`);
   let carry: string | null = null;
-  if (u.unpaid > 0) {
+  if (u && u.unpaid > 0) {
     const who =
       u.unpaidPeople.length === 1
         ? ` (${u.unpaidPeople[0]!.name})`
         : u.unpaidPeople.length === 2
-          ? ` (${u.unpaidPeople.map((p) => `${p.name} ${formatMan(p.amount)}`).join(' · ')})`
+          ? ` (${u.unpaidPeople.map((p) => `${p.name} ${formatManShort(p.amount)}`).join(' · ')})`
           : '';
-    carry = `못 준 돈 ${formatMan(u.unpaid)} → 다음 달${who}`;
+    carry = `못 준 돈 ${formatManShort(u.unpaid)} → 다음 달${who}`;
   }
-  return { text: parts.join(' · '), carry };
+  return { label, value: formatManShort(sum.total), note: parts.length > 0 ? parts.join(' · ') : null, carry };
+}
+
+/** 숫자 띠 네 번째 칸: 12개월 중 가장 모자라는 달 (없으면 null) */
+export function worstShortMonth(projection: EventProjection): ProjectionMonth | null {
+  let worst: ProjectionMonth | null = null;
+  for (const m of projection.months) if (m.endBalance < 0 && (!worst || m.endBalance < worst.endBalance)) worst = m;
+  return worst;
 }
 
 /* ───────── 평소 쓰는 돈 카드 ───────── */

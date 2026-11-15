@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createDemoLedger, projectEventAccount, suggestShortageFixes } from '@/domain';
-import type { Category, Expense, PlannedEvent, ProjectionMonth } from '@/domain';
+import type { Category, EventProjection, Expense, PlannedEvent, ProjectionMonth, SettlementSummary } from '@/domain';
 import {
+  settleTileText,
+  worstShortMonth,
   usualCategoriesText,
   barsGeometry,
   compactWon,
@@ -386,5 +388,48 @@ describe('compromiseHeadline', () => {
       }),
     ).toBe('적립 55만 + 경조사 −3만 외 1개');
     expect(compromiseHeadline({ recommended: 300_000, cut: { cuts: [] } })).toBe('적립 30만');
+  });
+});
+
+describe('숫자 띠', () => {
+  const sum = (o: Partial<SettlementSummary>): SettlementSummary => ({
+    total: 0,
+    people: [],
+    date: '2026-11-21',
+    fromEvent: 0,
+    fromFixed: 0,
+    fromReservoir: 0,
+    borrow: 0,
+    rest: 0,
+    payable: 0,
+    next: null,
+    carry: null,
+    hasClaims: true,
+    ...o,
+  });
+
+  it('settleTileText: 줄 돈 합 · 이벤트통장 밖에서 나가는 돈 · 넘어가는 돈, 없으면 다음 정산', () => {
+    expect(settleTileText(null, sum({ total: 324_000, fromFixed: 24_000 }), '2026-11-20')).toEqual({
+      label: '11/21 정산',
+      value: '32.4만',
+      note: '생활비 통장에서 2.4만',
+      carry: null,
+    });
+    const u = { unpaid: 550_000, unpaidPeople: [{ name: '민구', amount: 550_000 }] };
+    expect(settleTileText(u, sum({ total: 850_000 }), '2026-11-20').carry).toBe('못 준 돈 55만 → 다음 달 (민구)');
+    expect(settleTileText(null, sum({ next: { date: '2026-12-01', amount: 24_000 } }), '2026-11-20')).toEqual({
+      label: '11/21 정산',
+      value: null,
+      note: '다음 정산 12/1 2.4만',
+      carry: null,
+    });
+    expect(settleTileText(null, null, '2026-11-21').value).toBeNull();
+  });
+
+  it('worstShortMonth: 가장 많이 모자라는 달, 없으면 null', () => {
+    const m = (month: string, endBalance: number) => ({ month, endBalance }) as ProjectionMonth;
+    const p = (months: ProjectionMonth[]) => ({ months }) as EventProjection;
+    expect(worstShortMonth(p([m('2026-11', 10), m('2027-02', -100), m('2027-04', -300), m('2027-05', -200)]))!.month).toBe('2027-04');
+    expect(worstShortMonth(p([m('2026-11', 0), m('2026-12', 5)]))).toBeNull();
   });
 });

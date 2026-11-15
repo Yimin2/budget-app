@@ -59,6 +59,9 @@ import { tripHref } from './trips/selectors';
 import shared from './events.module.css';
 import styles from './AheadCard.module.css';
 
+/** 카드 id (숫자 띠의 '가장 모자라는 달'에서 스크롤해 와요) */
+export const AHEAD_ID = 'ahead';
+
 /** 고른 달 옆 '다가오는 달' 목록에 보일 달 수 */
 export const AHEAD_UPCOMING = 4;
 
@@ -83,6 +86,9 @@ export interface AheadCardProps {
   /** 부족 알림의 두 가지 방법 (미리 보는 중이 아니고 모자라는 달이 있을 때만 알림을 보여요) */
   fix?: ShortageFix | null;
   showShortage?: boolean;
+  /** 고른 달 (밖에서 들고 있을 때. 없으면 카드 안에서) */
+  picked?: YearMonth | null;
+  onPick?: (month: YearMonth) => void;
   className?: string;
 }
 
@@ -95,7 +101,7 @@ export interface AheadCardProps {
  * 옆에 다가오는 달 한 줄씩(합계 먼저) → 모자라는 달이 있으면 부족 알림(두 가지 방법). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
  * 폰에서는 상태 한 줄만 보이고 [펼치기]로 나머지. 막대는 가로로 밀어 지난 달을 봐요
  */
-export function AheadCard({ projection, data, today, badge, fix = null, showShortage = false, className }: AheadCardProps) {
+export function AheadCard({ projection, data, today, badge, fix = null, showShortage = false, picked: pickedProp, onPick, className }: AheadCardProps) {
   const ids = useId().replace(/:/g, '');
   const titleId = `${ids}-title`;
   const months = projection.months;
@@ -129,7 +135,9 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
     [past, months],
   );
 
-  const [picked, setPicked] = useState<YearMonth | null>(null);
+  const [pickedOwn, setPickedOwn] = useState<YearMonth | null>(null);
+  const picked = pickedProp !== undefined ? pickedProp : pickedOwn;
+  const setPicked = (month: YearMonth) => (onPick ? onPick(month) : setPickedOwn(month));
   const [hover, setHover] = useState<YearMonth | null>(null);
   const [announce, setAnnounce] = useState('');
   const colRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -240,7 +248,7 @@ export function AheadCard({ projection, data, today, badge, fix = null, showShor
   const hasPrevMarks = prevMarks.some(Boolean);
 
   return (
-    <Card as="section" className={cx(foldStyles.card, className)} aria-labelledby={titleId}>
+    <Card as="section" id={AHEAD_ID} className={cx(foldStyles.card, className)} aria-labelledby={titleId}>
       <FoldHead
         titleId={titleId}
         title={`앞으로 ${months.length}개월`}

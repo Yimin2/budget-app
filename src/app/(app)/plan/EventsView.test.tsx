@@ -365,8 +365,8 @@ describe('EventsView — 추천 타협안', () => {
     expect(within(card).getByTestId('compromise-cut').textContent).toContain('저수지 빚을 12개월에 갚으려면 쓰는 돈을 월 2.5만원 줄여야 해요');
     expect(within(card).getByTestId('compromise-summary').textContent).toMatch(/저수지 빚 30만을 12개월에 갚아요$/);
     expect(window.localStorage.getItem('budget:repayMonths')).toBe('12');
-    // '이번 달' 카드의 저수지 줄도 같은 개월 수를 따라요
-    expect(within(screen.getByRole('region', { name: '이번 달 · 11월' })).getByTestId('loan-line').textContent).toContain('매달 2.5만씩');
+    // 숫자 띠 정산 칸의 저수지 줄도 같은 개월 수를 따라요
+    expect(within(screen.getByRole('region', { name: '이번 달 · 11월' })).getByTestId('loan-line').textContent).toContain('매달 2.5만 ·');
     // 자동으로 바꾸는 버튼은 없어요
     expect(within(card).queryByRole('button', { name: /적용|바꾸기|올리기/ })).toBeNull();
   });

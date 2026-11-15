@@ -1,0 +1,173 @@
+/* KpiStrip — 이벤트 화면 맨 위 숫자 띠. 폰: 2×2 · 1024px 이상: 네 칸 한 줄. 늘 펼쳐 있어요 */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: stretch;
+  min-width: 0;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.label {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.valueText {
+  font-size: 15px;
+  line-height: 24px;
+}
+.sub {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  text-decoration: none;
+}
+.link:hover {
+  text-decoration: underline;
+}
+.warn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--warning-text);
+}
+.warn > svg {
+  flex: none;
+}
+
+/* 가장 모자라는 달: 누르면 12개월 카드로 */
+.tileButton {
+  cursor: pointer;
+}
+.tileButton:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.warnTile {
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+.warnTile .value {
+  color: var(--warning-text);
+}
+.warnTile:hover {
+  border-color: var(--warning);
+}
+.okTile .value {
+  color: var(--success-text);
+}
+
+/* 정산 칸 안의 작은 저수지 줄 */
+.loanMini {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  align-self: stretch;
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.loanMiniText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.loanMiniText strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.loanMiniActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.loanMiniNote {
+  font-size: 13px;
+  line-height: 20px;
+}
+.loanMiniActions :global(.btn) {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  font-size: 14px;
+}
+.loanMiniLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+}
+/* 긴 문구라 줄바꿈을 허용해요 (.btn 은 nowrap · 높이 44px 고정) */
+:global(.btn).loanMiniConvert {
+  align-self: stretch;
+  height: auto;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3);
+  white-space: normal;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+@media (min-width: 480px) {
+  .tile {
+    padding: var(--space-3) var(--space-4);
+  }
+  .value {
+    font-size: 22px;
+    line-height: 30px;
+  }
+}
+@media (min-width: 1024px) {
+  .strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+}
