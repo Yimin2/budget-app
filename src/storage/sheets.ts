@@ -6,7 +6,7 @@
 import { memberRoleOf, type SharedUser, type SharingList } from '@/domain/members';
 import type { LedgerData, LedgerSettings } from '@/domain/types';
 import {
-  ALL_TABS, SETTINGS_HEADERS, SETTINGS_TAB, TABLE_NAMES, TAB_NAMES, canonicalHeaders, decodeKeyCell,
+  ALL_TABS, SETTINGS_HEADERS, SETTINGS_TAB, TABLE_NAMES, TAB_NAMES, canonicalHeaders, decodeKeyCell, decodeRow,
   decodeSettings, decodeTable, encodeRow, encodeRowForHeaders, encodeSettings, encodeTable, hasKeyHeader,
   isLedgerSettings, keyOf, mapHeaders, SCHEMAS, type CellValue, type RawCell, type SettingsExtras,
 } from './schema';
@@ -47,7 +47,14 @@ export const MESSAGES = {
   unknown: '구글 시트와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요',
   shareFailed: '초대하지 못했어요. 이메일 주소를 확인해 주세요',
   notLedger: '이 파일은 가계부로 열 수 없어요. 이 앱에서 만든 가계부 파일을 골라 주세요',
+  conflict: '다른 기기에서 방금 고친 내용이에요. 최신 내용을 다시 불러왔으니 확인하고 다시 해 주세요',
 } as const;
+
+/** 내가 마지막으로 본 뒤에 다른 기기(함께 쓰는 사람)가 같은 행을 고쳤다 — 덮어쓰지 않고 멈춘다 */
+export const CONFLICT_STATUS = 409;
+export function isConflict(e: unknown): boolean {
+  return e instanceof StorageError && e.status === CONFLICT_STATUS;
+}
 
 /** 요청이 서버에서 처리됐는지 알 수 없는 실패 (연결 끊김 · 5xx) */
 export function isAmbiguousFailure(e: unknown): boolean {
@@ -166,10 +173,20 @@ interface TabSnapshot {
   keys: Set<string>;
 }
 
+/** 행 내용을 견주는 값 (앱이 아는 열만) */
+function fingerprint<T extends TableName>(table: T, row: TableRows[T]): string {
+  return JSON.stringify(encodeRow(table, row));
+}
+
 export class SheetsRepository implements LedgerRepository {
   readonly ref: LedgerRef;
   private readonly client: GoogleClient;
   private readonly tabs = new Map<TableName, TabSnapshot>();
+  /**
+   * 행마다 '내가 본 내용'(불러올 때의 내용 + 이 기기가 쓴 내용). 고치기 직전에 시트의 행이 이 중 어느 것도 아니면
+   * 그사이 다른 기기가 고친 것이라 덮어쓰지 않는다. 불러올 때마다 새로 채운다
+   */
+  private readonly seen = new Map<TableName, Map<string, Set<string>>>();
   private missingTabs = new Set<string>();
   private settings: LedgerSettings | null = null;
   private settingsExtras: SettingsExtras = [];
@@ -236,6 +253,7 @@ export class SheetsRepository implements LedgerRepository {
       const values = byTab.get(TAB_NAMES[table]) ?? [];
       const rows = decodeTable(table, values);
       (data as unknown as Record<string, unknown>)[table] = rows;
+      this.seen.set(table, new Map(rows.map((r) => [keyOf(table, r as never), new Set([fingerprint(table, r as never)])])));
       this.tabs.set(table, {
         headers: values[0]?.length ? values[0] : canonicalHeaders(table),
         keys: new Set(rows.map((r) => keyOf(table, r as never))),
@@ -403,8 +421,45 @@ export class SheetsRepository implements LedgerRepository {
     const snap = this.snapshotFrom(table, await this.readTab(table));
     const fresh = candidates.filter((r) => !snap.keys.has(keyOf(table, r)));
     if (fresh.length === 0) return;
+    for (const r of fresh) this.remember(table, keyOf(table, r), r);
     await this.appendRows(table, fresh, snap.headers);
     for (const r of fresh) snap.keys.add(keyOf(table, r));
+  }
+
+  private remember<T extends TableName>(table: T, key: string, row: TableRows[T]): void {
+    let byKey = this.seen.get(table);
+    if (!byKey) this.seen.set(table, (byKey = new Map()));
+    const set = byKey.get(key) ?? new Set<string>();
+    set.add(fingerprint(table, row));
+    byKey.set(key, set);
+  }
+
+  /**
+   * 고치려는 행이 내가 본 뒤로 시트에서 바뀌었으면 멈춘다 (나중에 저장한 사람이 앞사람 변경을 지우지 않게).
+   * 본 적 없는 행 · 머리글 없는 표 · 같은 키가 여럿인 행은 확인하지 않고, 쓰려는 내용과 이미 같으면 그대로 둔다.
+   * 하나라도 걸리면 아무것도 쓰지 않는다
+   */
+  private assertNotChangedElsewhere<T extends TableName>(
+    table: T,
+    byKey: Map<string, TableRows[T]>,
+    rowIndexes: Map<string, number[]>,
+    values: RawCell[][],
+    mapping: ReturnType<typeof mapHeaders>,
+    headerless: boolean,
+  ): void {
+    if (headerless) return;
+    const seen = this.seen.get(table);
+    if (!seen) return;
+    for (const [k, row] of byKey) {
+      const indexes = rowIndexes.get(k);
+      const mine = seen.get(k);
+      if (!mine || !indexes || indexes.length !== 1) continue;
+      const current = decodeRow(table, mapping, values[indexes[0]!] ?? []);
+      if (!current) continue;
+      const now = fingerprint(table, current);
+      if (mine.has(now) || now === fingerprint(table, row)) continue;
+      throw new StorageError(MESSAGES.conflict, CONFLICT_STATUS);
+    }
   }
 
   async upsert<T extends TableName>(table: T, row: TableRows[T]): Promise<void> {
@@ -446,6 +501,7 @@ export class SheetsRepository implements LedgerRepository {
         rowIndexes.set(k, [...(rowIndexes.get(k) ?? []), i]);
       }
     }
+    this.assertNotChangedElsewhere(table, byKey, rowIndexes, values, mapping, headerless);
     const tab = quoteTab(TAB_NAMES[table]);
     const data: { range: string; majorDimension: 'ROWS'; values: CellValue[][] }[] = [];
     const missing: TableRows[T][] = [];
@@ -481,6 +537,8 @@ export class SheetsRepository implements LedgerRepository {
         }
       }
     }
+    // 보내기 전에 '내가 쓴 내용'으로 적어 둔다 (연달아 고칠 때 앞선 쓰기를 남이 고친 것으로 보지 않게)
+    for (const [k, row] of byKey) this.remember(table, k, row);
     if (data.length > 0) {
       await this.client.request('POST', `${this.base}/values:batchUpdate`, { valueInputOption: 'RAW', data });
     }

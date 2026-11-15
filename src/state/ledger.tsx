@@ -125,7 +125,7 @@ import type {
   YearMonth,
 } from '@/domain/types';
 import { isGoogleError } from '@/google/errors';
-import { StorageError } from '@/storage/sheets';
+import { StorageError, isConflict } from '@/storage/sheets';
 import type { LedgerRef, LedgerRepository, TableName, TableRows } from '@/storage/types';
 import { isRefreshHeld, onRefreshGateChange } from '@/ui/refreshGate';
 import { useSession, useSessionInternals } from './session';
@@ -778,7 +778,8 @@ export function LedgerProvider({ children }: { children: ReactNode }) {
         const untouched = dataRef.current?.data === optimistic;
         if (untouched) setDataBoth(before);
         // 일부만 저장됐거나 그사이 다른 변경이 있었으면 저장본으로 맞춘다
-        if (opts?.multiStep || !untouched) void loadAll();
+        // 다른 기기가 먼저 고친 행이면(덮어쓰지 않고 멈춤) 그 내용을 바로 보여 준다
+        if (opts?.multiStep || !untouched || isConflict(e)) void loadAll();
         throw new Error(koreanMessage(e, failMessage));
       } finally {
         setSavingCount((n) => n - 1);

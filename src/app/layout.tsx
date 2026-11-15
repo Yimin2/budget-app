@@ -6,6 +6,7 @@ import { AppProviders } from '@/state/Providers';
 import { ThemeProvider } from '@/theme/ThemeProvider';
 import { THEME_COLORS, themeInitScript } from '@/theme/script';
 import { ToastProvider } from '@/ui/Toast';
+import { ServiceWorker } from './ServiceWorker';
 
 export const metadata: Metadata = {
   title: { default: '가계부', template: '%s · 가계부' },
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
+        <ServiceWorker />
         <ThemeProvider>
           <ToastProvider>
             <AppProviders>{children}</AppProviders>
