@@ -4,13 +4,13 @@ import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type K
 import Link from 'next/link';
 import {
   eventMonthlyCosts, forecastCompare, formatManShort, formatWon, highOnlyShortageMessage, lastMonthForecasts, monthOf, pastMonthBars,
-  snapshotsByTarget, spentSoFarThisMonth,
+  snapshotsByTarget, thisMonthSpending,
 } from '@/domain';
 import type { EventProjection, ISODate, LedgerData, PastMonth, ProjectionMonth, SpentOnlyMonth, YearMonth } from '@/domain';
 import { Badge, Card, Icon, cx, useMediaQuery } from '@/ui';
 import { CardHead, cardStyles } from './CardHead';
 import {
-  aheadMonthItems, aheadMonthSummary, barsGeometry, compactWon, hasRange, hasUsual, initialMonth, monthLabel, rangeNote,
+  aheadMonthSummary, aheadSpendSplit, barsGeometry, compactWon, hasRange, hasUsual, initialMonth, monthLabel, rangeNote,
 } from './selectors';
 import shared from './events.module.css';
 import styles from './AheadCard.module.css';
@@ -41,9 +41,14 @@ export interface AheadCardProps {
  * 이벤트 화면 '지난 · 앞으로 12개월' 카드 (PLAN 4-2, 지난 달 막대가 없으면 '앞으로 12개월'): 왼쪽은 지난 12개월 실제 달 말 잔액(회색 막대, 기록으로 계산) + 그때 예상한 잔액(점선, 예측 기록),
  * 이번 달부터는 달 말 예상 잔액 막대(범위 띠 · 미리 보는 중 표시). 0 이상은 기준선 위(파랑), 0 아래는 기준선 아래(빨강) + 모자라는 금액.
  * 이번 달은 달 숫자에 파란 동그라미. 처음엔 이번 달을 골라 두고, 막대를 누르면(마우스는 올리기만 해도) 아래에 그달이 보여요:
- * - 지난 달: 시작 잔액 · 들어온 돈 · 나간 돈 · 끝 잔액, 그때 예상과 견주기, 정산 화면 링크
- * - 이번 달 · 앞으로 달: 모자라면 맨 위 한 줄 '4월에 30만 모자라요 · 결혼식 4건 · 어버이날' → 나갈 돈 합계(굵게) → 새로 나갈 돈 · 지난 지출 돌려주기 두 묶음 → 들어오는 돈 · 그 달 끝 예상 잔액
- * 옆에 다가오는 달 한 줄씩(합계 먼저, 모자라는 달은 경고 색 '−30만'). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
+ * 고른 달 목록은 통장에서 나간 날이 아니라 **쓴 날** 기준이에요 (8월에 쓴 청구는 11월에 돌려줘도 8월 항목, '줄 돈' · '11/10 지급' 배지).
+ * - 지난 달(잔액 막대 · 통장 기록 전 빗금 막대): 굵은 '9월 쓴 돈 37.2만' + 묶은 줄(5줄 + 'N건 더') → 잔액 막대 달은 아래 작은 잔액 묶음
+ *   (시작 잔액 · 들어온 돈 · 나간 돈 · 끝 잔액, 나간 돈엔 앞서 쓴 돈 돌려준 것도 있다는 설명, 그때 예상과 견주기) → 정산 화면 링크
+ * - 이번 달: '이번 달 쓴 돈 ○ = 지금까지 ○ + 예정 ○' (숫자 띠와 같은 합, 여행 빼고 '여행 ○' 따로) → 지금까지 쓴 줄 + 예정 줄 →
+ *   합계에 안 넣은 돈(여행 · 평소 쓰는 돈 예상) → 아래 잔액 묶음 '통장에서 나갈 돈'(지난 지출 돌려주기는 처음엔 접어 둬요) · 들어오는 돈 · 그 달 끝 예상 잔액
+ * - 앞으로 달: '12월 쓸 돈 (예정) ○' + 예정 줄 → 여행 → 아래 잔액 묶음 (그달 돌려줄 청구 · 옮겨 갈 돈 · 그 달 끝 예상 잔액)
+ * 모자라면 맨 위 한 줄 '4월에 30만 모자라요 · 결혼식 4건 · 어버이날'.
+ * 옆에 다가오는 달 한 줄씩(쓸 돈 합계 먼저, 돌려주기는 뒤에 '돌려주기 ○', 모자라는 달은 경고 색 '−30만'). 화면 읽기 프로그램은 숨긴 표로 모든 달을 읽어요.
  * 폰에서도 막대 · 고른 달(이번 달 합계)이 늘 보여요 (접기 없음). 막대는 가로로 밀어 지난 달을 봐요
  */
 export function AheadCard({ projection, data, today, badge, picked: pickedProp, onPick, className }: AheadCardProps) {
@@ -75,7 +80,11 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
   const spentMax = spentOnly.reduce((mx, b) => Math.max(mx, b.spent), 0);
   const snapshots = useMemo(() => snapshotsByTarget(data, past.map((p) => p.month)), [data, past]);
   const prevForecasts = useMemo(() => lastMonthForecasts(data, today), [data, today]);
-  const spentSoFar = useMemo(() => (accountId ? spentSoFarThisMonth(data, accountId, today) : null), [data, accountId, today]);
+  // 이번 달 쓴 돈 (쓴 날 기준, 숫자 띠 '이번 달 쓴 돈'과 같은 합)
+  const thisSpend = useMemo(
+    () => (accountId && months[0]?.month === thisMonth ? thisMonthSpending(data, accountId, today, months[0]) : null),
+    [data, accountId, today, months, thisMonth],
+  );
 
   const cols = useMemo<Col[]>(
     () => [
@@ -518,26 +527,31 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
             <MonthDetail
               key={shownCol.month}
               month={shownCol.m}
-              items={aheadMonthItems(shownCol.m, installmentsByMonth.get(shownCol.m.month))}
+              split={aheadSpendSplit(shownCol.m, installmentsByMonth.get(shownCol.m.month))}
+              thisSpend={shownCol.m.month === thisMonth ? thisSpend : null}
               range={range?.find((r) => r.month === shownCol.month) ?? null}
               highCount={highCount}
               today={today}
-              spentSoFar={spentSoFar}
               prevForecast={prevMarks[shownCol.i] ?? null}
               onPrev={selIndex > 0 && !hover ? () => step(-1) : undefined}
               onNext={selIndex < cols.length - 1 && !hover ? () => step(1) : undefined}
             />
-          ) : shownCol?.kind === 'spent' ? (
+          ) : shownCol?.kind === 'spent' && accountId ? (
             <SpentDetail
               key={shownCol.month}
               s={shownCol.spent}
+              data={data}
+              accountId={accountId}
               today={today}
               onPrev={selIndex > 0 && !hover ? () => step(-1) : undefined}
               onNext={selIndex < cols.length - 1 && !hover ? () => step(1) : undefined}
             />
-          ) : shownCol?.kind === 'past' ? (
+          ) : shownCol?.kind === 'past' && accountId ? (
             <PastDetail
+              key={shownCol.month}
               past={shownCol.past}
+              data={data}
+              accountId={accountId}
               snapshot={snapshots.get(shownCol.month) ?? null}
               today={today}
               onPrev={selIndex > 0 && !hover ? () => step(-1) : undefined}
@@ -550,7 +564,7 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
             </h3>
             <ul className={styles.upList} aria-labelledby={`${ids}-up`}>
               {upcoming.map((m) => {
-                const sum = aheadMonthSummary(m, today);
+                const sum = aheadMonthSummary(m, today, m.month === thisMonth ? (thisSpend?.total ?? null) : null);
                 const full = sum.tail ? `${sum.head} · ${sum.tail}` : sum.head;
                 return (
                   <li key={m.month}>

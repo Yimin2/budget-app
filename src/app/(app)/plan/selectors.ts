@@ -2,6 +2,8 @@
 import { dateInMonth, formatDateKo, formatMan, formatManShort, formatMonthKo, formatShortDate, manWon, monthOf, nextOccurrenceDate } from '@/domain';
 import type {
   EventMonthUsage,
+  MonthSpentClaims,
+  ThisMonthSpending,
   LedgerData,
   SettlementSummary,
   Category,
@@ -63,7 +65,7 @@ export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
 export interface SettleTileText {
   /** '11/21 정산' */
   label: string;
-  /** 이번 달 줄 돈 (만 단위). 줄 돈이 없으면 null → '정산할 돈 없어요' */
+  /** 이번에 이벤트통장 등에서 실제로 줄 돈 (넘어가는 돈 뺀 것, 만 단위). 돌려줄 날이 된 청구가 없으면 null → '정산할 돈 없어요' */
   value: string | null;
   /** '생활비 통장에서 2.4만 · 저수지에서 빌려 2.4만' / '다음 정산 12/1 2.4만' (없으면 null) */
   note: string | null;
@@ -100,10 +102,17 @@ export function settleTileText(u: Pick<EventMonthUsage, 'unpaid' | 'unpaidPeople
           : '';
     carry = `못 준 돈 ${formatManShort(u.unpaid)} → 다음 달${who}`;
   }
-  return { label, value: formatManShort(sum.total), note: parts.length > 0 ? parts.join(' · ') : null, carry };
+  // 이번에 실제로 줄 돈 = 정산일까지 돌려줄 날이 된 청구 − 다음 달로 넘어가는 돈 (넘어가는 돈은 carry 로 따로)
+  const payNow = Math.max(0, sum.total - (u?.unpaid ?? 0));
+  return { label, value: formatManShort(payNow), note: parts.length > 0 ? parts.join(' · ') : null, carry };
 }
 
-/** 숫자 띠 네 번째 칸: 12개월 중 가장 모자라는 달 (없으면 null) */
+/** 숫자 띠 네 번째 칸: 12개월 중 처음으로 모자라는 달 (없으면 null) */
+export function firstShortMonth(projection: EventProjection): ProjectionMonth | null {
+  return projection.months.find((m) => m.endBalance < 0) ?? null;
+}
+
+/** 12개월 중 가장 많이 모자라는 달 (없으면 null) */
 export function worstShortMonth(projection: EventProjection): ProjectionMonth | null {
   let worst: ProjectionMonth | null = null;
   for (const m of projection.months) if (m.endBalance < 0 && (!worst || m.endBalance < worst.endBalance)) worst = m;
@@ -297,52 +306,127 @@ export function aheadInflowText(m: ProjectionMonth, isThisMonth: boolean): strin
   return parts.join(' · ');
 }
 
+/** 쓸 돈(예정)으로 세는 항목인지: 일정 · 할부 · 미리 기록 · 살까 하는 지출 · 평소 쓰는 돈. 여행은 따로, 돌려주기 · 옮겨 갈 돈은 통장에서 나갈 돈 */
+export function isPlannedSpend(item: Pick<AheadItem, 'kind'>): boolean {
+  return item.kind !== 'trip' && item.kind !== 'claims' && item.kind !== 'transferOut';
+}
+
+export interface AheadSpendSplit {
+  /** 쓸 돈 (예정) 항목 */
+  spend: AheadItem[];
+  spendTotal: Won;
+  /** 여행 남은 예산 (따로 세요) */
+  trips: AheadItem[];
+  tripTotal: Won;
+  /** 통장에서 나갈 돈: 지난 지출 돌려주기 · 옮겨 갈 돈 (쓴 돈이 아니에요) */
+  outflow: AheadItem[];
+  repay: Won;
+  transferOut: Won;
+}
+
 /**
- * 다가오는 달 한 줄을 두 토막으로: head = '12월 · 37.2만'(그달 나갈 돈 합, 굵게), tail = '결혼식 2건 · 돌려주기 30만'
- * (일정이 없으면 큰 항목 이름. 지난 지출 돌려주기는 나갈 돈에 섞지 않고 '돌려주기 ○'로 뒤에)
+ * 앞으로 달 항목을 셋으로 (PLAN 4-2): 그달 쓸 돈(예정) · 여행 · 통장에서 나갈 돈(지난 지출 돌려주기 · 옮겨 갈 돈).
+ * 세 합을 더하면 예측이 그달 빼는 돈(aheadTotals.total)과 같아요
  */
-export function aheadMonthSummary(m: ProjectionMonth, today: ISODate): { head: string; tail: string } {
-  const items = aheadMonthItems(m);
-  const { total, repay } = aheadTotals(m);
-  const head = `${monthLabel(m.month, today)} · ${formatManShort(total)}`;
+export function aheadSpendSplit(m: ProjectionMonth, installments: { key: string; label: string; amount: Won }[] = []): AheadSpendSplit {
+  const items = aheadMonthItems(m, installments);
+  const spend = items.filter(isPlannedSpend);
+  const trips = items.filter((i) => i.kind === 'trip');
+  const outflow = items.filter((i) => i.kind === 'claims' || i.kind === 'transferOut');
+  const sum = (list: AheadItem[]) => list.reduce((s, i) => s + i.amount, 0);
+  return {
+    spend,
+    spendTotal: sum(spend),
+    trips,
+    tripTotal: sum(trips),
+    outflow,
+    repay: m.claims ?? 0,
+    transferOut: m.transfersOut,
+  };
+}
+
+/**
+ * 다가오는 달 한 줄을 두 토막으로: head = '12월 · 37.2만'(그달 쓸 돈, 굵게), tail = '결혼식 2건 · 여행 40만 · 돌려주기 30만'
+ * (일정이 없으면 큰 항목 이름). 여행 · 지난 지출 돌려주기는 쓸 돈에 섞지 않고 뒤에 '여행 ○' · '돌려주기 ○'.
+ * 이번 달은 spentTotal(이번 달 쓴 돈 = 지금까지 + 예정, 숫자 띠와 같은 합)을 넘겨요
+ */
+export function aheadMonthSummary(m: ProjectionMonth, today: ISODate, spentTotal: Won | null = null): { head: string; tail: string } {
+  const split = aheadSpendSplit(m);
+  const head = `${monthLabel(m.month, today)} · ${formatManShort(spentTotal ?? split.spendTotal)}`;
   const names =
     m.events.length > 0
       ? summarizeEventNames(m.events.map((e) => e.name))
-      : items
-          .filter((i) => i.kind !== 'usual' && isNewSpend(i))
+      : split.spend
+          .filter((i) => i.kind !== 'usual')
           .slice(0, 2)
           .map((i) => i.label)
           .join(' · ');
-  const tail = [names, repay > 0 ? `돌려주기 ${formatManShort(repay)}` : ''].filter(Boolean).join(' · ');
+  const tail = [
+    names,
+    split.tripTotal > 0 ? `여행 ${formatManShort(split.tripTotal)}` : '',
+    split.repay > 0 ? `돌려주기 ${formatManShort(split.repay)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return { head, tail };
 }
 
 /** 다가오는 달 한 줄: '12월 · 37.2만 · 결혼식 2건 · 돌려주기 30만' */
-export function aheadMonthLine(m: ProjectionMonth, today: ISODate): string {
-  const { head, tail } = aheadMonthSummary(m, today);
+export function aheadMonthLine(m: ProjectionMonth, today: ISODate, spentTotal: Won | null = null): string {
+  const { head, tail } = aheadMonthSummary(m, today, spentTotal);
   return tail ? `${head} · ${tail}` : head;
 }
 
+/** 고른 달 맨 위 합계 줄 (PLAN 4-2). title 은 굵게, split · trip 은 아래 작은 줄 */
+export interface SpendLines {
+  title: string;
+  split: string | null;
+  trip: string | null;
+}
+
+/** 이번 달: '이번 달 쓴 돈 87.8만' + '= 지금까지 10만 + 예정 77.8만' + '여행 40만' (숫자 띠 '이번 달 쓴 돈'과 같은 합) */
+export function thisMonthSpendLines(t: Pick<ThisMonthSpending, 'spent' | 'planned' | 'total' | 'trip'>): SpendLines {
+  return {
+    title: `이번 달 쓴 돈 ${formatManShort(t.total)}`,
+    split: `지금까지 ${formatManShort(t.spent)} + 예정 ${formatManShort(t.planned)}`,
+    trip: t.trip > 0 ? `여행 ${formatManShort(t.trip)}` : null,
+  };
+}
+
+/** 앞으로 달: '12월 쓸 돈 (예정) 37.2만' + '여행 40만' */
+export function futureSpendLines(m: ProjectionMonth, today: ISODate): SpendLines {
+  const split = aheadSpendSplit(m);
+  return {
+    title: `${monthLabel(m.month, today)} 쓸 돈 (예정) ${formatManShort(split.spendTotal)}`,
+    split: null,
+    trip: split.tripTotal > 0 ? `여행 ${formatManShort(split.tripTotal)}` : null,
+  };
+}
+
+/** 지난 달: '9월 쓴 돈 37.2만' */
+export function pastSpendTitle(month: YearMonth, today: ISODate, total: Won): string {
+  return `${monthLabel(month, today)} 쓴 돈 ${formatManShort(total)}`;
+}
+
+export interface ClaimBadge {
+  text: string;
+  tone: 'warning' | 'success' | 'info';
+}
+
 /**
- * 고른 달 맨 위 합계 줄 (PLAN 4-2): '11월 나갈 돈 합계 87.8만' + 아래 작은 줄 '새로 나갈 돈 20.6만 · 지난 지출 돌려주기 67.2만'.
- * 이번 달은 '이번 달 나갈 돈 87.8만' + '이미 나간 돈 10만 + 앞으로 77.8만' (spentSoFar = 1일부터 오늘까지 통장에서 나간 돈)
+ * 쓴 돈 줄의 청구 정산 상태 배지 (정산 화면과 같은 색): 줄 돈(주황) · '11/10 지급'(초록) · 저수지에서 빌려 줌(파랑).
+ * 줄 전체가 한 상태면 글자만, 여러 상태가 섞이면 상태마다 금액을 붙여요. 청구가 없으면 빈 목록
  */
-export function aheadTotalLines(
-  m: ProjectionMonth,
-  today: ISODate,
-  spentSoFar: Won | null,
-): { title: string; split: string | null; parts: string | null } {
-  const { spend, repay, total } = aheadTotals(m);
-  const parts = repay > 0 ? `새로 나갈 돈 ${formatManShort(spend)} · 지난 지출 돌려주기 ${formatManShort(repay)}` : null;
-  if (m.month === monthOf(today) && spentSoFar !== null) {
-    const all = spentSoFar + total;
-    return {
-      title: `이번 달 나갈 돈 ${formatManShort(all)}`,
-      split: `이미 나간 돈 ${formatManShort(spentSoFar)} + 앞으로 ${formatManShort(total)}`,
-      parts,
-    };
-  }
-  return { title: `${monthLabel(m.month, today)} 나갈 돈 합계 ${formatManShort(total)}`, split: null, parts };
+export function claimBadges(c: MonthSpentClaims | null, amount: Won): ClaimBadge[] {
+  if (!c) return [];
+  const kinds = [c.pending, c.paid, c.borrowed].filter((x) => x > 0).length;
+  const whole = kinds === 1 && c.pending + c.paid + c.borrowed === amount;
+  const tail = (x: Won) => (whole ? '' : ` ${formatManShort(x)}`);
+  const out: ClaimBadge[] = [];
+  if (c.pending > 0) out.push({ text: `줄 돈${tail(c.pending)}`, tone: 'warning' });
+  if (c.paid > 0) out.push({ text: `${c.paidOn ? `${formatShortDate(c.paidOn)} 지급` : '지급함'}${tail(c.paid)}`, tone: 'success' });
+  if (c.borrowed > 0) out.push({ text: `저수지에서 빌려 줌${tail(c.borrowed)}`, tone: 'info' });
+  return out;
 }
 
 /* ───────── 일정 목록 ───────── */

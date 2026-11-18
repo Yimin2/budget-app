@@ -1,33 +1,118 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { forecastCompare, formatManShort, formatShortDate, formatWon, monthOf } from '@/domain';
-import type { ForecastSnapshot, ISODate, PastMonth, ProjectionMonth, ProjectionRangeMonth, SpentOnlyMonth, YearMonth } from '@/domain';
-import { Button, Icon, cx } from '@/ui';
+import { forecastCompare, formatManShort, formatShortDate, formatWon, monthOf, monthSpentItems } from '@/domain';
+import type {
+  ForecastSnapshot, Id, ISODate, LedgerData, MonthSpentRow, PastMonth, ProjectionMonth, ProjectionRangeMonth, SpentOnlyMonth,
+  ThisMonthSpending, Won, YearMonth,
+} from '@/domain';
+import { Badge, Button, Icon, cx } from '@/ui';
 import {
-  aheadInflowText, aheadTotalLines, aheadTotals, isNewSpend, capList, repayByMonth, repayPayersLine, repaySummary, monthLabel,
-  monthShortLine, type AheadItem,
+  aheadInflowText, capList, claimBadges, futureSpendLines, pastSpendTitle, thisMonthSpendLines, repayByMonth, repayPayersLine,
+  repaySummary, monthLabel, monthShortLine, type AheadItem, type AheadSpendSplit, type ClaimBadge, type SpendLines,
 } from './selectors';
 import { tripHref } from './trips/selectors';
 import shared from './events.module.css';
 import styles from './AheadCard.module.css';
 import { PAST_RECORDS_HREF, SETTLE_SCREEN_HREF, AHEAD_LIST_LIMIT, AHEAD_LIST_KEEP } from './aheadShared';
 
-function ItemRow({ item, today }: { item: AheadItem; today: ISODate }) {
-  const claim = item.kind === 'claims';
+/** 쓴 돈 · 쓸 돈 목록 한 줄 */
+interface ListRow {
+  key: string;
+  /** 날짜 칸 (없으면 빈 칸) */
+  date?: string;
+  label: string;
+  /** 'N건' 같은 짧은 설명 */
+  note?: string;
+  amount: Won;
+  tripId?: Id;
+  badges?: ClaimBadge[];
+  muted?: boolean;
+  /** 날짜가 지난 일정 (화면 읽기) */
+  overdue?: boolean;
+}
+
+/** 묶은 쓴 돈 줄 → 목록 한 줄. withDate 면 한 건짜리 줄에 날짜를 보여요 */
+function spentRow(r: MonthSpentRow, withDate: boolean): ListRow {
+  return {
+    key: `${r.phase}:${r.key}`,
+    date: withDate && r.date && (r.count === 1 || r.kind === 'event') ? formatShortDate(r.date) : withDate && r.kind === 'trip' ? '여행' : undefined,
+    label: r.label,
+    note: r.count > 1 && r.expenseIds.length > 1 ? `${r.expenseIds.length}건` : undefined,
+    amount: r.amount,
+    tripId: r.tripId,
+    badges: claimBadges(r.claims, r.amount),
+  };
+}
+
+/** 예측 항목 → 목록 한 줄 */
+function aheadRow(item: AheadItem, today: ISODate): ListRow {
+  return {
+    key: item.key,
+    date: item.date ? formatShortDate(item.date) : item.kind === 'trip' ? '여행' : undefined,
+    label: item.label,
+    note: item.note ? (item.kind === 'usual' ? `(${item.note})` : item.note) : undefined,
+    amount: item.amount,
+    tripId: item.tripId,
+    muted: item.kind === 'usual',
+    overdue: !!item.date && item.date < today,
+  };
+}
+
+function Row({ row, withDate }: { row: ListRow; withDate: boolean }) {
   return (
-    <li className={cx(item.kind === 'usual' && styles.itemMuted)}>
-      <span className={styles.d}>{item.date && !claim ? formatShortDate(item.date) : item.kind === 'trip' ? '여행' : ''}</span>
+    <li className={cx(row.muted && styles.itemMuted)}>
+      {withDate ? <span className={styles.d}>{row.date ?? ''}</span> : null}
       <span className={styles.n}>
-        {item.tripId ? <Link href={tripHref(item.tripId)}>{item.label}</Link> : item.label}
-        {item.date && !claim && item.date < today ? <span className="sr-only"> (날짜 지남)</span> : null}
-        {item.note ? <span className={styles.note}>{item.kind === 'usual' ? ` (${item.note})` : ` · ${item.note}`}</span> : null}
+        {row.tripId ? <Link href={tripHref(row.tripId)}>{row.label}</Link> : row.label}
+        {row.overdue ? <span className="sr-only"> (날짜 지남)</span> : null}
+        {row.note ? <span className={styles.note}>{row.note.startsWith('(') ? ` ${row.note}` : ` · ${row.note}`}</span> : null}
+        {row.badges && row.badges.length > 0 ? (
+          <span className={styles.badges}>
+            {row.badges.map((b) => (
+              <Badge key={b.text} tone={b.tone} variant="soft" size="sm" dot={false}>
+                {b.text}
+              </Badge>
+            ))}
+          </span>
+        ) : null}
       </span>
       <span className={styles.a}>
-        <Man value={item.amount} />
+        <Man value={row.amount} />
       </span>
     </li>
+  );
+}
+
+/** 긴 목록: 6줄을 넘으면 앞 5줄 + 'N건 더' */
+function RowList({ rows, label, withDate = true, testId }: { rows: ListRow[]; label: string; withDate?: boolean; testId?: string }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? { shown: rows, more: 0 } : capList(rows, AHEAD_LIST_LIMIT, AHEAD_LIST_KEEP);
+  return (
+    <>
+      <ul className={styles.items} aria-label={label} data-testid={testId}>
+        {shown.shown.map((r) => (
+          <Row key={r.key} row={r} withDate={withDate} />
+        ))}
+      </ul>
+      {shown.more > 0 ? <MoreButton count={shown.more} onClick={() => setAll(true)} /> : null}
+    </>
+  );
+}
+
+/** 고른 달 맨 위 합계 (굵게) + 작은 줄 */
+function TotalBox({ lines }: { lines: SpendLines }) {
+  return (
+    <div className={styles.totalBox} data-testid="ahead-total">
+      <p className={styles.totalTitle}>{lines.title}</p>
+      {lines.split ? <p className={styles.totalSub}>= {lines.split}</p> : null}
+      {lines.trip ? (
+        <p className={styles.totalSub} data-testid="ahead-trip">
+          {lines.trip}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -103,7 +188,7 @@ function RepayGroup({ month, items, label, today }: { month: ProjectionMonth; it
       {groups.length === 0 ? (
         <ul className={styles.items} aria-label={`${label} 지난 지출 돌려주기`}>
           {items.map((i) => (
-            <ItemRow key={i.key} item={i} today={today} />
+            <Row key={i.key} row={aheadRow(i, today)} withDate />
           ))}
         </ul>
       ) : open ? (
@@ -168,23 +253,28 @@ function DetailNav({ onPrev, onNext }: { onPrev?: () => void; onNext?: () => voi
   );
 }
 
+/**
+ * 이번 달 · 앞으로 달 (PLAN 4-2): 그달 쓴 돈 · 쓸 돈 (쓴 날 기준) → 합계 밖 돈(여행 · 평소 쓰는 돈 예상) → 아래 잔액 묶음
+ * (통장에서 나갈 돈: 지난 지출 돌려주기 · 옮겨 갈 돈 → 들어오는 돈 · 그 달 끝 예상 잔액)
+ */
 export function MonthDetail({
   month,
-  items,
+  split,
+  thisSpend,
   range,
   highCount,
   today,
-  spentSoFar,
   prevForecast,
   onPrev,
   onNext,
 }: {
   month: ProjectionMonth;
-  items: AheadItem[];
+  split: AheadSpendSplit;
+  /** 이번 달이면 쓴 날 기준 이번 달 쓴 돈 */
+  thisSpend: ThisMonthSpending | null;
   range: ProjectionRangeMonth | null;
   highCount: number;
   today: ISODate;
-  spentSoFar: number | null;
   prevForecast: ForecastSnapshot | null;
   onPrev?: () => void;
   onNext?: () => void;
@@ -192,12 +282,21 @@ export function MonthDetail({
   const isThis = month.month === monthOf(today);
   const short = month.endBalance < 0;
   const label = monthLabel(month.month, today);
-  const spend = items.filter(isNewSpend);
-  const repay = items.filter((i) => !isNewSpend(i));
-  const totals = aheadTotals(month);
-  const lines = aheadTotalLines(month, today, spentSoFar);
-  const [spendAll, setSpendAll] = useState(false);
-  const spendShown = spendAll ? { shown: spend, more: 0 } : capList(spend, AHEAD_LIST_LIMIT, AHEAD_LIST_KEEP);
+  const lines = thisSpend ? thisMonthSpendLines(thisSpend) : futureSpendLines(month, today);
+  const rows: ListRow[] = thisSpend
+    ? [...thisSpend.spentRows.map((r) => spentRow(r, true)), ...thisSpend.plannedRows.map((r) => spentRow(r, true))]
+    : split.spend.map((i) => aheadRow(i, today));
+  // 합계 밖: 여행(따로 세요) · 이번 달 평소 쓰는 돈 예상 · 살까 하는 지출 (잔액 계산엔 넣어요)
+  const aside: ListRow[] = thisSpend
+    ? [
+        ...thisSpend.tripRows.map((r) => spentRow(r, true)),
+        ...split.spend.filter((i) => i.kind === 'usual' || i.kind === 'extra').map((i) => aheadRow(i, today)),
+      ]
+    : split.trips.map((i) => aheadRow(i, today));
+  const overdue = thisSpend?.overdue ?? 0;
+  const repay = split.outflow.filter((i) => i.kind === 'claims');
+  const hasOut = repay.length > 0 || split.transferOut > 0 || overdue > 0;
+  const emptyText = thisSpend ? '이번 달에 쓴 돈 · 쓸 돈이 없어요' : '이 달에 쓸 돈은 없어요';
   return (
     <div className={styles.detail} data-testid="ahead-month">
       <div className={shared.detailHead}>
@@ -215,55 +314,69 @@ export function MonthDetail({
         </div>
         <DetailNav onPrev={onPrev} onNext={onNext} />
       </div>
-      <div className={styles.totalBox} data-testid="ahead-total">
-        <p className={styles.totalTitle}>{lines.title}</p>
-        {lines.split ? <p className={styles.totalSub}>= {lines.split}</p> : null}
-        {lines.parts ? <p className={styles.totalSub}>{lines.parts}</p> : null}
-      </div>
-      {spend.length > 0 ? (
+      <TotalBox lines={lines} />
+      {rows.length > 0 ? (
         <div className={styles.group}>
-          {repay.length > 0 ? (
-            <h4 className={styles.groupTitle}>
-              새로 나갈 돈 <span className={styles.groupAmount}>{formatManShort(totals.spend)}</span>
-            </h4>
-          ) : null}
-          <ul className={styles.items} aria-label={`${label} 나갈 돈`}>
-            {spendShown.shown.map((i) => (
-              <ItemRow key={i.key} item={i} today={today} />
-            ))}
-          </ul>
-          {spendShown.more > 0 ? <MoreButton count={spendShown.more} onClick={() => setSpendAll(true)} /> : null}
+          <RowList rows={rows} label={thisSpend ? `${label} 쓴 돈` : `${label} 쓸 돈`} />
         </div>
       ) : (
-        <p className={styles.detailEmpty}>{repay.length > 0 ? '새로 나갈 돈은 없어요' : '이 달에는 나갈 돈이 없어요'}</p>
+        <p className={styles.detailEmpty}>{emptyText}</p>
       )}
-      {repay.length > 0 ? <RepayGroup month={month} items={repay} label={label} today={today} /> : null}
-      <dl className={styles.calc}>
-        <div className={cx(styles.calcRow, styles.calcMuted)}>
-          <dt>들어오는 돈</dt>
-          <dd data-testid="ahead-inflow">{aheadInflowText(month, isThis)}</dd>
+      {aside.length > 0 ? (
+        <div className={styles.group} data-testid="ahead-aside">
+          <h4 className={styles.groupTitle}>합계에 안 넣은 돈</h4>
+          <RowList rows={aside} label={`${label} 합계에 안 넣은 돈`} />
+          <p className={styles.groupNote}>
+            {thisSpend ? '여행은 따로 세고, 평소 쓰는 돈은 예상이라 합계에 안 넣어요. 잔액 계산엔 넣어요' : '여행은 따로 세요. 잔액 계산엔 넣어요'}
+          </p>
         </div>
-        <div className={cx(styles.calcRow, styles.calcTotal)}>
-          <dt>그 달 끝 예상 잔액</dt>
-          <dd className={short ? shared.bad : undefined}>
-            <Man value={month.endBalance} />
-          </dd>
-        </div>
-        {range ? (
+      ) : null}
+      <div className={styles.balance} data-testid="ahead-balance">
+        {hasOut ? <h4 className={styles.balanceTitle}>통장에서 나갈 돈</h4> : null}
+        {repay.length > 0 ? <RepayGroup month={month} items={repay} label={label} today={today} /> : null}
+        <dl className={styles.calc}>
+          {split.transferOut > 0 ? (
+            <div className={cx(styles.calcRow, styles.calcMuted)}>
+              <dt>옮겨 갈 돈</dt>
+              <dd>
+                −<Man value={split.transferOut} />
+              </dd>
+            </div>
+          ) : null}
+          {overdue > 0 ? (
+            <div className={cx(styles.calcRow, styles.calcMuted)} data-testid="ahead-overdue">
+              <dt>날짜 지난 일정 · 할부</dt>
+              <dd>
+                −<Man value={overdue} />
+              </dd>
+            </div>
+          ) : null}
           <div className={cx(styles.calcRow, styles.calcMuted)}>
-            <dt>아끼면 · 많이 쓰면</dt>
-            <dd>
-              {formatManShort(range.endLow)} · <span className={range.endHigh < 0 ? shared.bad : undefined}>{formatManShort(range.endHigh)}</span>
+            <dt>들어오는 돈</dt>
+            <dd data-testid="ahead-inflow">{aheadInflowText(month, isThis)}</dd>
+          </div>
+          <div className={cx(styles.calcRow, styles.calcTotal)}>
+            <dt>그 달 끝 예상 잔액</dt>
+            <dd className={short ? shared.bad : undefined}>
+              <Man value={month.endBalance} />
             </dd>
           </div>
-        ) : null}
-        {prevForecast ? (
-          <div className={cx(styles.calcRow, styles.calcMuted)}>
-            <dt>지난달 예상</dt>
-            <dd data-testid="ahead-prev-forecast">{formatManShort(prevForecast.expected)}</dd>
-          </div>
-        ) : null}
-      </dl>
+          {range ? (
+            <div className={cx(styles.calcRow, styles.calcMuted)}>
+              <dt>아끼면 · 많이 쓰면</dt>
+              <dd>
+                {formatManShort(range.endLow)} · <span className={range.endHigh < 0 ? shared.bad : undefined}>{formatManShort(range.endHigh)}</span>
+              </dd>
+            </div>
+          ) : null}
+          {prevForecast ? (
+            <div className={cx(styles.calcRow, styles.calcMuted)}>
+              <dt>지난달 예상</dt>
+              <dd data-testid="ahead-prev-forecast">{formatManShort(prevForecast.expected)}</dd>
+            </div>
+          ) : null}
+        </dl>
+      </div>
       {range && range.endHigh < 0 && !short && highCount > 0 ? (
         <p className={styles.detailWarn}>많이 쓰면 이 달에 {formatManShort(-range.endHigh)} 모자라요</p>
       ) : null}
@@ -271,21 +384,49 @@ export function MonthDetail({
   );
 }
 
-/** 통장 시작 전 달: '○월 · 통장 기록 전' + 쓴 돈 + 묶은 줄(5줄 + 'N건 더') + 정산 화면 링크. 잔액 · 예측 견주기는 없어요 */
+/** 지난 달 쓴 돈 (쓴 날 기준): 굵은 '9월 쓴 돈 37.2만' + 묶은 줄(정산 상태 배지, 5줄 + 'N건 더') */
+function PastSpent({ data, accountId, month, today, totalTestId }: { data: LedgerData; accountId: Id; month: YearMonth; today: ISODate; totalTestId?: string }) {
+  const spent = useMemo(() => monthSpentItems(data, accountId, month), [data, accountId, month]);
+  const label = monthLabel(month, today);
+  return (
+    <>
+      <div className={styles.totalBox} data-testid="ahead-total">
+        <p className={styles.totalTitle} data-testid={totalTestId}>
+          <span aria-hidden>{pastSpendTitle(month, today, spent.total)}</span>
+          <span className="sr-only">
+            {label} 쓴 돈 {formatWon(spent.total)}
+          </span>
+        </p>
+        {spent.count > 0 ? <p className={styles.totalSub}>{spent.count}건 · 쓴 날 기준 (청구는 돌려준 달이 아니라 쓴 달에 세요)</p> : null}
+      </div>
+      {spent.rows.length > 0 ? (
+        <div className={styles.group}>
+          <RowList rows={spent.rows.map((r) => spentRow(r, false))} label={`${label} 쓴 돈`} withDate={false} />
+        </div>
+      ) : (
+        <p className={styles.detailEmpty}>이 달에 쓴 돈이 없어요</p>
+      )}
+    </>
+  );
+}
+
+/** 통장 시작 전 달: '○월 · 통장 기록 전' + 그달 쓴 돈 · 묶은 줄 + 정산 화면 링크. 잔액 · 예측 견주기는 없어요 */
 export function SpentDetail({
   s,
+  data,
+  accountId,
   today,
   onPrev,
   onNext,
 }: {
   s: SpentOnlyMonth;
+  data: LedgerData;
+  accountId: Id;
   today: ISODate;
   onPrev?: () => void;
   onNext?: () => void;
 }) {
   const label = monthLabel(s.month, today);
-  const [all, setAll] = useState(false);
-  const rows = all ? { shown: s.items, more: 0 } : capList(s.items, AHEAD_LIST_LIMIT, AHEAD_LIST_KEEP);
   return (
     <div className={styles.detail} data-testid="ahead-spent-month">
       <div className={shared.detailHead}>
@@ -295,28 +436,7 @@ export function SpentDetail({
         </div>
         <DetailNav onPrev={onPrev} onNext={onNext} />
       </div>
-      <dl className={styles.calc}>
-        <div className={cx(styles.calcRow, styles.calcTotal)}>
-          <dt>쓴 돈</dt>
-          <dd data-testid="ahead-spent-total">
-            <Man value={s.spent} />
-          </dd>
-        </div>
-      </dl>
-      <ul className={styles.items} aria-label={`${label} 쓴 돈`}>
-        {rows.shown.map((i) => (
-          <li key={i.key}>
-            <span className={styles.n}>
-              {i.label}
-              {i.expenseIds.length > 1 ? <span className={styles.note}> · {i.expenseIds.length}건</span> : null}
-            </span>
-            <span className={styles.a}>
-              <Man value={i.amount} />
-            </span>
-          </li>
-        ))}
-      </ul>
-      {rows.more > 0 ? <MoreButton count={rows.more} onClick={() => setAll(true)} /> : null}
+      <PastSpent data={data} accountId={accountId} month={s.month} today={today} totalTestId="ahead-spent-total" />
       <Link href={PAST_RECORDS_HREF} className={styles.pastLink}>
         그 달 쓴 돈은 정산 화면에서
         <Icon name="chevron-right" size={16} />
@@ -325,15 +445,22 @@ export function SpentDetail({
   );
 }
 
-/** 지난 달 요약: 시작 잔액 · 들어온 돈 · 나간 돈 · 끝 잔액 + 그때 예상과 견주기 + 정산 화면 링크 */
+/**
+ * 지난 달: 그달 쓴 돈(쓴 날 기준, 정산 상태 배지) → 아래 작은 잔액 묶음 (시작 잔액 · 들어온 돈 · 나간 돈 · 끝 잔액 + 그때 예상과 견주기) + 정산 화면 링크.
+ * 나간 돈은 통장에서 나간 돈이라 앞서 쓴 청구를 돌려준 돈도 들어 있어요
+ */
 export function PastDetail({
   past,
+  data,
+  accountId,
   snapshot,
   today,
   onPrev,
   onNext,
 }: {
   past: PastMonth;
+  data: LedgerData;
+  accountId: Id;
   snapshot: ForecastSnapshot | null;
   today: ISODate;
   onPrev?: () => void;
@@ -346,45 +473,52 @@ export function PastDetail({
       <div className={shared.detailHead}>
         <div className={shared.txt}>
           <h3 className={styles.detailTitle}>{label} · 지난 달</h3>
-          <span className={styles.detailSub}>기록으로 계산한 실제 잔액</span>
+          <span className={styles.detailSub}>그달 쓴 돈과 기록으로 계산한 실제 잔액</span>
         </div>
         <DetailNav onPrev={onPrev} onNext={onNext} />
       </div>
-      <dl className={styles.calc}>
-        <div className={styles.calcRow}>
-          <dt>시작 잔액</dt>
-          <dd>
-            <Man value={past.startBalance} />
-          </dd>
-        </div>
-        <div className={styles.calcRow}>
-          <dt>들어온 돈</dt>
-          <dd>
-            +<Man value={past.inflow} />
-          </dd>
-        </div>
-        <div className={styles.calcRow}>
-          <dt>나간 돈</dt>
-          <dd>
-            −<Man value={past.outflow} />
-          </dd>
-        </div>
-        <div className={cx(styles.calcRow, styles.calcTotal)}>
-          <dt>끝 잔액</dt>
-          <dd className={past.endBalance < 0 ? shared.bad : undefined}>
-            <Man value={past.endBalance} />
-          </dd>
-        </div>
-      </dl>
-      {cmp ? (
-        <div className={styles.compare} data-testid="ahead-compare">
-          <p className={styles.compareHead}>{cmp.headline}</p>
-          {cmp.detail ? <p className={styles.compareSub}>{cmp.detail}</p> : null}
-          {cmp.inflowNote ? <p className={styles.compareSub}>{cmp.inflowNote}</p> : null}
-        </div>
-      ) : (
-        <p className={styles.compareSub}>이 달은 그때 남긴 예측 기록이 없어요</p>
-      )}
+      <PastSpent data={data} accountId={accountId} month={past.month} today={today} />
+      <div className={styles.balance} data-testid="ahead-balance">
+        <h4 className={styles.balanceTitle}>통장 잔액</h4>
+        <dl className={cx(styles.calc, styles.calcCompact)}>
+          <div className={cx(styles.calcRow, styles.calcMuted)}>
+            <dt>시작 잔액</dt>
+            <dd>
+              <Man value={past.startBalance} />
+            </dd>
+          </div>
+          <div className={cx(styles.calcRow, styles.calcMuted)}>
+            <dt>들어온 돈</dt>
+            <dd>
+              +<Man value={past.inflow} />
+            </dd>
+          </div>
+          <div className={cx(styles.calcRow, styles.calcMuted)}>
+            <dt>나간 돈</dt>
+            <dd>
+              −<Man value={past.outflow} />
+            </dd>
+          </div>
+          <div className={styles.calcRow}>
+            <dt>끝 잔액</dt>
+            <dd className={past.endBalance < 0 ? shared.bad : undefined}>
+              <Man value={past.endBalance} />
+            </dd>
+          </div>
+        </dl>
+        <p className={styles.groupNote} data-testid="ahead-outflow-note">
+          나간 돈은 통장에서 나간 돈이라, 앞서 쓴 돈을 이 달에 돌려준 것도 들어 있어요
+        </p>
+        {cmp ? (
+          <div className={styles.compare} data-testid="ahead-compare">
+            <p className={styles.compareHead}>{cmp.headline}</p>
+            {cmp.detail ? <p className={styles.compareSub}>{cmp.detail}</p> : null}
+            {cmp.inflowNote ? <p className={styles.compareSub}>{cmp.inflowNote}</p> : null}
+          </div>
+        ) : (
+          <p className={styles.compareSub}>이 달은 그때 남긴 예측 기록이 없어요</p>
+        )}
+      </div>
       <Link href={PAST_RECORDS_HREF} className={styles.pastLink}>
         그 달 쓴 돈은 정산 화면에서
         <Icon name="chevron-right" size={16} />
