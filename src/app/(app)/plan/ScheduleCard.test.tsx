@@ -58,7 +58,7 @@ describe('scheduleGroups', () => {
 async function renderCard() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
-  const card = await screen.findByRole('region', { name: /^일정 · / });
+  const card = await screen.findByRole('region', { name: /^달별 일정 · / });
   return { h, card, add: headerAddButton() };
 }
 
@@ -75,7 +75,7 @@ const itemNames = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').m
 describe('일정 카드', () => {
   it('카드에는 추가 버튼이 없고 화면 머리의 [+ 추가 ▾] 하나', async () => {
     const { card, add } = await renderCard();
-    expect(within(card).getByRole('heading', { level: 2 }).textContent).toMatch(/^일정 · \d+건 .+만$/);
+    expect(within(card).getByRole('heading', { level: 2 }).textContent).toMatch(/^달별 일정 · \d+건 .+만$/);
     expect(within(card).queryByRole('button', { name: '추가' })).toBeNull();
     expect(card.contains(add)).toBe(false);
     expect(screen.getAllByRole('button', { name: /추가/ })).toHaveLength(1);

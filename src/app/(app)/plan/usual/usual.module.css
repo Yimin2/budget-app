@@ -1,0 +1,38 @@
+/* '/plan/usual' 한 번뿐이었던 큰 지출 빼기 */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 760px;
+}
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.back {
+  margin-left: calc(var(--space-3) * -1);
+}
+.title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+@media (min-width: 1280px) {
+  .title {
+    font-size: 28px;
+    line-height: 36px;
+  }
+}
+.lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--text-muted);
+}
+.card {
+  gap: var(--space-4);
+}

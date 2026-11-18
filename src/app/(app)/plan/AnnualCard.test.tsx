@@ -17,7 +17,7 @@ afterEach(cleanup);
 async function renderCard() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
-  await screen.findByRole('region', { name: /^일정/ });
+  await screen.findByRole('region', { name: /^달별 일정/ });
   chooseScheduleAdd('매년 일정 한 번에 등록');
   const card = screen.getByRole('region', { name: '매년 일정 한 번에 등록' });
   return { h, card };
@@ -27,7 +27,7 @@ describe('매년 일정 한 번에 등록', () => {
   it("머리의 [+ 추가 ▾] → 매년 일정 한 번에 등록으로 '일정' 카드 안에서 체크 목록을 펼치고, [닫기]로 접으면 [+ 추가]로 돌아가요 (창 없음)", async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
-    const schedule = await screen.findByRole('region', { name: /^일정/ });
+    const schedule = await screen.findByRole('region', { name: /^달별 일정/ });
     expect(screen.queryByRole('region', { name: '매년 일정 한 번에 등록' })).toBeNull();
     // 제목 줄에 따로 있던 버튼은 없어요
     expect(within(schedule).queryByRole('button', { name: '매년 일정 한 번에 등록' })).toBeNull();
@@ -157,7 +157,7 @@ describe('매년 일정 한 번에 등록', () => {
   it('일정 창에서 음력 일정의 음력 월 · 일을 고치면 음력 값과 다음 회차 양력 날짜가 바뀌어요', async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
-    await screen.findByRole('region', { name: /^일정 · / });
+    await screen.findByRole('region', { name: /^달별 일정 · / });
     await act(async () => {
       await h.probe.ledger!.addEvent({ date: '2026-12-23', name: '외할머니 생신', amount: 100_000, repeat: 'yearly', lunar: '11-15' });
     });

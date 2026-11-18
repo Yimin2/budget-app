@@ -1,0 +1,395 @@
+/* 이벤트 화면 (쓴 날 기준): 상태 카드 · 정산 줄 · 달 말 잔액 차트 · 달 상세 시트. 색은 디자인 토큰만 */
+
+/* ───────── 상태 카드 ───────── */
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.statusWarn {
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+.statusHead {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.statusHead > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.statusTitle {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.statusWarn .statusTitle,
+.statusWarn .statusSub,
+.statusWarn .statusHead > svg {
+  color: var(--warning-text);
+}
+.statusOk .statusHead > svg {
+  color: var(--success-text);
+}
+.statusSub {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.fixButton {
+  align-self: flex-start;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.facts > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.facts dt {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.facts dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.factValue {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.factNote {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.fixWays {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+/* ───────── 정산 줄 ───────── */
+.settle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.settleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.settleText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.settleLabel {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.settleValue {
+  font-variant-numeric: tabular-nums;
+}
+.settleNote {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.settleLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  font-weight: 700;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.settleLink:hover {
+  text-decoration: underline;
+}
+.carry {
+  align-self: flex-start;
+  max-width: 100%;
+  white-space: normal;
+  height: auto;
+  line-height: 1.4;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  text-align: left;
+}
+.warnLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--warning-text);
+}
+
+/* ───────── 달 말 잔액 차트 ───────── */
+.chartHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.basis {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
+.chart {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.col:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .col:hover .bar {
+    filter: brightness(0.92);
+  }
+}
+.pos {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 140px;
+  border-bottom: 1px solid var(--text-muted);
+}
+.neg {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  height: var(--neg-h, 0px);
+}
+.bar {
+  width: 100%;
+  max-width: 44px;
+  align-self: center;
+  min-height: 2px;
+  background: var(--chart-1);
+  border-radius: 4px 4px 0 0;
+}
+.barPast {
+  background: var(--text-muted);
+  opacity: 0.55;
+}
+.barNeg {
+  background: var(--danger);
+  border-radius: 0 0 4px 4px;
+}
+.barZero {
+  min-height: 0;
+}
+.label {
+  margin-top: var(--space-1);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.labelThis {
+  font-weight: 700;
+  color: var(--primary);
+}
+.labelShort {
+  font-weight: 700;
+  color: var(--danger-text);
+}
+.chartFoot {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+
+/* ───────── 달 상세 시트 ───────── */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sheetNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.sheetState {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.ok {
+  color: var(--success-text);
+}
+.bad {
+  color: var(--danger-text);
+}
+.navButtons {
+  display: flex;
+  gap: var(--space-1);
+}
+.total {
+  display: flex;
+  flex-direction: column;
+}
+.totalLabel {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.totalValue {
+  font-size: 26px;
+  line-height: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 48px;
+  border-top: 1px solid var(--border);
+}
+.rowMuted {
+  color: var(--text-muted);
+}
+.rowDate {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rowNote {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
+.rowBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.rowAmount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+.calc {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.calc > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.calc dt {
+  color: var(--text-muted);
+}
+.calc dd {
+  margin: 0;
+}
+.calcTotal {
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+.calcTotal dt {
+  color: var(--text);
+}
+.sheetNote {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}

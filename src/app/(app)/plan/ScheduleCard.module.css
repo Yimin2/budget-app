@@ -395,3 +395,8 @@
     margin-left: 0;
   }
 }
+
+/* 달 머리 '달 말 −30만' (쓴 날 기준으로 모자라는 달) */
+.groupShort {
+  color: var(--danger-text);
+}

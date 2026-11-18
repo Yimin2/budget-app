@@ -1,248 +1,74 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
-import { effectiveExclusions, formatManShort, formatMonthKo, manWon } from '@/domain';
-import type { CompromisePlan, EventProjection, ExceptionCandidate, ExclusionDraft, LedgerData, RepayMonths, UsualInsight } from '@/domain';
-import { Card, cx } from '@/ui';
-import { ExpandButton } from '../_components/ExpandButton';
-import { CompromisePanel } from './CompromisePanel';
-import { ExceptionPanel, exceptionCounts } from './ExceptionPanel';
+import Link from 'next/link';
+import { useId, useMemo } from 'react';
+import { formatManShort, formatWon, usualBreakdown } from '@/domain';
+import type { Id, LedgerData, UsualInsight } from '@/domain';
+import { Card, Icon, cx } from '@/ui';
 import { CardHead, cardStyles } from './CardHead';
-import { compromiseHeadline } from './selectors';
-import { SavingsBarView, UsualDetails, UsualDonut, sliceColor, useUsualBreakdown } from './UsualSpendingViz';
 import shared from './events.module.css';
 import styles from './UsualCard.module.css';
 
-type Step = 'table' | 'compromise' | 'exceptions';
+/** 예외 지출 빼기 화면 */
+export const USUAL_HREF = '/plan/usual';
 
-const EMPTY_HINT = '아직 일정 아닌 이벤트 지출 기록이 없어요. 기록이 쌓이면 항목별 평균과 도넛이 나와요';
-
-const STEP_TITLE: Record<Step, string> = {
-  table: '항목별 평균 표',
-  compromise: '추천 타협안',
-  exceptions: '예외 지출 빼기',
-};
-const STEP_NUM: Record<Step, string> = { table: '①', compromise: '②', exceptions: '③' };
+const EMPTY_HINT = '아직 일정 아닌 이벤트 지출 기록이 없어요. 기록이 쌓이면 항목별 평균이 나와요';
 
 export interface UsualCardProps {
   data: LedgerData;
-  /** 저장된 그대로의 예측 */
-  projection: EventProjection;
+  accountId: Id;
   insight: UsualInsight | null;
   today: string;
-  compromise: CompromisePlan | null;
-  repayMonths: RepayMonths;
-  onRepayMonths: (m: RepayMonths) => void;
-  /** 예외 지출 빼기 */
-  candidates: ExceptionCandidate[];
-  /** 체크한 대로 뺀 예측 (바꾼 것이 있을 때만) */
-  tried: EventProjection | null;
-  draft: ExclusionDraft;
-  onDraft: (draft: ExclusionDraft) => void;
+  /** 예외 지출 후보가 있으면 '한 번뿐이었던 큰 지출 빼기' 링크 */
+  hasCandidates: boolean;
   className?: string;
 }
 
 /**
- * 이벤트 화면 카드 3 '평소 쓰는 돈' (PLAN 4-2, 정보만 · 바꾸는 버튼 없음).
- * 접힌 요약: 작은 도넛 + 범례(기록이 없으면 빈 도넛 대신 안내 한 줄) · 적립 대비 막대(넘는 몫 · 바닥나는 달) · 단계 칩 셋
- * [① 항목별 평균 표] [② 추천 타협안 '적립 70만 + 선물 −5만'] [③ 예외 지출 빼기 '후보 4건'].
- * 칩이나 [자세히]를 누르면 그 단계가 같은 자리에서 펼쳐져요(창 없음). 같은 칩을 다시 누르거나 [접기]로 접어요.
- * 예외를 체크해 미리 보는 동안에는 ③ 이 펼친 채로 있고, '앞으로 12개월' 카드에 '미리 보는 중'이 붙어요
+ * 이벤트 화면 '평소 쓰는 돈' 카드 (PLAN 4-2): 한 줄 안내(적립과 견줌) + 항목별 한 달 평균 표.
+ * 예외 지출 빼기는 따로 화면(/plan/usual), 추천 타협안은 모자랄 때 상태 카드의 [대처하기]에서 봐요
  */
-export function UsualCard({
-  data,
-  projection,
-  insight,
-  today,
-  compromise,
-  repayMonths,
-  onRepayMonths,
-  candidates,
-  tried,
-  draft,
-  onDraft,
-  className,
-}: UsualCardProps) {
+export function UsualCard({ data, accountId, insight, today, hasCandidates, className }: UsualCardProps) {
   const titleId = useId();
-  const panelId = useId();
-  const panelTitleId = useId();
-  const [step, setStep] = useState<Step>('table');
-  const [open, setOpen] = useState(false);
-  const accountId = projection.accountId ?? '';
-  const { breakdown, slices } = useUsualBreakdown(data, accountId, today, null);
-  const previewing = useMemo(() => effectiveExclusions(data, draft).length > 0, [data, draft]);
-  const counts = exceptionCounts(candidates, draft);
-  // 평소 쓰는 돈 기록이 없으면 빈 도넛 대신 안내 한 줄 (막대 · 칩은 그대로)
-  const hasSlices = slices.length > 0 && breakdown.monthlyTotal > 0;
-
-  const steps: Step[] = [];
-  if (insight) steps.push('table');
-  if (insight && compromise) steps.push('compromise');
-  if (candidates.length > 0) steps.push('exceptions');
-  const shownStep: Step | null = previewing ? 'exceptions' : steps.includes(step) ? step : (steps[0] ?? null);
-  const isOpen = (open || previewing) && shownStep !== null;
-
-  const chip = (s: Step) => {
-    if (isOpen && shownStep === s) {
-      if (!previewing) setOpen(false);
-      return;
-    }
-    setStep(s);
-    setOpen(true);
-  };
-  const chipSub: Record<Step, string> = {
-    table: insight ? `월 ${formatManShort(breakdown.monthlyTotal)} · ${breakdown.rows.length}개 항목` : '',
-    compromise: compromise ? compromiseHeadline(compromise) : '',
-    exceptions: counts.marked > 0 ? `예외 ${counts.marked}건 · 후보 ${counts.candidates}건` : `후보 ${counts.candidates}건`,
-  };
+  const tableId = useId();
+  const breakdown = useMemo(() => usualBreakdown(data, accountId, today, null), [data, accountId, today]);
+  const rows = breakdown.rows.filter((r) => r.monthly > 0);
 
   return (
     <Card as="section" className={cx(cardStyles.card, className)} aria-labelledby={titleId} data-testid="usual-card">
-      <CardHead
-        titleId={titleId}
-        title="평소 쓰는 돈"
-        actions={
-          shownStep ? (
-            <ExpandButton
-              open={isOpen}
-              onToggle={() => setOpen(!isOpen)}
-              controls={panelId}
-              openLabel="자세히"
-              label="평소 쓰는 돈"
-              disabled={previewing}
-            />
-          ) : undefined
-        }
-      />
-
+      <CardHead titleId={titleId} title="평소 쓰는 돈" />
       {insight ? (
-        <>
-          {hasSlices ? (
-            <div className={styles.donutWrap}>
-              <UsualDonut slices={slices} total={breakdown.monthlyTotal} size="sm" />
-              <ul className={styles.legend} aria-label="평소 쓰는 돈 항목 (한 달 평균)">
-                {slices.map((s) => (
-                  <li key={s.key}>
-                    <span className={styles.swatch} style={{ background: sliceColor(s) }} aria-hidden="true" />
-                    <span className={styles.legendName}>{s.name}</span>
-                    <span className={styles.legendAmt}>{formatManShort(s.amount)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className={shared.foot} data-testid="usual-no-records">
-              {EMPTY_HINT}
-            </p>
-          )}
-          <SavingsBarView
-            contribution={insight.monthlyContribution}
-            usual={insight.monthlyUsual}
-            planned={insight.monthlyPlanned}
-            shortages={projection.shortages}
-            year={Number(today.slice(0, 4))}
-          />
-        </>
+        <p className={cx(shared.insightMsg, Math.round(insight.gap / 1000) < 0 && shared.bad)} data-testid="usual-summary">
+          {insight.message}
+        </p>
+      ) : null}
+      {rows.length > 0 ? (
+        <table className={styles.table} aria-labelledby={tableId} data-testid="usual-table">
+          <caption id={tableId} className={styles.caption}>
+            항목별 한 달 평균 · 합 {formatManShort(breakdown.monthlyTotal)}
+          </caption>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.categoryId ?? r.name}>
+                <th scope="row">{r.name}</th>
+                <td>
+                  {formatManShort(r.monthly)}
+                  <span className="sr-only"> ({formatWon(r.monthly)})</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       ) : (
         <p className={shared.foot} data-testid="usual-empty">
           {EMPTY_HINT}
         </p>
       )}
-
-      {steps.length > 0 ? (
-        <ul className={styles.steps} aria-label="평소 쓰는 돈 살펴보기">
-          {steps.map((s) => {
-            const on = isOpen && shownStep === s;
-            return (
-              <li key={s}>
-                <button
-                  type="button"
-                  className={cx(styles.step, on && styles.stepOn)}
-                  aria-expanded={on}
-                  aria-controls={panelId}
-                  disabled={previewing && s !== 'exceptions'}
-                  onClick={() => chip(s)}
-                  data-testid={`usual-step-${s}`}
-                >
-                  <span className={styles.stepTitle}>
-                    <span aria-hidden="true">{STEP_NUM[s]} </span>
-                    {STEP_TITLE[s]}
-                  </span>
-                  {chipSub[s] ? <span className={styles.stepSub}>{chipSub[s]}</span> : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-
-      {shownStep ? (
-        <section
-          id={panelId}
-          hidden={!isOpen}
-          className={cx(styles.panel, previewing && styles.panelOn)}
-          aria-labelledby={panelTitleId}
-        >
-          <h3 id={panelTitleId} className={styles.panelTitle}>
-            {STEP_TITLE[shownStep]}
-          </h3>
-          {isOpen && shownStep === 'table' && insight ? (
-            <>
-              <p className={cx(shared.insightMsg, Math.round(insight.gap / 1000) < 0 && shared.bad)} data-testid="usual-summary">
-                {insight.message}
-              </p>
-              <UsualDetails
-                data={data}
-                accountId={accountId}
-                today={today}
-                contribution={insight.monthlyContribution}
-                usual={insight.monthlyUsual}
-                planned={insight.monthlyPlanned}
-                shortages={projection.shortages}
-                bar={false}
-              />
-              <dl className={shared.insightFacts}>
-                <div>
-                  <dt>평소 쓰는 돈 (최근 {insight.months}개월 평균)</dt>
-                  <dd>매달 {manWon(insight.monthlyUsual)}</dd>
-                </div>
-                <div>
-                  <dt>등록한 일정 · 여행 (앞으로 매달 평균)</dt>
-                  <dd>매달 {manWon(insight.monthlyPlanned)}</dd>
-                </div>
-                <div>
-                  <dt>매달 적립</dt>
-                  <dd>{manWon(insight.monthlyContribution)}</dd>
-                </div>
-                {insight.heaviest ? (
-                  <div>
-                    <dt>작년 기록 중 가장 많이 쓴 달</dt>
-                    <dd>
-                      {formatMonthKo(insight.heaviest.month, Number(today.slice(0, 4)))} · {manWon(insight.heaviest.amount)}
-                    </dd>
-                  </div>
-                ) : null}
-              </dl>
-              <p className={shared.foot}>
-                일정이나 여행에 묶지 않은 이벤트통장 지출을 ‘평소 쓰는 돈’으로 셌어요. 적립액은 예산의 매달 배분에서 직접 정해요
-              </p>
-            </>
-          ) : null}
-          {isOpen && shownStep === 'compromise' && compromise ? (
-            <CompromisePanel plan={compromise} months={repayMonths} onMonths={onRepayMonths} />
-          ) : null}
-          {isOpen && shownStep === 'exceptions' ? (
-            <ExceptionPanel
-              data={data}
-              today={today}
-              candidates={candidates}
-              before={projection}
-              after={tried}
-              draft={draft}
-              onChange={onDraft}
-            />
-          ) : null}
-        </section>
+      {hasCandidates ? (
+        <Link href={USUAL_HREF} className={styles.link} data-testid="usual-exceptions-link">
+          한 번뿐이었던 큰 지출 빼기
+          <Icon name="chevron-right" size={16} />
+        </Link>
       ) : null}
     </Card>
   );

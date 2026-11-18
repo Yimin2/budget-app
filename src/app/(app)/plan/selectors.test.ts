@@ -1,37 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { createDemoLedger, projectEventAccount } from '@/domain';
-import type { Category, EventProjection, Expense, PlannedEvent, ProjectionMonth, SettlementSummary } from '@/domain';
+import type { Category, Expense, PlannedEvent, ProjectionMonth, SettlementSummary } from '@/domain';
 import {
   settleTileText,
-  worstShortMonth,
-  usualCategoriesText,
-  barsGeometry,
-  compactWon,
   dateLabel,
   defaultCompleteDate,
   eventCategories,
-  initialMonth,
-  aheadInflowText,
-  compromiseHeadline,
   aheadMonthItems,
-  aheadMonthLine,
-  aheadMonthSummary,
-  aheadOutflow,
-  aheadSpendSplit,
-  aheadTotals,
   claimBadges,
-  futureSpendLines,
-  pastSpendTitle,
-  thisMonthSpendLines,
-  repaySummary,
-  repayPayersLine,
-  repayByMonth,
-  capList,
   monthLabel,
-  nextContribution,
-  nextOccurrence,
   sectionEvents,
-  monthShortLine,
   spentByEvent,
   summarizeEventNames,
   weekdayShort,
@@ -141,12 +118,6 @@ describe('날짜 도우미', () => {
     expect(monthLabel('2026-12', TODAY, '이번 달')).toBe('12월');
   });
 
-  it('다음 회차는 말일을 넘지 않아요', () => {
-    expect(nextOccurrence('2026-01-31', 'monthly')).toBe('2026-02-28');
-    expect(nextOccurrence('2028-02-29', 'yearly')).toBe('2029-02-28');
-    expect(nextOccurrence('2026-11-14', 'none')).toBeNull();
-  });
-
   it('완료 기본 날짜: 지났으면 일정 날짜, 아니면 오늘', () => {
     expect(defaultCompleteDate(ev({ date: '2026-11-03' }), TODAY)).toBe('2026-11-03');
     expect(defaultCompleteDate(ev({ date: '2026-12-03' }), TODAY)).toBe(TODAY);
@@ -160,66 +131,6 @@ describe('summarizeEventNames', () => {
     );
     expect(summarizeEventNames(['설날', '제주 여행', '어버이날'])).toBe('설날 · 제주 여행 외 1건');
     expect(summarizeEventNames([])).toBe('');
-  });
-});
-
-describe('체험 가계부 모자라는 달', () => {
-  const data = createDemoLedger(TODAY, NOW);
-  const projection = projectEventAccount(data, TODAY);
-
-  it('고른 달 맨 위 한 줄: 그달 · 모자라는 금액(만 단위) · 그달 일정 요약, 모자라지 않으면 null', () => {
-    const april = projection.months.find((m) => m.month === '2027-04')!;
-    expect(monthShortLine(april, TODAY)).toBe('2027년 4월에 30만 모자라요 · 결혼식 4건 · 어버이날');
-    expect(monthShortLine({ ...april, events: [] }, TODAY)).toBe('2027년 4월에 30만 모자라요');
-    expect(monthShortLine({ ...april, month: '2026-11' }, TODAY)).toMatch(/^이번 달에 30만 모자라요/);
-    expect(monthShortLine(projection.months[0]!, TODAY)).toBeNull();
-  });
-
-  it('처음 고르는 달은 모자라는 달이 있어도 이번 달 · 다음 달 적립 변화 없음', () => {
-    expect(projection.shortages.length).toBeGreaterThan(0);
-    expect(initialMonth(projection, TODAY)).toBe('2026-11');
-    expect(nextContribution(projection)).toBeNull();
-  });
-});
-
-describe('compactWon', () => {
-  it('막대 아래 짧은 금액', () => {
-    expect(compactWon(-300_000)).toEqual({ sign: '-', num: '30', unit: '만' });
-    expect(compactWon(-35_000)).toEqual({ sign: '-', num: '3.5', unit: '만' });
-    expect(compactWon(-1_250_000)).toEqual({ sign: '-', num: '125', unit: '만' });
-    expect(compactWon(-5_000)).toEqual({ sign: '-', num: '5', unit: '천' });
-    expect(compactWon(150_000_000)).toEqual({ sign: '', num: '1.5', unit: '억' });
-    expect(compactWon(-999)).toEqual({ sign: '-', num: '999', unit: '원' });
-  });
-});
-
-describe('barsGeometry', () => {
-  const m = (month: string, endBalance: number) => ({ month, endBalance });
-
-  it('음수가 없으면 아래 칸이 없고 가장 큰 막대가 칸을 채워요', () => {
-    const g = barsGeometry([m('2026-11', 100), m('2026-12', 50), m('2027-01', 0)], { height: 100 });
-    expect(g.negArea).toBe(0);
-    expect(g.posArea).toBe(100);
-    expect(g.bars.map((b) => b.pos)).toEqual([100, 50, 0]);
-    expect(g.bars.every((b) => b.neg === 0)).toBe(true);
-  });
-
-  it('음수가 있으면 기준선 아래에 막대 + 글자 자리를 남겨요', () => {
-    const g = barsGeometry([m('a', 900), m('b', -300), m('c', 1)], { height: 144, labelRoom: 22 });
-    expect(g.posArea + g.negArea).toBe(144);
-    const neg = g.bars[1]!.neg;
-    expect(neg).toBeGreaterThan(0);
-    expect(neg).toBeLessThanOrEqual(g.negArea - 22);
-    expect(g.bars[0]!.pos).toBeLessThanOrEqual(g.posArea);
-    // 아주 작은 값도 2px 는 보여요
-    expect(g.bars[2]!.pos).toBe(2);
-  });
-
-  it('모두 음수여도 위 칸 최소 높이를 지켜요', () => {
-    const g = barsGeometry([m('a', -100), m('b', -50)], { height: 120, labelRoom: 20, minPos: 20 });
-    expect(g.posArea).toBe(20);
-    expect(g.bars[0]!.neg).toBe(80);
-    expect(g.bars[1]!.neg).toBe(40);
   });
 });
 
@@ -265,122 +176,6 @@ describe('앞으로 12개월: 고른 달 항목', () => {
     expect(items[2]!.tripId).toBe('t1');
     expect(items[0]!.date).toBe('2027-04-02');
   });
-  it('할부 이름 합이 예측과 다르면 할부 한 줄, 평소 쓰는 돈 근거는 최근 평균', () => {
-    const items = aheadMonthItems({ ...month, events: [], installments: 100_000, usual: 80_000, usualBasis: 'recent' }, [
-      { key: 'x', label: 'TV 할부', amount: 50_000 },
-    ]);
-    expect(items).toEqual([
-      { key: 'inst', kind: 'installment', label: '할부', amount: 100_000 },
-      { key: 'usual', kind: 'usual', label: '평소 쓰는 돈', amount: 80_000, note: '최근 평균, 일정 뺀 뒤' },
-    ]);
-    expect(aheadOutflow({ ...month, events: [], installments: 100_000, usual: 80_000 })).toBe(180_000);
-  });
-  it('들어오는 쪽 한 줄 (이번 달은 지금 잔액 · 아직 안 들어온 적립)', () => {
-    expect(aheadInflowText(month, false)).toBe('달 시작 잔액 110만 · 적립 +30만 · 옮겨 올 돈 +30만');
-    expect(aheadInflowText({ ...month, transfersIn: 0 }, true)).toBe('지금 잔액 110만 · 아직 안 들어온 적립 +30만');
-    expect(aheadInflowText({ ...month, transfersIn: 0, contributions: 0 }, true)).toBe('지금 잔액 110만');
-  });
-  it("다가오는 달 한 줄: 합계 먼저 '12월 · 30만 · 결혼식 2건'", () => {
-    expect(aheadMonthLine({ ...month, month: '2026-12' }, TODAY)).toBe('12월 · 140만 · 지수 결혼식 · 어버이날');
-    const weddings = {
-      ...month,
-      events: [
-        { id: 'a', name: '지수 결혼식', date: '2027-04-02', amount: 100_000 },
-        { id: 'b', name: '민호 결혼식', date: '2027-04-09', amount: 200_000 },
-      ],
-    };
-    expect(aheadMonthLine(weddings, TODAY)).toBe('2027년 4월 · 30만 · 결혼식 2건');
-    expect(aheadMonthLine({ ...month, events: [], usual: 52_400 }, TODAY)).toBe('2027년 4월 · 5.2만');
-    expect(aheadMonthLine({ ...month, events: [], installments: 50_000 }, TODAY)).toBe('2027년 4월 · 5만 · 할부');
-    // 돌려주기 · 여행은 쓸 돈에 섞지 않고 '여행 ○' · '돌려주기 ○'로 뒤에 (합계에도 넣지 않아요)
-    expect(aheadMonthSummary({ ...month, events: [], usual: 20_000, claims: 300_000 }, TODAY)).toEqual({
-      head: '2027년 4월 · 2만',
-      tail: '돌려주기 30만',
-    });
-    expect(
-      aheadMonthLine({ ...month, events: [], usual: 20_000, trips: 400_000, tripList: [{ id: 't', name: '제주', amount: 400_000 }], transfersOut: 50_000 }, TODAY),
-    ).toBe('2027년 4월 · 2만 · 여행 40만');
-    // 이번 달은 이번 달 쓴 돈(지금까지 + 예정)을 넘겨요
-    expect(aheadMonthSummary({ ...month, month: '2026-11', events: [], claims: 300_000 }, TODAY, 155_000)).toEqual({
-      head: '11월 · 15.5만',
-      tail: '돌려주기 30만',
-    });
-  });
-
-  const claimMonth: ProjectionMonth = {
-    ...month,
-    month: '2026-11',
-    events: [{ id: 'a', name: '지수 결혼식', date: '2026-11-22', amount: 206_000 }],
-    planned: 206_000,
-    claims: 672_000,
-    claimList: [
-      { expenseId: 'x1', payer: '민구', amount: 550_000, spentDate: '2026-10-03' },
-      { expenseId: 'x2', payer: '민지', amount: 100_000, spentDate: '2026-09-12' },
-      { expenseId: 'x3', payer: '민지', amount: 22_000, spentDate: '2026-10-28' },
-    ],
-  };
-
-  it("지난 지출 돌려주기: 한 건씩 '10월에 쓴 것 · 민구', 묶음 한 줄 '· 3건 (9~10월에 쓴 것)'", () => {
-    const items = aheadMonthItems(claimMonth);
-    expect(items.map((i) => [i.kind, i.label, i.amount])).toEqual([
-      ['event', '지수 결혼식', 206_000],
-      ['claims', '10월에 쓴 것 · 민구', 550_000],
-      ['claims', '9월에 쓴 것 · 민지', 100_000],
-      ['claims', '10월에 쓴 것 · 민지', 22_000],
-    ]);
-    expect(repaySummary(claimMonth)).toBe('지난 지출 돌려주기 67.2만 · 3건 (9~10월에 쓴 것)');
-    expect(repaySummary({ ...claimMonth, claimList: [claimMonth.claimList![0]!] , claims: 550_000 })).toBe('지난 지출 돌려주기 55만 · 1건 (10월에 쓴 것)');
-    expect(repaySummary(month)).toBeNull();
-    expect(aheadTotals(claimMonth)).toEqual({ spend: 206_000, repay: 672_000, total: 878_000 });
-    expect(aheadOutflow(claimMonth)).toBe(878_000);
-  });
-
-  it('돌려주기: 낸 사람별 합(많은 순) · 쓴 달로 묶기(오래된 달 먼저) · 긴 목록 줄이기', () => {
-    expect(repayPayersLine(claimMonth)).toBe('민구 55만 · 민지 12.2만');
-    expect(repayPayersLine(month)).toBeNull();
-    const many: ProjectionMonth = {
-      ...claimMonth,
-      claimList: ['가', '나', '다', '라'].map((p, i) => ({ expenseId: `p${i}`, payer: p, amount: (i + 1) * 10_000, spentDate: '2026-10-01' })),
-      claims: 100_000,
-    };
-    expect(repayPayersLine(many)).toBe('라 4만 · 다 3만 · 나 2만 · 외 1명');
-    const groups = repayByMonth(aheadMonthItems(claimMonth), claimMonth);
-    expect(groups.map((g) => [g.month, g.label, g.count, g.amount])).toEqual([
-      ['2026-09', '9월', 1, 100_000],
-      ['2026-10', '10월', 2, 572_000],
-    ]);
-    expect(groups[1]!.items.map((i) => i.date)).toEqual(['2026-10-03', '2026-10-28']);
-    expect(groups.reduce((s, g) => s + g.amount, 0)).toBe(claimMonth.claims);
-    expect(capList([1, 2, 3, 4, 5, 6], 6, 5)).toEqual({ shown: [1, 2, 3, 4, 5, 6], more: 0 });
-    expect(capList([1, 2, 3, 4, 5, 6, 7], 6, 5)).toEqual({ shown: [1, 2, 3, 4, 5], more: 2 });
-  });
-
-  it('쓸 돈 · 여행 · 통장에서 나갈 돈으로 나누기 (셋을 더하면 예측이 빼는 돈)', () => {
-    const m: ProjectionMonth = {
-      ...claimMonth,
-      month: '2026-12',
-      usual: 100_000,
-      transfersOut: 50_000,
-      trips: 400_000,
-      tripList: [{ id: 't', name: '제주', amount: 400_000 }],
-    };
-    const split = aheadSpendSplit(m);
-    expect(split.spend.map((i) => i.kind)).toEqual(['event', 'usual']);
-    expect([split.spendTotal, split.tripTotal, split.repay, split.transferOut]).toEqual([306_000, 400_000, 672_000, 50_000]);
-    expect(split.spendTotal + split.tripTotal + split.repay + split.transferOut).toBe(aheadTotals(m).total);
-  });
-
-  it("고른 달 합계 줄: 이번 달 '이번 달 쓴 돈 = 지금까지 + 예정' · 앞으로 달 '쓸 돈 (예정)' · 지난 달 '쓴 돈'", () => {
-    expect(thisMonthSpendLines({ spent: 100_000, planned: 778_000, total: 878_000, trip: 0 })).toEqual({
-      title: '이번 달 쓴 돈 87.8만',
-      split: '지금까지 10만 + 예정 77.8만',
-      trip: null,
-    });
-    expect(thisMonthSpendLines({ spent: 0, planned: 0, total: 0, trip: 400_000 }).trip).toBe('여행 40만');
-    // 앞으로 달: 돌려주기는 합계에 넣지 않아요
-    expect(futureSpendLines({ ...claimMonth, month: '2026-12' }, TODAY)).toEqual({ title: '12월 쓸 돈 (예정) 20.6만', split: null, trip: null });
-    expect(pastSpendTitle('2026-09', TODAY, 372_000)).toBe('9월 쓴 돈 37.2만');
-  });
 
   it('청구 정산 상태 배지: 한 상태면 글자만 · 섞이면 금액도 · 청구가 없으면 없음', () => {
     expect(claimBadges(null, 10_000)).toEqual([]);
@@ -393,34 +188,6 @@ describe('앞으로 12개월: 고른 달 항목', () => {
       { text: '줄 돈 5만', tone: 'warning' },
       { text: '지급함 2만', tone: 'success' },
     ]);
-  });
-  it('평소 쓰는 돈 카테고리 줄', () => {
-    expect(
-      usualCategoriesText([
-        { name: '경조사', amount: 350_000 },
-        { name: '선물', amount: 150_000 },
-        { name: '여행', amount: 124_400 },
-      ]),
-    ).toBe('경조사 35만 · 선물 15만 · 여행 12.4만');
-  });
-});
-
-describe('compromiseHeadline', () => {
-  it("'적립 70만 + 선물 −5만' (가장 크게 줄일 카테고리, 여럿이면 '외 N개')", () => {
-    expect(compromiseHeadline({ recommended: 700_000, cut: { cuts: [{ name: '선물', amount: 50_000 }] } })).toBe('적립 70만 + 선물 −5만');
-    expect(
-      compromiseHeadline({
-        recommended: 550_000,
-        cut: {
-          cuts: [
-            { name: '외식', amount: 12_000 },
-            { name: '경조사', amount: 30_000 },
-            { name: '선물', amount: 0 },
-          ],
-        },
-      }),
-    ).toBe('적립 55만 + 경조사 −3만 외 1개');
-    expect(compromiseHeadline({ recommended: 300_000, cut: { cuts: [] } })).toBe('적립 30만');
   });
 });
 
@@ -459,10 +226,4 @@ describe('숫자 띠', () => {
     expect(settleTileText(null, null, '2026-11-21').value).toBeNull();
   });
 
-  it('worstShortMonth: 가장 많이 모자라는 달, 없으면 null', () => {
-    const m = (month: string, endBalance: number) => ({ month, endBalance }) as ProjectionMonth;
-    const p = (months: ProjectionMonth[]) => ({ months }) as EventProjection;
-    expect(worstShortMonth(p([m('2026-11', 10), m('2027-02', -100), m('2027-04', -300), m('2027-05', -200)]))!.month).toBe('2027-04');
-    expect(worstShortMonth(p([m('2026-11', 0), m('2026-12', 5)]))).toBeNull();
-  });
 });

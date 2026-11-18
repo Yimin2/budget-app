@@ -1,21 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import {
-  effectiveExclusions,
-  findExceptionCandidates,
-  projectWithExclusions,
-  recommendCompromise,
-  usualSpendingInsight,
-} from '@/domain';
-import type { ExclusionDraft, Id, PlannedEvent, RepayMonths, TripStatus, YearMonth } from '@/domain';
+import { findExceptionCandidates, recommendCompromise, spentBasisView, usualSpendingInsight } from '@/domain';
+import type { Id, PlannedEvent, RepayMonths, TripStatus, Won } from '@/domain';
 import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
+import { BalanceChart } from './BalanceChart';
 import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import type { EventPreset } from './EventDialog';
 import { NoEventAccount } from './NoEventAccount';
-import { AHEAD_ID, AheadCard } from './AheadCard';
-import { KpiStrip } from './KpiStrip';
+import { SettleLine } from './SettleLine';
+import { StatusCard } from './StatusCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
 import { ScheduleCard, type SchedulePanel } from './ScheduleCard';
 import { UsualCard } from './UsualCard';
@@ -72,20 +67,10 @@ export function EventsBody({
     setRepayMonths(m);
     writeRepayMonths(m);
   };
-  // 예외 지출 빼기: 체크한 대로 저장하지 않고 덮어씌운 예측 (바꾼 것이 없으면 null). 화면을 떠나면 사라져요
-  const candidates = useMemo(() => findExceptionCandidates(data, today), [data, today]);
-  const [draft, setDraft] = useState<ExclusionDraft>({});
-  const tried = useMemo(
-    () => (effectiveExclusions(data, draft).length > 0 ? projectWithExclusions(data, today, draft) : null),
-    [data, today, draft],
-  );
-  const shown = tried ?? projection;
-  // 12개월 카드에서 고른 달 (숫자 띠의 '가장 모자라는 달'로도 골라요). null = 처음 달
-  const [aheadPicked, setAheadPicked] = useState<YearMonth | null>(null);
-  const pickFromStrip = (month: YearMonth) => {
-    setAheadPicked(month);
-    document.getElementById(AHEAD_ID)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-  };
+  // 쓴 날 기준 달 말 잔액 (지난 3개월 + 앞으로)
+  const view = useMemo(() => spentBasisView(data, projection, today), [data, projection, today]);
+  const monthEnds = useMemo(() => new Map<string, Won>((view?.months ?? []).map((m) => [m.month, m.end])), [view]);
+  const hasCandidates = useMemo(() => findExceptionCandidates(data, today).length > 0, [data, today]);
 
   const schedule = (
     <ScheduleCard
@@ -107,39 +92,24 @@ export function EventsBody({
       onEdit={onEdit}
       onComplete={onComplete}
       onCancel={onCancel}
+      monthEnds={view ? monthEnds : undefined}
     />
   );
 
-  // 숫자 띠 → 지난 · 앞으로 12개월 → (넓은 화면) 평소 쓰는 돈 · 일정 나란히, 폰은 쌓아요
+  // 상태 → 정산 → 달 말 잔액 → (넓은 화면) 달별 일정 · 평소 쓰는 돈 나란히, 폰은 쌓아요
   return (
     <div className={styles.grid}>
-      {projection && hasEventAccount ? (
+      {projection && hasEventAccount && view ? (
         <>
-          <KpiStrip projection={projection} data={data} today={today} repayMonths={repayMonths} onPickMonth={pickFromStrip} />
+          <div className={styles.top}>
+            <StatusCard view={view} today={today} compromise={compromise} repayMonths={repayMonths} onRepayMonths={chooseMonths} />
+            <SettleLine data={data} today={today} repayMonths={repayMonths} />
+          </div>
           <HashTarget />
-          <AheadCard
-            projection={shown ?? projection}
-            data={data}
-            today={today}
-            badge={tried ? '미리 보는 중' : undefined}
-            picked={aheadPicked}
-            onPick={setAheadPicked}
-          />
+          <BalanceChart view={view} data={data} today={today} accountId={projection.accountId!} />
           <div className={styles.lower}>
-            <UsualCard
-              data={data}
-              projection={projection}
-              insight={insight}
-              today={today}
-              compromise={compromise}
-              repayMonths={repayMonths}
-              onRepayMonths={chooseMonths}
-              candidates={candidates}
-              tried={tried}
-              draft={draft}
-              onDraft={setDraft}
-            />
             {schedule}
+            <UsualCard data={data} accountId={projection.accountId!} insight={insight} today={today} hasCandidates={hasCandidates} />
           </div>
         </>
       ) : (

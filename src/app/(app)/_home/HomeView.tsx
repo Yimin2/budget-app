@@ -101,7 +101,7 @@ function HomeBody() {
       </div>
       <div className={styles.col}>
         {banner ? (
-          <Banner tone="warning" title={banner.title} action={{ label: '대처하기', href: '/plan' }} className={styles.oBanner}>
+          <Banner tone="warning" title={banner.title} action={{ label: '대처하기', href: '/plan#fix' }} className={styles.oBanner}>
             {banner.description}
           </Banner>
         ) : null}

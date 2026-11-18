@@ -1,12 +1,7 @@
-/* EventsBody — 이벤트 화면 배치. 맨 위 숫자 띠 → 지난 · 앞으로 12개월 → 평소 쓰는 돈 · 일정.
-   폰: 한 줄씩 쌓아요 · 1024px 이상: 평소 쓰는 돈 · 일정을 나란히 (높이를 맞춰 늘리지 않고 위에 붙여요) */
-.grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-4);
-  align-items: start;
-  min-width: 0;
-}
+/* EventsBody — 이벤트 화면 배치 (쓴 날 기준). 상태 · 정산 → 달 말 잔액 → 달별 일정 · 평소 쓰는 돈.
+   폰: 한 줄씩 쌓아요 · 1024px 이상: 상태와 정산, 일정과 평소 쓰는 돈을 나란히 (높이를 맞춰 늘리지 않고 위에 붙여요) */
+.grid,
+.top,
 .lower {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -16,12 +11,16 @@
 }
 @media (min-width: 768px) {
   .grid,
+  .top,
   .lower {
     gap: var(--space-6);
   }
 }
 @media (min-width: 1024px) {
+  .top {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
   .lower {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
 }

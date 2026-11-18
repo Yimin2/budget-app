@@ -36,7 +36,7 @@ export function exceptionCounts(candidates: ExceptionCandidate[], draft: Exclusi
 
 /**
  * '평소 쓰는 돈' 카드의 ③ 예외 지출 빼기 단계 (PLAN 4-2): 지난 이벤트통장 지출 중 한 번뿐인 큰 지출을 체크하면 평소 쓰는 돈과
- * '앞으로 12개월' 카드의 예측이 바로 다시 그려져요('미리 보는 중'). [저장]을 누르면 그때 지출의 '예외' 칸을 고쳐요. [되돌리기]나 화면을 떠나면 그대로예요.
+예측을 견준 한 줄이 바로 보여요. [저장]을 누르면 그때 지출의 '예외' 칸을 고쳐요. [되돌리기]나 화면을 떠나면 그대로예요.
  * 카드의 단계 칩을 누르면 같은 자리에서 펼쳐지고, 미리 보는 중에는 펼친 채로 있어요
  */
 export function ExceptionPanel({ data, today, candidates, before, after, draft, onChange }: ExceptionPanelProps) {
@@ -80,7 +80,7 @@ export function ExceptionPanel({ data, today, candidates, before, after, draft, 
         예외 {counts.marked}건 · 후보 {counts.candidates}건
       </p>
       <p className={shared.recurringSub}>
-        결혼식 축의금처럼 한 번뿐이었던 큰 지출을 빼면 ‘평소 쓰는 돈’과 ‘앞으로 12개월’ 예상 잔액을 다시 계산해요. 잔액에는 그대로 쓴 돈으로 들어가요
+        결혼식 축의금처럼 한 번뿐이었던 큰 지출을 빼면 ‘평소 쓰는 돈’과 ‘달 말 잔액’을 다시 계산해요. 잔액에는 그대로 쓴 돈으로 들어가요
       </p>
 
       <ul className={shared.exceptionList}>
@@ -124,7 +124,7 @@ export function ExceptionPanel({ data, today, candidates, before, after, draft, 
             </p>
           </>
         ) : (
-          <p className={shared.recurringSub}>체크하면 ‘앞으로 12개월’ 예측이 바로 바뀌어요. 저장하기 전까지는 그대로예요</p>
+          <p className={shared.recurringSub}>체크하면 평소 쓰는 돈 예상이 바로 바뀌어요. 저장하기 전까지는 그대로예요</p>
         )}
       </div>
 
