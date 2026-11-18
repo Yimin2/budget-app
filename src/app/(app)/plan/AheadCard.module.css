@@ -2,6 +2,7 @@
 
 /* ───────── 12개월 막대 ───────── */
 .chartHint {
+  display: none;
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
@@ -156,6 +157,36 @@
   line-height: 18px;
   font-weight: 500;
   color: var(--text-muted);
+}
+@media (min-width: 1024px) {
+  .chartHint {
+    display: inline;
+  }
+}
+.legendToggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  margin: calc(var(--space-2) * -1) 0;
+  padding: 0 var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+}
+.legendToggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.legend[hidden] {
+  display: none;
 }
 .legend li {
   display: inline-flex;

@@ -123,31 +123,25 @@ describe('앱 틀 (app)/layout', () => {
     expect(sidePlus.getAttribute('aria-label')).toBe('기록');
     expect(dockPlus.getAttribute('aria-expanded')).toBe('false');
 
+    // + → 바로 지출 기록 창 (위쪽 탭: 지출 · 사도 돼? · 이체)
     fireEvent.click(dockPlus);
-    let sheet = screen.getByRole('dialog', { name: '무엇을 기록할까요?' });
+    let dialog = screen.getByRole('dialog', { name: '지출 기록' });
     expect(dockPlus.getAttribute('aria-expanded')).toBe('true');
-    expect(within(sheet).getAllByRole('button').map((b) => b.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining('지출 기록'), expect.stringContaining('사도 돼?'), expect.stringContaining('이체 기록')]),
-    );
+    const kinds = within(dialog).getByRole('radiogroup', { name: '무엇을 기록할까요' });
+    expect(within(kinds).getAllByRole('radio').map((b) => b.textContent)).toEqual(['지출', '사도 돼?', '이체']);
+    expect(within(kinds).getByRole('radio', { name: '지출' }).getAttribute('aria-checked')).toBe('true');
 
-    // 지출 기록 → 지출 기록 창
-    fireEvent.click(within(sheet).getByRole('button', { name: /지출 기록/ }));
-    expect(screen.queryByRole('dialog', { name: '무엇을 기록할까요?' })).toBeNull();
-    expect(screen.getByRole('dialog', { name: '지출 기록' })).toBeTruthy();
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '지출 기록' })).toBeNull());
-
-    // 이체 기록 → 이체 기록 창
-    fireEvent.click(sidePlus);
-    sheet = screen.getByRole('dialog', { name: '무엇을 기록할까요?' });
-    fireEvent.click(within(sheet).getByRole('button', { name: /이체 기록/ }));
-    expect(screen.getByRole('dialog', { name: '이체 기록' })).toBeTruthy();
+    // 이체 탭 → 이체 기록 창
+    fireEvent.click(within(kinds).getByRole('radio', { name: '이체' }));
+    dialog = screen.getByRole('dialog', { name: '이체 기록' });
+    expect(screen.queryByRole('dialog', { name: '지출 기록' })).toBeNull();
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '이체 기록' })).toBeNull());
 
-    // 사도 돼? → /check
-    fireEvent.click(dockPlus);
-    fireEvent.click(within(screen.getByRole('dialog', { name: '무엇을 기록할까요?' })).getByRole('button', { name: /사도 돼\?/ }));
+    // 사이드바 '+ 기록'도 같은 창, 사도 돼? 탭 → /check
+    fireEvent.click(sidePlus);
+    dialog = screen.getByRole('dialog', { name: '지출 기록' });
+    fireEvent.click(within(within(dialog).getByRole('radiogroup', { name: '무엇을 기록할까요' })).getByRole('radio', { name: '사도 돼?' }));
     expect(nav.router.push).toHaveBeenCalledWith('/check');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(current(h).session.status).toBe('signedIn');

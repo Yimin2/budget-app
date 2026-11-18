@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { formatWon } from '@/domain';
 import type { Account, Id } from '@/domain/types';
 import { useLedger } from '@/state';
@@ -20,6 +20,8 @@ export interface TransferDialogProps {
   /** 이체면 보내는 통장, 수입이면 받는 통장으로 미리 골라 둬요 */
   accountId?: Id | null;
   onClose: () => void;
+  /** 창 맨 위에 둘 '지출 · 사도 돼? · 이체' 탭 (+ 버튼으로 열었을 때) */
+  kindSwitch?: ReactNode;
 }
 
 type Errors = Partial<Record<'from' | 'to' | 'amount' | 'date', string>>;
@@ -29,7 +31,7 @@ function firstOther(accounts: Account[], id: Id | null | undefined): Id {
 }
 
 /** 이체 기록(통장 → 통장) · 수입 기록(밖 → 통장). 위쪽 선택으로 둘을 오가요 */
-export function TransferDialog({ mode: initialMode, accountId, onClose }: TransferDialogProps) {
+export function TransferDialog({ mode: initialMode, accountId, onClose, kindSwitch }: TransferDialogProps) {
   const ledger = useLedger();
   const toast = useToast();
   const formId = `transfer-${useId().replace(/:/g, '')}`;
@@ -131,6 +133,7 @@ export function TransferDialog({ mode: initialMode, accountId, onClose }: Transf
       }
     >
       <form id={formId} className={styles.form} onSubmit={submit} noValidate>
+        {kindSwitch}
         <SegmentedControl
           ariaLabel="기록 종류"
           block

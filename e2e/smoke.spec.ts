@@ -35,13 +35,27 @@ test('모든 화면이 오류 없이 열리고 옆으로 넘치지 않아요', a
   expect(errors).toEqual([]);
 });
 
-test('자주 쓰는 지출을 기록하면 오늘 쓴 돈이 늘어요', async ({ page }) => {
+test('자주 쓰는 지출을 누르면 바로 기록되고, 되돌릴 수 있어요', async ({ page }) => {
   await startDemo(page);
   const today = page.getByRole('region', { name: '오늘 내가 써도 되는 돈' });
-  await expect(today).toContainText('오늘 쓴 돈 4,500원');
-  await page.getByRole('button', { name: '버스 1,500원 기록하기' }).click();
-  await page.getByRole('form', { name: '버스 기록' }).getByRole('button', { name: '기록하기' }).click();
-  await expect(today).toContainText('오늘 쓴 돈 6,000원');
+  const before = await today.innerText();
+  const chip = page.getByRole('region', { name: '자주 쓰는 지출' }).getByRole('button', { name: /원 기록하기$/ }).first();
+  const label = (await chip.getAttribute('aria-label'))!.replace(' 기록하기', '');
+  await chip.click();
+  await expect(page.getByText(`${label} 기록했어요`)).toBeVisible();
+  await expect.poll(() => today.innerText()).not.toBe(before);
+  await page.getByRole('button', { name: '되돌리기' }).click();
+  await expect(page.getByText('기록을 되돌렸어요')).toBeVisible();
+  await expect.poll(() => today.innerText()).toBe(before);
+});
+
+test('[+] 를 누르면 바로 지출 기록이 열리고, 위쪽 탭으로 이체로 바꿔요', async ({ page }) => {
+  await startDemo(page);
+  await page.getByRole('button', { name: '기록', exact: true }).last().click();
+  const dialog = page.getByRole('dialog', { name: '지출 기록' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('radio', { name: '이체' }).click();
+  await expect(page.getByRole('dialog', { name: '이체 기록' })).toBeVisible();
 });
 
 test('없는 주소는 안내 화면을 보여 줘요', async ({ page }) => {

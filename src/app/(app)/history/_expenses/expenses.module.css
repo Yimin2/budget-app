@@ -563,3 +563,8 @@
     flex: none;
   }
 }
+
+/* 개인 돈 · 일정 · 여행 (선택) 펼치기 */
+.moreButton {
+  align-self: flex-start;
+}

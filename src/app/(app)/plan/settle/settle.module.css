@@ -488,7 +488,8 @@
 /* ───────── 아래 고정 막대 ─────────
    폰: 하단 메뉴 위에 뜬 카드 · 768px 이상: 사이드바 오른쪽 본문 아래에 붙은 띠 (안쪽은 본문 폭에 맞춰요) */
 .barSpace {
-  height: 112px;
+  /* 아래 막대(금액 · 버튼 · 빌려 주기 설명)에 마지막 줄이 가리지 않게 */
+  height: 160px;
 }
 .bar {
   position: fixed;
@@ -605,6 +606,14 @@
 /* 고정 막대 버튼 글자: 좁은 화면(400px 아래)은 짧게 */
 .shortLabel {
   display: none;
+}
+/* 빌려 지급이 무엇인지 한 줄 */
+.barNote {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
 }
 @media (max-width: 399.98px) {
   .longLabel {

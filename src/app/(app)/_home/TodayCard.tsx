@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { formatNumber, formatWon, withSubject } from '@/domain';
 import type { LivingStatus, LivingView } from '@/domain';
 import { useLedger } from '@/state';
@@ -183,28 +183,37 @@ export function TodayCard({
       </div>
       {person && household ? (
         <ul className={styles.heroOthers} aria-label="다른 사람과 합계">
-          {others.map((v) => (
-            <li key={v.accountId}>
-              <span>{v.name}</span>
-              <OtherAmount living={v.status} />
+          {others.flatMap((v) => otherRows(v.name, v.status)).concat(otherRows(views.length === 2 ? '둘이 합쳐' : '모두 합쳐', household)).map((r) => (
+            <li key={r.label}>
+              <span>{r.label}</span>
+              {r.value}
             </li>
           ))}
-          <li>
-            <span>{views.length === 2 ? '둘이 합쳐' : '모두 합쳐'}</span>
-            <OtherAmount living={household} />
-          </li>
         </ul>
       ) : null}
     </Card>
   );
 }
 
-/** 다른 사람 · 합계 한 줄의 금액: 하루 항목에 오늘 쓴 돈이 있거나 넘었으면 하루 예산 한 줄, 아니면 큰 숫자와 같은 금액 */
-function OtherAmount({ living }: { living: LivingStatus }) {
+/**
+ * 다른 사람 · 합계 줄: '라벨 — 금액' 한 줄씩.
+ * 하루 항목에 오늘 쓴 돈이 있으면 '오늘 쓴 돈' · '써도 되는 돈' 두 줄, 넘었으면 '○원 넘었어요'(경고 색).
+ * 하루 항목이 없으면 이번 달 남은 생활비 한 줄
+ */
+function otherRows(who: string, living: LivingStatus): { label: string; value: ReactNode }[] {
   const daily = living.items.some((i) => i.spread === 'daily');
-  const spent = daily ? dailySpentToday(living) : 0;
-  if (daily && (spent > 0 || living.todayAvailable < 0)) return <DailyLine spent={spent} available={living.todayAvailable} />;
-  return <strong>{formatWon(Math.max(0, headline(living)))}</strong>;
+  if (!daily) return [{ label: `${who} 이번 달 남은 돈`, value: <strong>{formatWon(Math.max(0, living.remaining))}</strong> }];
+  const spent = dailySpentToday(living);
+  const available =
+    living.todayAvailable < 0 ? (
+      <strong className={styles.warn}>{formatWon(-living.todayAvailable)} 넘었어요</strong>
+    ) : (
+      <strong>{formatWon(living.todayAvailable)}</strong>
+    );
+  const rows: { label: string; value: ReactNode }[] = [];
+  if (spent > 0) rows.push({ label: `${who} 오늘 쓴 돈`, value: <strong>{formatWon(spent)}</strong> });
+  rows.push({ label: `${who} 써도 되는 돈`, value: available });
+  return rows;
 }
 
 /* ───────── 생활비 항목 ───────── */

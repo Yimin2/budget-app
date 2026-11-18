@@ -324,11 +324,11 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
                     loading={busy === 'borrow'}
                     disabled={plan.fits || (busy !== null && busy !== 'borrow')}
                     onClick={() => void payBorrow()}
-                    // 좁은 화면은 '빌려 지급'으로 줄여 보여도 이름은 그대로
+                    // 좁은 화면은 '저수지에서 빌려 주기'로 줄여 보여도 이름은 그대로
                     aria-label="저수지에서 빌려 지급"
                   >
                     <span className={styles.longLabel}>저수지에서 빌려 지급</span>
-                    <span className={styles.shortLabel}>빌려 지급</span>
+                    <span className={styles.shortLabel}>저수지에서 빌려 주기</span>
                   </Button>
                 ) : null}
                 <Button
@@ -343,6 +343,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
                   {`${formatMan(payAmount)} 지급`}
                 </Button>
               </div>
+              {canBorrow ? <p className={styles.barNote}>이벤트통장이 모자라면 저수지 돈으로 먼저 주고, 나중에 이벤트통장이 갚아요</p> : null}
             </div>
           </div>
         </>

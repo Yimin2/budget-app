@@ -103,6 +103,8 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
 
   // 넓은 화면은 옆의 '고른 달' 상자와 높이를 맞추려고 막대 칸을 키워요
   const wide = useMediaQuery('(min-width: 1024px)');
+  /** 좁은 화면은 범례를 접어 두고 '막대 색 설명'으로 펼쳐요 (차트가 위로 올라오게) */
+  const [legendOpen, setLegendOpen] = useState(false);
   const banded = hasRange(projection);
   const range = banded ? projection.range!.months : null;
   const prevMarks = useMemo(
@@ -221,7 +223,13 @@ export function AheadCard({ projection, data, today, badge, picked: pickedProp, 
       </p>
       <div className={cardStyles.body}>
         <figure className={cx(styles.figure, canDropUnit && styles.canDropUnit)}>
-          <ul className={styles.legend} aria-hidden>
+          {!wide ? (
+            <button type="button" className={styles.legendToggle} aria-expanded={legendOpen} onClick={() => setLegendOpen((v) => !v)}>
+              <Icon name="info" size={16} />
+              막대 색 설명
+            </button>
+          ) : null}
+          <ul className={styles.legend} aria-hidden hidden={!wide && !legendOpen}>
             {past.length > 0 ? (
               <li>
                 <span className={cx(styles.swatch, styles.pastSwatch)} />
