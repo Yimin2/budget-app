@@ -74,7 +74,7 @@ export function useLoanActions() {
   return { act, lock };
 }
 
-/** 숫자 띠 정산 칸 안의 저수지 한 줄을 보일지: 저수지통장이 있고 빌리거나 갚은 기록 · 바꿀 지출 · 이미 지급한 이벤트 청구가 있을 때 */
+/** 정산 줄 안의 저수지 한 줄을 보일지: 저수지통장이 있고 빌리거나 갚은 기록 · 바꿀 지출 · 이미 지급한 이벤트 청구가 있을 때 */
 export function hasLoanLine(ledger: Pick<LedgerApi, 'settlement' | 'data' | 'loanCandidates'>): boolean {
   const s = ledger.settlement;
   if (!s || !ledger.data || !s.reservoirAccountId) return false;

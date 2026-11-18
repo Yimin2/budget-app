@@ -42,6 +42,8 @@ export interface ScheduleCardProps {
   onEdit: (event: PlannedEvent) => void;
   onComplete: (event: PlannedEvent) => void;
   onCancel: (event: PlannedEvent) => void;
+  /** 달마다 달 말 잔액 (쓴 날 기준). 주면 달 머리에 '달 말 ○'(모자라면 경고 색) */
+  monthEnds?: Map<string, Won>;
 }
 
 type RowProps = Pick<ScheduleCardProps, 'today' | 'categories' | 'spent' | 'displayName' | 'busyId' | 'onEdit' | 'onComplete' | 'onCancel'>;
@@ -145,7 +147,7 @@ export function ScheduleCard(props: ScheduleCardProps) {
     <Card as="section" className={cx(cardStyles.card, styles.card)} aria-labelledby={titleId}>
       <CardHead
         titleId={titleId}
-        title={count > 0 ? `일정 · ${count}건 ${formatMan(total)}` : '일정'}
+        title={count > 0 ? `달별 일정 · ${count}건 ${formatMan(total)}` : '달별 일정'}
       />
 
       {panel ? (
@@ -194,6 +196,14 @@ export function ScheduleCard(props: ScheduleCardProps) {
                           </h3>
                           <span className={styles.groupTotal}>
                             {g.entries.length}건 · {formatManShort(g.total)}
+                            {props.monthEnds?.has(g.month) ? (
+                              <>
+                                {' · 달 말 '}
+                                <strong className={props.monthEnds.get(g.month)! < 0 ? styles.groupShort : undefined} data-testid={`month-end-${g.month}`}>
+                                  {formatManShort(props.monthEnds.get(g.month)!)}
+                                </strong>
+                              </>
+                            ) : null}
                           </span>
                         </div>
                         <ul className={styles.rows} aria-labelledby={headId}>

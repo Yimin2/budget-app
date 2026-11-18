@@ -41,3 +41,4 @@ export * from './stats';
 export * from './pastBalances';
 export * from './forecastSnapshots';
 export * from './monthSpent';
+export * from './spentBasis';

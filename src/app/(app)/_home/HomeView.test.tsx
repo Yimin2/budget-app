@@ -121,7 +121,7 @@ describe('HomeView — 체험 가계부', () => {
     await renderHome();
     await screen.findByRole('region', { name: '오늘 써도 되는 돈' });
     expect(screen.getByText('2027년 4월에 이벤트통장이 300,000원 모자라요')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '대처하기' }).getAttribute('href')).toBe('/plan');
+    expect(screen.getByRole('link', { name: '대처하기' }).getAttribute('href')).toBe('/plan#fix');
 
     const upcoming = screen.getByRole('list', { name: '다가오는 일정' });
     const items = within(upcoming).getAllByRole('listitem');

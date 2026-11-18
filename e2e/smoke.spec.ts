@@ -13,6 +13,7 @@ const SCREENS: { path: string; heading: string }[] = [
   { path: '/history/stats', heading: '통계' },
   { path: '/plan', heading: '이벤트' },
   { path: '/plan/trips', heading: '여행' },
+  { path: '/plan/usual', heading: '한 번뿐이었던 큰 지출 빼기' },
   { path: '/budget', heading: '예산' },
   { path: '/settings', heading: '설정' },
 ];

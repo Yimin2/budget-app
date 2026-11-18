@@ -1,0 +1,60 @@
+/* 정산 줄 안의 작은 저수지 줄 (SettleLine · LoanMini) */
+/* 정산 칸 안의 작은 저수지 줄 */
+.loanMini {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  align-self: stretch;
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.loanMiniText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.loanMiniText strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.loanMiniActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.loanMiniNote {
+  font-size: 13px;
+  line-height: 20px;
+}
+.loanMiniActions :global(.btn) {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  font-size: 14px;
+}
+.loanMiniLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+}
+/* 긴 문구라 줄바꿈을 허용해요 (.btn 은 nowrap · 높이 44px 고정) */
+:global(.btn).loanMiniConvert {
+  align-self: stretch;
+  height: auto;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3);
+  white-space: normal;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  justify-content: flex-start;
+}

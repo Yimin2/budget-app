@@ -73,7 +73,7 @@ export interface MonthSpent {
 }
 
 /** 청구 한 건의 지급 · 빌린 날 (상태에 맞는 이체 날짜) */
-function settledOn(data: LedgerData, e: Expense, status: EventRecordStatus): ISODate | null {
+export function claimSettledOn(data: LedgerData, e: Expense, status: EventRecordStatus): ISODate | null {
   const ids =
     status === 'claimPaid' ? [claimTransferId(e.id)] : status === 'borrowed' ? [claimLoanTransferId(e.id), expenseLoanTransferId(e.id)] : [];
   const t = data.transfers.find((x) => !x.deleted && x.status === 'done' && ids.includes(x.id));
@@ -164,7 +164,7 @@ export function monthSpentItems(data: LedgerData, eventAccountId: Id, month: Yea
     const tripId = g.kind === 'trip' ? expense.tripId : undefined;
     bucket.add({ ...g, ...(tripId ? { tripId } : {}) }, today ? recordPhase(record, today) : 'spent', record.amount, record.date, expense, {
       status,
-      on: settledOn(data, expense, status),
+      on: claimSettledOn(data, expense, status),
     });
     count += 1;
   }
@@ -208,7 +208,7 @@ export function thisMonthSpending(data: LedgerData, eventAccountId: Id, today: I
   const trips = new RowBucket();
   for (const { expense, record } of eventRecords(data, eventAccountId, { scope: 'all', reservoirClaims: false, month })) {
     const status = eventRecordStatus(data, expense, live);
-    const claim = { status, on: settledOn(data, expense, status) };
+    const claim = { status, on: claimSettledOn(data, expense, status) };
     const phase = recordPhase(record, today);
     if (isLiveTripExpense(record, liveTrips)) {
       const name = names.trips.get(record.tripId!) ?? '여행';
