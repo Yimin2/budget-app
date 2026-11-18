@@ -384,27 +384,6 @@
   line-height: 22px;
   color: var(--text-muted);
 }
-.quickEdit {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-.quickMeta {
-  margin: 0;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-.quickActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
 .cardGap {
   gap: var(--space-3);
 }
@@ -621,7 +600,14 @@
 .cActions {
   order: 6;
 }
+.cPerson {
+  order: 3;
+}
 .cCategory {
+  order: 4;
+}
+/* 여행(선택)은 항목 고르기 뒤, 결과 앞 */
+.cTrip {
   order: 4;
 }
 @media (min-width: 768px) {
@@ -764,9 +750,7 @@
 
 /* ───────── 사람별 생활비: 다른 사람 · 합계 ───────── */
 .heroOthers {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: var(--space-4);
+  display: grid;
   row-gap: var(--space-1);
   margin: 0;
   padding: var(--space-3) 0 0;
@@ -778,8 +762,13 @@
   font-variant-numeric: tabular-nums;
 }
 .heroOthers li {
-  display: inline-flex;
-  gap: var(--space-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.heroOthers li > span {
+  min-width: 0;
 }
 .heroOthers strong {
   color: var(--text);

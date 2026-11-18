@@ -81,7 +81,7 @@ export function KpiStrip({ projection, data, today, repayMonths, onPickMonth }: 
       <div className={styles.tile} data-testid="kpi-spend">
         <span className={styles.label}>이번 달 쓴 돈</span>
         <strong className={styles.value}>{formatManShort(usedNow + usedPlanned)}</strong>
-        <span className={cx(styles.sub, styles.subOneLine)} title={spendSub}>
+        <span className={styles.sub}>
           {spendSub}
         </span>
         {trip > 0 ? (

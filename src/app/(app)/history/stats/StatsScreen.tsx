@@ -61,10 +61,17 @@ export function StatsView({ ledger, initialMonth = null }: { ledger: ReadyLedger
   return (
     <div className={styles.page}>
       <StatsMonthSwitcher data={data} today={today} month={month} onChange={setPicked} />
-      <BudgetSection data={data} today={today} month={month} />
-      <CategorySection data={data} month={month} />
-      <TrendSection data={data} month={month} />
-      <EventSection data={data} today={today} month={month} />
+      {/* 넓은 화면은 두 줄: 왼쪽 예산 대비 실제, 오른쪽 비율 · 추이 · 회고 */}
+      <div className={styles.columns}>
+        <div className={styles.column}>
+          <BudgetSection data={data} today={today} month={month} />
+        </div>
+        <div className={styles.column}>
+          <CategorySection data={data} month={month} />
+          <TrendSection data={data} month={month} />
+          <EventSection data={data} today={today} month={month} />
+        </div>
+      </div>
     </div>
   );
 }

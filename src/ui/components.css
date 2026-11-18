@@ -823,6 +823,15 @@ input[type='date'].input::-webkit-date-and-time-value {
     color var(--duration-fast) var(--ease-standard),
     transform var(--duration-fast) var(--ease-standard);
 }
+/* 손가락으로 누르는 기기: 보이는 높이도 44px (마우스는 36px 그대로) */
+@media (pointer: coarse) {
+  .pill button {
+    min-height: 44px;
+  }
+  .pill button::after {
+    inset: 0;
+  }
+}
 .pill button:active:not(:disabled) {
   transform: scale(0.97);
 }

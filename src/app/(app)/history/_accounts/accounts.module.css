@@ -130,7 +130,8 @@
 }
 .accHead {
   display: flex;
-  align-items: center;
+  /* 배지가 두 줄이 돼도 아이콘 · 화살표는 이름 줄에 맞춰요 */
+  align-items: flex-start;
   gap: var(--space-3);
   min-width: 0;
 }
@@ -166,6 +167,9 @@
   white-space: nowrap;
 }
 .chev {
+  flex: none;
+  /* 40px 아이콘 칸의 가운데 */
+  margin-top: 10px;
   color: var(--text-muted);
 }
 .badges {
@@ -202,7 +206,8 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
-  margin-top: var(--space-1);
+  /* 옆 카드와 높이가 달라도 들어온 돈 · 나간 돈 줄은 카드 바닥에 맞춰요 */
+  margin-top: auto;
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }

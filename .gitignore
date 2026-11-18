@@ -6,3 +6,7 @@ next-env.d.ts
 .env*.local
 .vercel
 coverage/
+
+# Playwright
+test-results/
+playwright-report/

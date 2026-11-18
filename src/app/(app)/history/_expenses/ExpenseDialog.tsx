@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   TRIP_ITEMS, TRIP_ITEM_ICONS, TRIP_ITEM_LABELS, canClaimOnAccount, formatDateKo, formatShortDate, formatWon, isAutoFixedRecord,
   isClaimSettled, linkableTrips, tripItemForCategory, tripPeriodText,
@@ -28,6 +28,8 @@ export interface ExpenseDialogProps {
   onDone?: (expense: Expense, action: 'added' | 'updated' | 'deleted') => void;
   /** 닫을 때 연 행이 사라졌으면(지움) 포커스할 곳 */
   returnFocus?: () => HTMLElement | null | undefined;
+  /** 창 맨 위에 둘 '지출 · 사도 돼? · 이체' 탭 (+ 버튼으로 열었을 때) */
+  kindSwitch?: ReactNode;
 }
 
 type Errors = Partial<Record<'amount' | 'date' | 'account' | 'payer', string>>;
@@ -42,7 +44,7 @@ export function categoryIcon(category: Pick<Category, 'icon'> | null | undefined
  * 고칠 때는 아래에 지우기가 있고, 같은 창 안에서 한 번 더 확인해요.
  * 열 때마다 새로 그려서 값이 초기화되도록 {open ? <ExpenseDialog/> : null} 로 쓰세요.
  */
-export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }: ExpenseDialogProps) {
+export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus, kindSwitch }: ExpenseDialogProps) {
   const ledger = useLedger();
   const toast = useToast();
   const uid = useId().replace(/:/g, '');
@@ -106,6 +108,8 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
   const [tripItemTouched, setTripItemTouched] = useState(editing || !!initial?.tripItem);
   const [excluded, setExcluded] = useState<boolean>(expense?.excluded === true);
   const [paidBy, setPaidBy] = useState<string | null>(expense?.paidBy?.trim() ? expense.paidBy.trim() : null);
+  /** 개인 돈 · 일정 · 여행은 자주 안 써서 접어 둬요. 고칠 때 · 여행에서 열었을 때는 펼쳐요 */
+  const [moreOpen, setMoreOpen] = useState(editing || !!initial?.tripId);
   const claimSettled = !!expense && !!data && isClaimSettled(data, expense.id);
   // 이미 돌려준 청구는 그대로. 청구할 수 없는 통장이면 저장하지 않고 통장을 다시 고르게 해요 (조용히 청구를 빼지 않게)
   const effectivePaidBy = claimSettled ? (expense?.paidBy ?? null) : paidBy !== null ? paidBy.trim() : null;
@@ -171,6 +175,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
     if (!accountId) next.account = '어느 통장에서 나갔는지 골라 주세요';
     else if (claimOnWrongAccount) next.account = '개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요';
     if (effectivePaidBy !== null && !effectivePaidBy) next.payer = '누가 냈는지 골라 주세요';
+    if (next.payer) setMoreOpen(true);
     setErrors(next);
     if (Object.keys(next).length > 0) focusFirstInvalid();
     return Object.keys(next).length === 0;
@@ -317,6 +322,9 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
   const eventAccountId = ledger.accountByRole('event')?.id ?? null;
   const showExcluded = !expense?.fixedExpenseId && ((!!eventAccountId && accountId === eventAccountId) || excluded);
   const showEventField = events.length > 0;
+  const moreLabels = [!expense?.fixedExpenseId ? '개인 돈' : null, showEventField ? '일정' : null, trips.length > 0 ? '여행' : null].filter(
+    (x): x is string => x !== null,
+  );
 
   return (
     <Dialog
@@ -339,6 +347,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
       }
     >
       <form id={formId} className={styles.form} onSubmit={save} noValidate>
+        {kindSwitch}
         {expense && isAutoFixedRecord(expense) ? (
           <Banner tone="info" title="매달 자동으로 기록된 고정 지출이에요">
             여기서 고쳐도 다음 달 기록은 설정의 금액으로 생겨요.
@@ -408,96 +417,104 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus }
           <TextInput value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 점심, 운동화" maxLength={100} enterKeyHint="done" />
         </Field>
 
-        {!expense?.fixedExpenseId ? (
-          <ClaimFields
-            accountId={accountId}
-            amount={amount}
-            paidBy={claimSettled ? (expense?.paidBy ?? null) : paidBy}
-            onChange={(v) => {
-              setPaidBy(v);
-              if (errors.payer || errors.account) setErrors((x) => ({ ...x, payer: undefined, account: undefined }));
-            }}
-            expense={expense}
-            settled={claimSettled}
-            disabled={!!saving}
-            error={errors.payer}
-          />
-        ) : null}
-
-        {showEventField ? (
-          <Field
-            label="이벤트 일정 연결"
-            optional
-            hint={
-              tripId
-                ? '여행에 묶은 지출은 여행 예산으로 세요. 일정을 고르면 여행 연결이 풀려요.'
-                : editing
-                  ? undefined
-                  : '예정된 일정에 쓴 돈이면 골라 주세요. 금액과 내용을 채워 드려요.'
-            }
-          >
-            <Select
-              value={tripId ? '' : eventId}
-              onChange={pickEvent}
-              options={[
-                { value: '', label: '연결하지 않기' },
-                ...events.map((ev) => ({
-                  value: ev.id,
-                  label: `${formatShortDate(ev.date)} ${ev.name} · ${formatWon(ev.amount)}${ev.status === 'planned' ? '' : ' (완료)'}`,
-                })),
-              ]}
+        {moreOpen || moreLabels.length === 0 ? (
+          <>
+          {!expense?.fixedExpenseId ? (
+            <ClaimFields
+              accountId={accountId}
+              amount={amount}
+              paidBy={claimSettled ? (expense?.paidBy ?? null) : paidBy}
+              onChange={(v) => {
+                setPaidBy(v);
+                if (errors.payer || errors.account) setErrors((x) => ({ ...x, payer: undefined, account: undefined }));
+              }}
+              expense={expense}
+              settled={claimSettled}
+              disabled={!!saving}
+              error={errors.payer}
             />
-          </Field>
-        ) : null}
+          ) : null}
 
-        {trips.length > 0 ? (
-          <Field
-            label="여행"
-            optional
-            hint={
-              eventId && !tripId
-                ? '여행을 고르면 일정 연결이 풀려요.'
-                : editing || tripId
-                  ? undefined
-                  : '여행에 쓴 돈이면 골라 주세요. 날짜가 달라도 여행 예산에 함께 잡혀요.'
-            }
-          >
-            <Select
-              value={tripId}
-              onChange={pickTrip}
-              options={[
-                { value: '', label: '여행 아님' },
-                ...trips.map((t) => ({
-                  value: t.id,
-                  label: `${t.name} · ${tripPeriodText(t)}${t.deleted ? ' (지운 여행)' : ''}`,
-                })),
-              ]}
-            />
-          </Field>
-        ) : null}
+          {showEventField ? (
+            <Field
+              label="이벤트 일정 연결"
+              optional
+              hint={
+                tripId
+                  ? '여행에 묶은 지출은 여행 예산으로 세요. 일정을 고르면 여행 연결이 풀려요.'
+                  : editing
+                    ? undefined
+                    : '예정된 일정에 쓴 돈이면 골라 주세요. 금액과 내용을 채워 드려요.'
+              }
+            >
+              <Select
+                value={tripId ? '' : eventId}
+                onChange={pickEvent}
+                options={[
+                  { value: '', label: '연결하지 않기' },
+                  ...events.map((ev) => ({
+                    value: ev.id,
+                    label: `${formatShortDate(ev.date)} ${ev.name} · ${formatWon(ev.amount)}${ev.status === 'planned' ? '' : ' (완료)'}`,
+                  })),
+                ]}
+              />
+            </Field>
+          ) : null}
 
-        {tripId ? (
-          <fieldset className={styles.fieldset}>
-            <legend className="label">
-              여행 항목 <span className="opt-text">(선택)</span>
-            </legend>
-            <ChipGroup label="여행 항목">
-              {TRIP_ITEMS.map((item) => (
-                <Chip
-                  key={item}
-                  icon={isIconName(TRIP_ITEM_ICONS[item]) ? TRIP_ITEM_ICONS[item] : 'dots'}
-                  selected={tripItem === item}
-                  onClick={() => {
-                    setTripItem(tripItem === item ? null : item);
-                    setTripItemTouched(true);
-                  }}
-                >
-                  {TRIP_ITEM_LABELS[item]}
-                </Chip>
-              ))}
-            </ChipGroup>
-          </fieldset>
-        ) : null}
+          {trips.length > 0 ? (
+            <Field
+              label="여행"
+              optional
+              hint={
+                eventId && !tripId
+                  ? '여행을 고르면 일정 연결이 풀려요.'
+                  : editing || tripId
+                    ? undefined
+                    : '여행에 쓴 돈이면 골라 주세요. 날짜가 달라도 여행 예산에 함께 잡혀요.'
+              }
+            >
+              <Select
+                value={tripId}
+                onChange={pickTrip}
+                options={[
+                  { value: '', label: '여행 아님' },
+                  ...trips.map((t) => ({
+                    value: t.id,
+                    label: `${t.name} · ${tripPeriodText(t)}${t.deleted ? ' (지운 여행)' : ''}`,
+                  })),
+                ]}
+              />
+            </Field>
+          ) : null}
+
+          {tripId ? (
+            <fieldset className={styles.fieldset}>
+              <legend className="label">
+                여행 항목 <span className="opt-text">(선택)</span>
+              </legend>
+              <ChipGroup label="여행 항목">
+                {TRIP_ITEMS.map((item) => (
+                  <Chip
+                    key={item}
+                    icon={isIconName(TRIP_ITEM_ICONS[item]) ? TRIP_ITEM_ICONS[item] : 'dots'}
+                    selected={tripItem === item}
+                    onClick={() => {
+                      setTripItem(tripItem === item ? null : item);
+                      setTripItemTouched(true);
+                    }}
+                  >
+                    {TRIP_ITEM_LABELS[item]}
+                  </Chip>
+                ))}
+              </ChipGroup>
+            </fieldset>
+          ) : null}
+          </>
+        ) : (
+          <Button variant="secondary" icon="plus" className={styles.moreButton} onClick={() => setMoreOpen(true)} aria-expanded={false}>
+            {moreLabels.join(' · ')} <span className="opt-text">(선택)</span>
+          </Button>
+        )}
 
         {showExcluded ? (
           <label className={styles.check}>

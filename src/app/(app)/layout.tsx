@@ -90,8 +90,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         ready
           ? {
               label: '기록',
-              onClick: () => setCreate('menu'),
-              expanded: create === 'menu',
+              onClick: () => setCreate('expense'),
+              expanded: create !== null,
               fab: !FAB_HIDDEN_PATHS.some((p) => isNavActive(p, pathname)),
             }
           : undefined

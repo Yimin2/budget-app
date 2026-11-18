@@ -517,3 +517,67 @@ describe('SheetsRepository.upsertMany', () => {
     ]);
   });
 });
+
+describe('SheetsRepository — 다른 기기가 먼저 고친 행', () => {
+  const first = () => sampleLedger().expenses[0]!;
+
+  it('불러온 뒤 다른 기기가 고친 행은 덮어쓰지 않고 멈춘다', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    const repo = backend.open(ref);
+    await repo.load();
+    // 함께 쓰는 사람이 같은 행의 금액을 바꿈
+    g.tabs.get('지출')![1]![2] = 77_777;
+    g.calls.length = 0;
+    const error = await repo.upsert('expenses', { ...first(), amount: 99 }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(StorageError);
+    expect((error as StorageError).status).toBe(409);
+    expect((error as StorageError).message).toBe(MESSAGES.conflict);
+    expect(g.calls.some((c) => c.method === 'POST')).toBe(false);
+    expect(g.tabs.get('지출')![1]![2]).toBe(77_777);
+  });
+
+  it('다시 불러오면 그 내용 위에 고칠 수 있다', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    const repo = backend.open(ref);
+    await repo.load();
+    g.tabs.get('지출')![1]![2] = 77_777;
+    await expect(repo.upsert('expenses', { ...first(), amount: 99 })).rejects.toBeInstanceOf(StorageError);
+    await repo.load();
+    await repo.upsert('expenses', { ...first(), amount: 99 });
+    expect(g.tabs.get('지출')![1]![2]).toBe(99);
+  });
+
+  it('이 기기가 연달아 고친 것은 충돌이 아니다', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    const repo = backend.open(ref);
+    await repo.load();
+    await repo.upsert('expenses', { ...first(), amount: 10 });
+    await repo.upsert('expenses', { ...first(), amount: 20 });
+    expect(g.tabs.get('지출')![1]![2]).toBe(20);
+  });
+
+  it('다른 기기가 이미 같은 내용으로 고쳤으면 그대로 지나간다', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    const repo = backend.open(ref);
+    await repo.load();
+    g.tabs.get('지출')![1]![2] = 99;
+    await repo.upsert('expenses', { ...first(), amount: 99 });
+    expect(g.tabs.get('지출')![1]![2]).toBe(99);
+  });
+
+  it('여러 행 중 하나라도 걸리면 아무것도 쓰지 않는다', async () => {
+    const { g, backend } = setup();
+    await backend.create(sampleLedger());
+    const repo = backend.open(ref);
+    await repo.load();
+    const [a, b] = sampleLedger().expenses;
+    g.tabs.get('지출')![2]![2] = 77_777;
+    const before = g.tabs.get('지출')![1]![2];
+    await expect(repo.upsertMany('expenses', [{ ...a!, amount: 1 }, { ...b!, amount: 2 }])).rejects.toBeInstanceOf(StorageError);
+    expect(g.tabs.get('지출')![1]![2]).toBe(before);
+  });
+});

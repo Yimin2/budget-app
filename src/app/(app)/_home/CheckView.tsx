@@ -256,7 +256,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
           ))}
           {STEP_AMOUNTS.map((s) => (
             <Chip key={`step-${s.value}`} icon="plus" onClick={() => addStep(s.value)} aria-label={`${s.label.slice(1)} 더하기`}>
-              {s.label.slice(1)}
+              {s.label.slice(1)} 더하기
             </Chip>
           ))}
         </ChipGroup>
@@ -276,7 +276,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
         </div>
 
         {multiPerson && source === 'living' ? (
-          <div className={styles.section}>
+          <div className={cx(styles.section, styles.cPerson)}>
             <h2 className={styles.groupLabel} id="check-person-title">
               누구 생활비로 볼까요?
             </h2>
@@ -302,7 +302,7 @@ function CheckBody({ initialAmount, initialSource }: { initialAmount: number | n
         {picker}
 
         {activeTrips.length > 0 ? (
-          <section className={styles.section} aria-labelledby="check-trip-title">
+          <section className={cx(styles.section, styles.cTrip)} aria-labelledby="check-trip-title">
             <h2 className={styles.groupLabel} id="check-trip-title">
               여행에 쓸 돈인가요? <span className="opt-text">(선택)</span>
             </h2>

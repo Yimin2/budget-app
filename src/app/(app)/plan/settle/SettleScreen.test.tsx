@@ -368,7 +368,7 @@ describe('정산 화면 — 오래된 것 먼저 · 여행 배지 · 좁은 막�
     await waitFor(() => expect(within(list).queryByRole('link', { name: '여행 제주 여행 보기' })).toBeNull());
   });
 
-  it('좁은 화면용 짧은 글자 [빌려 지급]이 있어도 버튼 이름은 그대로', async () => {
+  it('좁은 화면용 짧은 글자 [저수지에서 빌려 주기]가 있어도 버튼 이름은 그대로', async () => {
     const { bar } = await renderScreen();
     const borrow = within(bar).getByRole('button', { name: '저수지에서 빌려 지급' });
     expect(borrow.textContent).toContain('빌려 지급');
