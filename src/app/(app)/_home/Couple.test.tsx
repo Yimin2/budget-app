@@ -73,12 +73,15 @@ describe('홈 — 사람별 오늘 써도 되는 돈', () => {
     expect(labels[0]).toBe('커피 4,500원 기록하기');
     // 준호만 쓴 지출(라테 · 마트 · 영화 · 약국)은 나오지 않아요
     for (const name of ['라테', '마트', '영화', '약국']) expect(labels.some((l) => l!.startsWith(`${name} `))).toBe(false);
+    fireEvent.click(within(section).getByRole('button', { name: '커피 4,500원 기록하기' }));
+    const form = within(section).getByRole('form', { name: '커피 기록' });
+    fireEvent.change(within(form).getByLabelText('금액'), { target: { value: '4800' } });
     await act(async () => {
-      fireEvent.click(within(section).getByRole('button', { name: '커피 4,500원 기록하기' }));
+      fireEvent.click(within(form).getByRole('button', { name: '기록하기' }));
     });
-    await screen.findByText('커피 4,500원 기록했어요');
+    await screen.findByText('커피 4,800원 기록했어요');
     const row = h.probe.ledger!.data!.expenses.find((e) => !e.id.startsWith('demo-') && e.memo === '커피')!;
-    expect(row).toMatchObject({ accountId: MINJI, date: '2026-11-20', amount: 4_500 });
+    expect(row).toMatchObject({ accountId: MINJI, date: '2026-11-20', amount: 4_800 });
     // 쓴 사람 = 민지 (생활비 통장 주인)
     expect(expenseSpender(h.probe.ledger!.data!, row).name).toBe('민지');
   });
