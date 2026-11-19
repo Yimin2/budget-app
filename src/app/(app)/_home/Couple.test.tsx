@@ -74,10 +74,10 @@ describe('홈 — 사람별 오늘 써도 되는 돈', () => {
     // 준호만 쓴 지출(라테 · 마트 · 영화 · 약국)은 나오지 않아요
     for (const name of ['라테', '마트', '영화', '약국']) expect(labels.some((l) => l!.startsWith(`${name} `))).toBe(false);
     fireEvent.click(within(section).getByRole('button', { name: '커피 4,500원 기록하기' }));
-    const form = within(section).getByRole('form', { name: '커피 기록' });
-    fireEvent.change(within(form).getByLabelText('금액'), { target: { value: '4800' } });
+    const dialog = await screen.findByRole('dialog', { name: '커피 기록' });
+    fireEvent.change(within(dialog).getByLabelText('금액'), { target: { value: '4800' } });
     await act(async () => {
-      fireEvent.click(within(form).getByRole('button', { name: '기록하기' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));
     });
     await screen.findByText('커피 4,800원 기록했어요');
     const row = h.probe.ledger!.data!.expenses.find((e) => !e.id.startsWith('demo-') && e.memo === '커피')!;

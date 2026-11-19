@@ -36,14 +36,14 @@ test('모든 화면이 오류 없이 열리고 옆으로 넘치지 않아요', a
   expect(errors).toEqual([]);
 });
 
-test('자주 쓰는 지출: 누르면 금액 칸이 펼쳐지고, 기록하면 되돌릴 수 있어요', async ({ page }) => {
+test('자주 쓰는 지출: 누르면 금액 팝업이 뜨고, 기록하면 되돌릴 수 있어요', async ({ page }) => {
   await startDemo(page);
   const today = page.getByRole('region', { name: '오늘 내가 써도 되는 돈' });
   const before = await today.innerText();
   const chip = page.getByRole('region', { name: '자주 쓰는 지출' }).getByRole('button', { name: /원 기록하기$/ }).first();
   const label = (await chip.getAttribute('aria-label'))!.replace(' 기록하기', '');
   await chip.click();
-  const form = page.getByRole('form', { name: `${label.replace(/ [\d,]+원$/, '')} 기록` });
+  const form = page.getByRole('dialog', { name: `${label.replace(/ [\d,]+원$/, '')} 기록` });
   await expect(form.getByLabel('금액')).toBeVisible();
   await form.getByRole('button', { name: '기록하기' }).click();
   await expect(page.getByText(`${label} 기록했어요`)).toBeVisible();
