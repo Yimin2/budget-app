@@ -36,9 +36,9 @@ function list() {
   return screen.getByRole('region', { name: '2026년 11월 지출 목록' });
 }
 
-/** 개인 돈 · 일정 · 여행 칸은 접혀 있어요 — 펼치기 버튼을 눌러요 */
+/** 일정 · 여행 칸은 접혀 있어요 — 펼치기 버튼을 눌러요 (개인 돈은 늘 보여요) */
 function openMore(dialog: HTMLElement) {
-  const more = within(dialog).queryByRole('button', { name: /개인 돈|일정 · |여행 \(선택\)/ });
+  const more = within(dialog).queryByRole('button', { name: /^(일정|여행|일정 · 여행) \(선택\)$/ });
   if (more) fireEvent.click(more);
 }
 
@@ -114,7 +114,7 @@ describe('지출 화면', () => {
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '18000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '식비' }));
     fireEvent.change(within(dialog).getByLabelText(/내용/), { target: { value: '반찬' } });
-    openMore(dialog);
+    // 개인 돈은 접지 않고 늘 보여요
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
     fireEvent.change(within(dialog).getByLabelText(/누가 냈나요/), { target: { value: '준호' } });
     expect(within(dialog).getByText('준호가 12월 1일에 18,000원 돌려받아요')).toBeTruthy();
@@ -159,7 +159,7 @@ describe('지출 화면', () => {
     const dialog = await screen.findByRole('dialog', { name: '지출 기록' });
     fireEvent.change(within(dialog).getByLabelText(/금액/), { target: { value: '18000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '식비' }));
-    openMore(dialog);
+    // 개인 돈은 접지 않고 늘 보여요
     fireEvent.click(within(dialog).getByRole('checkbox', { name: /개인 돈으로 냈어요/ }));
     pickAccount(within(dialog).getByLabelText(/^통장/), 'demo-acc-savings');
     fireEvent.click(within(dialog).getByRole('button', { name: '기록하기' }));

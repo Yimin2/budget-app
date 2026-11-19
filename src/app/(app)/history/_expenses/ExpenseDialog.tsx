@@ -108,7 +108,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus, 
   const [tripItemTouched, setTripItemTouched] = useState(editing || !!initial?.tripItem);
   const [excluded, setExcluded] = useState<boolean>(expense?.excluded === true);
   const [paidBy, setPaidBy] = useState<string | null>(expense?.paidBy?.trim() ? expense.paidBy.trim() : null);
-  /** 개인 돈 · 일정 · 여행은 자주 안 써서 접어 둬요. 고칠 때 · 여행에서 열었을 때는 펼쳐요 */
+  /** 일정 · 여행은 자주 안 써서 접어 둬요 (개인 돈은 늘 보여요). 고칠 때 · 여행에서 열었을 때는 펼쳐요 */
   const [moreOpen, setMoreOpen] = useState(editing || !!initial?.tripId);
   const claimSettled = !!expense && !!data && isClaimSettled(data, expense.id);
   // 이미 돌려준 청구는 그대로. 청구할 수 없는 통장이면 저장하지 않고 통장을 다시 고르게 해요 (조용히 청구를 빼지 않게)
@@ -175,7 +175,6 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus, 
     if (!accountId) next.account = '어느 통장에서 나갔는지 골라 주세요';
     else if (claimOnWrongAccount) next.account = '개인 돈으로 낸 지출은 이벤트통장 · 고정지출통장 · 저수지통장 중에서 골라 주세요';
     if (effectivePaidBy !== null && !effectivePaidBy) next.payer = '누가 냈는지 골라 주세요';
-    if (next.payer) setMoreOpen(true);
     setErrors(next);
     if (Object.keys(next).length > 0) focusFirstInvalid();
     return Object.keys(next).length === 0;
@@ -322,7 +321,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus, 
   const eventAccountId = ledger.accountByRole('event')?.id ?? null;
   const showExcluded = !expense?.fixedExpenseId && ((!!eventAccountId && accountId === eventAccountId) || excluded);
   const showEventField = events.length > 0;
-  const moreLabels = [!expense?.fixedExpenseId ? '개인 돈' : null, showEventField ? '일정' : null, trips.length > 0 ? '여행' : null].filter(
+  const moreLabels = [showEventField ? '일정' : null, trips.length > 0 ? '여행' : null].filter(
     (x): x is string => x !== null,
   );
 
@@ -417,23 +416,24 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus, 
           <TextInput value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 점심, 운동화" maxLength={100} enterKeyHint="done" />
         </Field>
 
+        {!expense?.fixedExpenseId ? (
+          <ClaimFields
+            accountId={accountId}
+            amount={amount}
+            paidBy={claimSettled ? (expense?.paidBy ?? null) : paidBy}
+            onChange={(v) => {
+              setPaidBy(v);
+              if (errors.payer || errors.account) setErrors((x) => ({ ...x, payer: undefined, account: undefined }));
+            }}
+            expense={expense}
+            settled={claimSettled}
+            disabled={!!saving}
+            error={errors.payer}
+          />
+        ) : null}
+
         {moreOpen || moreLabels.length === 0 ? (
           <>
-          {!expense?.fixedExpenseId ? (
-            <ClaimFields
-              accountId={accountId}
-              amount={amount}
-              paidBy={claimSettled ? (expense?.paidBy ?? null) : paidBy}
-              onChange={(v) => {
-                setPaidBy(v);
-                if (errors.payer || errors.account) setErrors((x) => ({ ...x, payer: undefined, account: undefined }));
-              }}
-              expense={expense}
-              settled={claimSettled}
-              disabled={!!saving}
-              error={errors.payer}
-            />
-          ) : null}
 
           {showEventField ? (
             <Field
