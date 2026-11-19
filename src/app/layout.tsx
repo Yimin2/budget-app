@@ -20,6 +20,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  // 안드로이드 Chrome: 키보드가 올라오면 화면 크기를 줄여 아래에 붙은 창이 키보드 위에 오게 (iOS 는 Dialog 가 따로 올려요)
+  interactiveWidget: 'resizes-content',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: THEME_COLORS.light },
     { media: '(prefers-color-scheme: dark)', color: THEME_COLORS.dark },

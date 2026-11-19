@@ -4,13 +4,14 @@ import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { formatNumber, formatWon, suggestExpenses } from '@/domain';
 import type { ExpenseSuggestion } from '@/domain';
 import { useLedger } from '@/state';
-import { Button, Chip, ChipGroup, Field, MoneyInput, useToast, cx } from '@/ui';
+import { Button, Chip, ChipGroup, Dialog, Field, MoneyInput, useToast, cx } from '@/ui';
 import { errorMessage } from './selectors';
 import styles from './home.module.css';
 
 /**
  * 내가 최근 3개월 동안 자주 쓴 지출 칩 (domain/suggestions.ts). 따로 등록하지 않아요.
- * 칩을 누르면 창 없이 그 아래에 금액 칸이 펼쳐지고(가장 최근 금액), [기록하기]로 오늘 날짜 · 나(내 통장)로 기록해요
+ * 칩을 누르면 금액 팝업이 떠요(가장 최근 금액). [기록하기]로 오늘 날짜 · 나(내 통장)로 기록해요.
+ * 휴대폰은 키보드가 올라오면 팝업이 키보드 위로 올라가요 (Dialog)
  */
 export function QuickSuggestions() {
   const ledger = useLedger();
@@ -114,8 +115,7 @@ export function QuickSuggestions() {
                   className={on ? 'on' : undefined}
                   onClick={() => toggle(s)}
                   disabled={saving && !on}
-                  aria-expanded={on}
-                  aria-controls={on ? editId : undefined}
+                  aria-haspopup="dialog"
                   aria-label={`${s.label} ${formatWon(s.amount)} 기록하기`}
                 >
                   {s.label} {formatNumber(s.amount)}
@@ -123,43 +123,39 @@ export function QuickSuggestions() {
               );
             })}
           </ChipGroup>
-          {open ? (
-            <form
-              id={editId}
-              className={styles.quickEdit}
-              aria-label={`${open.label} 기록`}
-              onSubmit={(e) => void submit(e)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.stopPropagation();
-                  close();
-                }
-              }}
-            >
-              <p className={styles.quickMeta}>
-                {[category?.name, account?.name, '오늘'].filter(Boolean).join(' · ')}
-              </p>
-              <Field id={amountId} label="금액" error={error ?? undefined}>
-                <MoneyInput
-                  value={amount}
-                  onChange={(v) => {
-                    setAmount(v);
-                    if (error) setError(null);
-                  }}
-                  enterKeyHint="done"
-                  disabled={saving}
-                />
-              </Field>
-              <div className={styles.quickActions}>
+          <Dialog
+            open={open !== null}
+            onClose={close}
+            title={open ? `${open.label} 기록` : ''}
+            description={open ? [category?.name, account?.name, '오늘'].filter(Boolean).join(' · ') : undefined}
+            actions={
+              <>
                 <Button type="button" variant="ghost" onClick={close} disabled={saving}>
                   취소
                 </Button>
-                <Button type="submit" loading={saving}>
+                <Button type="submit" form={editId} icon="check" loading={saving}>
                   기록하기
                 </Button>
-              </div>
-            </form>
-          ) : null}
+              </>
+            }
+          >
+            {open ? (
+              <form id={editId} aria-label={`${open.label} 기록`} onSubmit={(e) => void submit(e)}>
+                <Field id={amountId} label="금액" error={error ?? undefined}>
+                  <MoneyInput
+                    value={amount}
+                    onChange={(v) => {
+                      setAmount(v);
+                      if (error) setError(null);
+                    }}
+                    size="lg"
+                    enterKeyHint="done"
+                    disabled={saving}
+                  />
+                </Field>
+              </form>
+            ) : null}
+          </Dialog>
         </>
       )}
     </section>

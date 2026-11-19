@@ -926,6 +926,9 @@ input[type='date'].input::-webkit-date-and-time-value {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  /* 휴대폰 키보드가 올라오면 그 높이만큼 창을 올려요 (Dialog 가 --kb-inset 을 정해요) */
+  padding-bottom: var(--kb-inset, 0px);
+  transition: padding-bottom var(--duration-fast) var(--ease-out);
 }
 .scrim {
   position: absolute;
@@ -938,7 +941,7 @@ input[type='date'].input::-webkit-date-and-time-value {
   position: relative;
   z-index: var(--z-modal);
   width: 100%;
-  max-height: calc(100dvh - var(--space-8));
+  max-height: calc(100dvh - var(--space-8) - var(--kb-inset, 0px));
   overflow-y: auto;
   overscroll-behavior: contain;
   box-sizing: border-box;
@@ -1011,6 +1014,7 @@ input[type='date'].input::-webkit-date-and-time-value {
   .dialog-root {
     align-items: center;
     padding: var(--space-6);
+    padding-bottom: calc(var(--space-6) + var(--kb-inset, 0px));
   }
   .dialog {
     max-width: 480px;

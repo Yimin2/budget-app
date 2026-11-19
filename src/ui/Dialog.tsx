@@ -152,6 +152,25 @@ export function Dialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // 휴대폰 키보드: 열려 있는 동안 화면 아래를 가리는 키보드 높이만큼 창을 올려요 (iOS 는 키보드가 화면 크기를 줄이지 않아요)
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const root = rootRef.current;
+    if (!vv || !root) return;
+    const update = () => {
+      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      root.style.setProperty('--kb-inset', `${inset}px`);
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, [open, mounted]);
+
   // 닫히거나(open=false) 화면에서 빠질 때(부모가 지움) 모두 물러나는 움직임을 남겨요
   useLayoutEffect(() => {
     if (!open || !mounted) return;
