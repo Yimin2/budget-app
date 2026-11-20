@@ -62,6 +62,26 @@ export function incomePlanMemo(plan: Pick<IncomePlan, 'personName' | 'memo'>): s
   return who ? `${who} 월급` : '월급';
 }
 
+/**
+ * 그달 이 계획의 받는 통장에 손으로 기록한 수입(자동 기록 아님)이 있고, 그 수입이 같은 통장의 다른 계획보다
+ * 이 계획 날짜에 가장 가까우면 true. 두 사람 월급이 한 통장으로 들어와도 날짜로 나눠요
+ */
+function manualIncomeCovers(data: LedgerData, plan: IncomePlan, month: YearMonth, date: ISODate): boolean {
+  const planDates = activeIncomePlans(data, month, plan.accountId)
+    .map((p) => incomePlanOccurrenceDate(data, p, month))
+    .filter((d): d is ISODate => d !== null);
+  return data.transfers.some(
+    (t) =>
+      !t.deleted &&
+      t.status === 'done' &&
+      t.kind === 'income' &&
+      t.toAccountId === plan.accountId &&
+      !t.id.startsWith('income:') &&
+      monthOf(t.date) === month &&
+      nearest(t.date, planDates) === date,
+  );
+}
+
 /** 아직 만들지 않은 수입 계획 기록 (시작월 ~ 이번 달, 날짜가 오늘 이전(포함)인 회차) */
 export function pendingIncomeRecords(data: LedgerData, today: ISODate, author: string, now: string): Transfer[] {
   const thisMonth = monthOf(today);
@@ -77,6 +97,8 @@ export function pendingIncomeRecords(data: LedgerData, today: ISODate, author: s
       if (date === null || date > today) continue;
       const id = incomeRecordId(plan.id, m);
       if (ids.has(id)) continue;
+      // 이 계획 날짜에 가장 가까운 수입을 손으로 이미 기록했으면 (월급이 실제로 들어온 날 · 금액) 계획 기록은 만들지 않아요
+      if (manualIncomeCovers(data, plan, m, date)) continue;
       ids.add(id);
       out.push({
         id,
@@ -96,6 +118,61 @@ export function pendingIncomeRecords(data: LedgerData, today: ISODate, author: s
     }
   }
   return out;
+}
+
+/* ---------- 월급이 들어온 날에 배분하기 ---------- */
+
+/** 이 통장에서 그달 배분이 나가는 날(월급날)들, 오름차순 */
+function paydayDates(data: LedgerData, sourceAccountId: Id, month: YearMonth): ISODate[] {
+  const set = new Set<ISODate>();
+  for (const r of data.rules) {
+    if (r.deleted || r.fromAccountId !== sourceAccountId || !isValidMonth(r.startMonth) || !isMonthActive(month, r.startMonth, r.endMonth)) continue;
+    set.add(dateInMonth(month, r.dayOfMonth));
+  }
+  return [...set].sort();
+}
+
+/** 날짜 사이 일 수 (절댓값) */
+function dayGap(a: ISODate, b: ISODate): number {
+  return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+}
+
+/** 후보 날짜 중 가장 가까운 날 (같으면 앞 날) */
+function nearest(date: ISODate, candidates: ISODate[]): ISODate | null {
+  let best: ISODate | null = null;
+  for (const c of candidates) if (best === null || dayGap(date, c) < dayGap(date, best)) best = c;
+  return best;
+}
+
+/**
+ * 그달 이 통장에 들어온 수입 기록을 가장 가까운 월급날에 붙여요 (PLAN 4-13).
+ * key = 월급날, value = 그 월급날 몫으로 들어온 수입 날짜들 (오름차순)
+ */
+export function paydayIncomeDates(data: LedgerData, sourceAccountId: Id, month: YearMonth): Map<ISODate, ISODate[]> {
+  const out = new Map<ISODate, ISODate[]>();
+  const days = paydayDates(data, sourceAccountId, month);
+  if (days.length === 0) return out;
+  for (const t of data.transfers) {
+    if (t.deleted || t.status !== 'done' || t.kind !== 'income' || t.toAccountId !== sourceAccountId || monthOf(t.date) !== month) continue;
+    if (!isCountedTransfer(data, t)) continue;
+    const day = nearest(t.date, days);
+    if (!day) continue;
+    out.set(day, [...(out.get(day) ?? []), t.date].sort());
+  }
+  return out;
+}
+
+/**
+ * 배분 규칙이 그달 실제로 나갈 날: 그 월급날 몫의 수입이 기록돼 있으면 **수입이 들어온 날**, 없으면 정해 둔 날.
+ * 월급이 일찍 들어오면 그날 바로 배분하고, 늦게 들어오면 들어온 날 '나머지 전부 보내기'를 계산해요.
+ * - 정한 금액 · 필요한 만큼: 그 몫의 첫 수입 날
+ * - 나머지 전부: 그 몫의 마지막 수입 날 (그 몫의 수입이 다 들어온 뒤 남은 돈을 보내요)
+ * planned = 정해 둔 날 (ruleOccurrenceDate)
+ */
+export function ruleDueDate(data: LedgerData, rule: AllocationRule, month: YearMonth, planned: ISODate, incomes?: Map<ISODate, ISODate[]>): ISODate {
+  const dates = (incomes ?? paydayIncomeDates(data, rule.fromAccountId, month)).get(planned);
+  if (!dates || dates.length === 0) return planned;
+  return isRemainderRule(rule) ? dates[dates.length - 1]! : dates[0]!;
 }
 
 /** 통장의 날짜별 잔액 변화 (잔액에 들어가는 기록만, 시작일 이후) */
