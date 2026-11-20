@@ -9,10 +9,10 @@ describe('schema', () => {
   it('탭 이름은 PLAN 5장과 같다', () => {
     expect(ALL_TABS).toEqual(['설정', '통장', '월배분', '이체', '고정지출', '일정', '지출', '월말', '카테고리', '즐겨찾기', '멤버', '여행', '수입계획', '예측기록']);
     expect(canonicalHeaders('transfers')).toEqual([
-      'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨',
+      'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨', '보냄',
     ]);
     expect(canonicalHeaders('monthEnds')).toEqual(['월', '남은생활비', '처리', '처리자', '처리일시', '항목별']);
-    expect(canonicalHeaders('accounts')).toEqual(['id', '이름', '역할', '시작잔액', '시작일', '순서', '주인', '주인이메일', '삭제됨']);
+    expect(canonicalHeaders('accounts')).toEqual(['id', '이름', '역할', '시작잔액', '시작일', '순서', '주인', '주인이메일', '삭제됨', '은행', '계좌번호']);
     expect(canonicalHeaders('fixedExpenses')).toContain('나눠쓰기');
     expect(canonicalHeaders('forecasts')).toEqual([
       'id', '기록한달', '대상달', '예상잔액', '아끼면', '많이쓰면', '예상들어올돈', '예상나갈돈', '기록일시', '삭제됨',
@@ -45,7 +45,7 @@ describe('schema', () => {
     const d = sampleLedger();
     expect(encodeRow('transfers', d.transfers[0]!)).toEqual([
       't1', '2026-11-25', '수입', '', 'a-inc', 5000000, '완료', '', '월급', 'minji@example.com',
-      '2026-11-09T10:00:00.000Z', '2026-11-09T10:00:00.000Z', false,
+      '2026-11-09T10:00:00.000Z', '2026-11-09T10:00:00.000Z', false, '',
     ]);
     expect(encodeRow('accounts', d.accounts[3]!)[2]).toBe('저수지');
     expect(encodeRow('monthEnds', d.monthEnds[1]!)).toEqual(['2026-09', 0, '미정', '', '', '']);

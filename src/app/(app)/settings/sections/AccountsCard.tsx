@@ -20,6 +20,8 @@ interface Draft {
   openingDate: string;
   ownerName: string;
   ownerEmail: string;
+  bank: string;
+  accountNumber: string;
 }
 
 /** 통장: 이름 · 역할 · 주인(사람별 수입통장) · 시작 잔액/기준일 · 추가 · 지우기 */
@@ -47,6 +49,8 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
       openingDate: ledger.today,
       ownerName: '',
       ownerEmail: '',
+      bank: '',
+      accountNumber: '',
     });
   }
   function openEdit(a: Account) {
@@ -60,6 +64,8 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
       openingDate: a.openingDate,
       ownerName: a.ownerName ?? '',
       ownerEmail: a.ownerEmail ?? '',
+      bank: a.bank ?? '',
+      accountNumber: a.accountNumber ?? '',
     });
   }
 
@@ -75,6 +81,17 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
       return;
     }
     const owner = { ownerName: draft.ownerName.trim() || null, ownerEmail: draft.ownerEmail.trim() || null };
+    // 은행 · 계좌번호 ('오늘 보낼 돈'에서 복사). 비우면 없앰
+    const bankInfo = (a: Account): Account => {
+      const next: Account = { ...a };
+      const bank = draft.bank.trim();
+      const no = draft.accountNumber.trim();
+      if (bank) next.bank = bank;
+      else delete next.bank;
+      if (no) next.accountNumber = no;
+      else delete next.accountNumber;
+      return next;
+    };
     const balance = draft.openingBalance ?? 0;
     const ok = draft.id
       ? await run(
@@ -82,14 +99,16 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
           async () => {
             const prev = ledger.data.accounts.find((a) => a.id === draft.id);
             if (!prev) throw new Error('통장을 찾을 수 없어요');
-            await ledger.saveAccount({
-              ...prev,
-              ...owner,
-              name,
-              role: draft.role,
-              openingBalance: balance,
-              openingDate: draft.openingDate || prev.openingDate,
-            });
+            await ledger.saveAccount(
+              bankInfo({
+                ...prev,
+                ...owner,
+                name,
+                role: draft.role,
+                openingBalance: balance,
+                openingDate: draft.openingDate || prev.openingDate,
+              }),
+            );
             // 한 이메일은 한 통장에만: 같은 주인 이메일인 다른 통장은 비워요 (멤버 화면의 수입통장과 같게)
             if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, prev.id);
           },
@@ -99,8 +118,9 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
           'save',
           async () => {
             const created = await ledger.addAccount({ ...owner, name, role: draft.role, openingBalance: balance });
-            if (draft.openingDate && draft.openingDate !== created.openingDate) {
-              await ledger.saveAccount({ ...created, openingDate: draft.openingDate });
+            const withBank = bankInfo({ ...created, openingDate: draft.openingDate || created.openingDate });
+            if (withBank.openingDate !== created.openingDate || withBank.bank || withBank.accountNumber) {
+              await ledger.saveAccount(withBank);
             }
             if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, created.id);
           },
@@ -246,6 +266,18 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
               emailError={emailError}
               emailHint={ownerEmailHint(draft.ownerEmail)}
             />
+            <Field label="은행" optional hint="월급통장에서 이 통장으로 보낼 때 '오늘 보낼 돈'에 보여요.">
+              <TextInput value={draft.bank} maxLength={20} placeholder="예: 카카오뱅크" onChange={(e) => setDraft({ ...draft, bank: e.target.value })} />
+            </Field>
+            <Field label="계좌번호" optional hint="'오늘 보낼 돈'에서 눌러 복사해요. 가계부 시트에만 저장돼요.">
+              <TextInput
+                value={draft.accountNumber}
+                maxLength={30}
+                inputMode="numeric"
+                placeholder="예: 3333-01-1234567"
+                onChange={(e) => setDraft({ ...draft, accountNumber: e.target.value })}
+              />
+            </Field>
             <Field label="시작 잔액">
               <MoneyInput value={draft.openingBalance} onChange={(v) => setDraft({ ...draft, openingBalance: v })} allowNegative />
             </Field>

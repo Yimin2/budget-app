@@ -316,6 +316,8 @@ export interface LedgerApi {
   ): Promise<Account>;
   addTransfer(input: Pick<Transfer, 'date' | 'kind' | 'fromAccountId' | 'toAccountId' | 'amount' | 'memo'>): Promise<void>;
   deleteTransfer(id: Id): Promise<void>;
+  /** '오늘 보낼 돈': 배분 이체를 보냈다고(또는 자동이체를 바꿨다고) 표시 · 되돌리기 */
+  markSent(ids: Id[], sent: boolean): Promise<void>;
   adjustBalance(accountId: Id, actual: Won): Promise<void>;
   // 설정
   saveRule(rule: AllocationRule): Promise<void>;

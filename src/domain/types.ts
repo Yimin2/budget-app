@@ -38,6 +38,10 @@ export interface Account {
   /** 주인 이메일 (선택). 빈 셀은 null */
   ownerEmail: string | null;
   deleted: boolean;
+  /** 은행 이름 ('오늘 보낼 돈'에 보여요). 나중에 더한 칸이라 없을 수 있어요 */
+  bank?: string;
+  /** 계좌번호 ('오늘 보낼 돈'에서 복사해요). 나중에 더한 칸이라 없을 수 있어요 */
+  accountNumber?: string;
 }
 
 /**
@@ -65,6 +69,8 @@ export interface AllocationRule {
    * 금액을 확인하거나 고치면 지워요
    */
   needsReview?: boolean;
+  /** 은행 자동이체로 보내는 배분 ('오늘 보낼 돈'에서 따로 보내지 않아요. 금액이 바뀌면 바꿔 달라고 알려요) */
+  autoDebit?: boolean;
   deleted: boolean;
 }
 
@@ -113,6 +119,8 @@ export interface Transfer {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   deleted: boolean;
+  /** '오늘 보낼 돈'에서 [보냈어요]를 누른 시각 (배분 이체). 나중에 더한 칸이라 없을 수 있어요 */
+  sentAt?: string;
 }
 
 /**
