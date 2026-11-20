@@ -373,7 +373,8 @@ export interface LedgerApi {
   mergeCategory(sourceId: Id, targetId: Id): Promise<CategoryMergePlan>;
   undoCategoryMerge(plan: CategoryMergePlan): Promise<void>;
   // 월말
-  decideMonthEnd(choice: 'reservoir' | 'carryover'): Promise<void>;
+  /** 지난달 남은 생활비(남은 항목)를 보낼 곳. 넘친 항목은 무엇을 골라도 다음 달 같은 항목에서 빠져요 */
+  decideMonthEnd(choice: 'reservoir' | 'carryover' | 'allowance'): Promise<void>;
   // 멤버
   /** 멤버 초대. incomeAccountId 를 주면 그 수입통장과 이어요 (linkMemberAccount) */
   inviteMember(email: string, displayName: string, incomeAccountId?: Id | null): Promise<void>;

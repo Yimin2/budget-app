@@ -1,19 +1,20 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { addMonths, formatMonthKo, formatWon, monthOf } from '@/domain';
+import { addMonths, allowanceTargets, formatMonthKo, formatWon, monthOf } from '@/domain';
 import { useLedger, useSession } from '@/state';
 import { Button, Dialog, Icon, isIconName, useToast } from '@/ui';
 import './screens.css';
 
-type Choice = 'reservoir' | 'carryover';
+type Choice = 'reservoir' | 'carryover' | 'allowance';
 
 /**
  * 월말 처리. 지난 달 생활비가 남았고 아직 아무도 고르지 않았으면 저절로 열려요.
  * 고르지 않은 달이 여럿이면 오래된 달부터 차례로 물어요 (한 달을 고르면 다음 달이 이어서 보여요).
  * '나중에 고를게요' 로 닫으면 이번 접속 동안은 다시 열지 않아요 (다음에 열면 다시 물어요).
  * 이월하는 달은 남은 달의 다음 달이에요 — 지난달이면 '이번 달', 더 앞이면 '12월'처럼 달 이름으로 적어요.
- * 항목별 남은 돈(넘긴 항목은 음수)을 보여 줘요. 이월하면 항목마다 같은 항목 예산에 더해지고, 저수지로 보내면 합계 한 번에 보내요.
+ * 항목별 남은 돈(넘긴 항목은 음수)을 보여 줘요. 넘친 항목은 고르지 않아도 다음 달 같은 항목 예산에서 빠지고,
+ * 남은 항목의 돈만 세 곳 중 골라요: 다음 달로 넘기기 · 개인 지출용(주인 용돈 통장, 없으면 숨김) · 저수지로 보내기.
  */
 export function MonthEndDialog() {
   const ledger = useLedger();
@@ -48,7 +49,9 @@ export function MonthEndDialog() {
     const what =
       row.choice === 'reservoir'
         ? `저수지로 ${amount}을 보냈어요`
-        : `${amount}을 ${targetLabel(w.month, ledger.today)} 생활비로 넘겼어요`;
+        : row.choice === 'allowance'
+          ? `용돈 통장으로 ${amount}을 보냈어요`
+          : `${amount}을 ${targetLabel(w.month, ledger.today)} 생활비로 넘겼어요`;
     if (byOther) toast.show(`${ledger.displayName(row.decidedBy!)}님이 먼저 골랐어요. ${what}`, { tone: 'info' });
     else toast.success(what);
   }, [data, ledgerId, me, ledger, toast]);
@@ -75,6 +78,8 @@ export function MonthEndDialog() {
   const amountText = formatWon(pending.leftover);
   const target = targetLabel(pending.month, ledger.today);
   const showItems = pending.items.length > 1 || (pending.items.length === 1 && pending.items[0]!.categoryId !== null);
+  const allowance = data ? allowanceTargets(data, pending.month, pending.items) : null;
+  const overText = pending.over < 0 ? formatWon(-pending.over) : null;
 
   return (
     <Dialog
@@ -83,24 +88,28 @@ export function MonthEndDialog() {
       dismissible={!busy}
       wide
       title={`${isLastMonth ? '지난달' : monthText} 생활비가 ${amountText} 남았어요`}
-      description={`${monthText} 생활비를 다 쓰지 않았어요. 남은 돈을 어디로 보낼지 골라 주세요.`}
+      description={
+        overText
+          ? `넘친 항목 ${overText}은 ${target} 같은 항목 예산에서 저절로 빼요. 남은 돈만 어디로 보낼지 골라 주세요.`
+          : `${monthText} 생활비를 다 쓰지 않았어요. 남은 돈을 어디로 보낼지 골라 주세요.`
+      }
       actions={
         <>
           <Button variant="ghost" onClick={() => setDismissedKey(key)} disabled={busy !== null}>
             나중에 고를게요
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => decide('carryover')}
-            loading={busy === 'carryover'}
-            disabled={busy === 'reservoir'}
-          >
-            {target} 생활비로 넘기기
+          <Button variant="outline" onClick={() => decide('carryover')} loading={busy === 'carryover'} disabled={busy !== null && busy !== 'carryover'}>
+            {target}로 넘기기
           </Button>
+          {allowance ? (
+            <Button variant="outline" onClick={() => decide('allowance')} loading={busy === 'allowance'} disabled={busy !== null && busy !== 'allowance'}>
+              개인 지출용
+            </Button>
+          ) : null}
           <Button
             onClick={() => decide('reservoir')}
             loading={busy === 'reservoir'}
-            disabled={!reservoir || busy === 'carryover'}
+            disabled={!reservoir || (busy !== null && busy !== 'reservoir')}
             data-autofocus=""
           >
             저수지로 보내기
@@ -122,7 +131,7 @@ export function MonthEndDialog() {
                   {i.name}
                 </span>
                 <span className={i.leftover < 0 ? 'amt bad' : 'amt'}>
-                  {i.leftover < 0 ? `${formatWon(-i.leftover)} 넘음` : formatWon(i.leftover)}
+                  {i.leftover < 0 ? `${formatWon(-i.leftover)} 넘음 · ${target}에서 빼요` : formatWon(i.leftover)}
                 </span>
               </li>
             ))}
@@ -130,26 +139,33 @@ export function MonthEndDialog() {
         ) : null}
         <ul className="me-choices">
           <li className="me-choice">
+            <Icon name="repeat" size={20} />
+            <div>
+              <strong>{target}로 넘기기</strong>
+              <span>
+                {showItems ? `항목마다 남은 돈을 ${target} 같은 항목 예산에 더해요` : `${target} 생활비가 ${amountText} 늘어나요`}
+              </span>
+            </div>
+          </li>
+          {allowance ? (
+            <li className="me-choice">
+              <Icon name="wallet" size={20} />
+              <div>
+                <strong>개인 지출용</strong>
+                <span>{allowance.map((a) => `${a.to.name}에 ${formatWon(a.amount)}`).join(' · ')}을 보내요 (생활비 통장 → 용돈 통장 이체로 기록)</span>
+              </div>
+            </li>
+          ) : null}
+          <li className="me-choice">
             <Icon name="piggy-bank" size={20} />
             <div>
               <strong>저수지로 보내기</strong>
               <span>
                 {reservoir
                   ? ledger.livingViews.length > 1
-                    ? `사람마다 남은 생활비를 각자의 생활비 통장 → ${reservoir.name} 이체로 기록해요`
-                    : `합계 ${amountText}을 ${livingAccountName ?? '생활비 통장'} → ${reservoir.name} 이체 한 번으로 기록해요`
+                    ? `사람마다 남은 돈을 각자의 생활비 통장 → ${reservoir.name} 이체로 기록해요`
+                    : `${amountText}을 ${livingAccountName ?? '생활비 통장'} → ${reservoir.name} 이체 한 번으로 기록해요`
                   : '저수지통장이 없어서 고를 수 없어요. 설정에서 통장을 추가할 수 있어요'}
-              </span>
-            </div>
-          </li>
-          <li className="me-choice">
-            <Icon name="repeat" size={20} />
-            <div>
-              <strong>{target} 생활비로 넘기기</strong>
-              <span>
-                {showItems
-                  ? `항목마다 남은 돈을 ${target} 같은 항목 예산에 더해요. 넘긴 항목은 그만큼 줄어요`
-                  : `${target} 생활비가 ${amountText} 늘어나요`}
               </span>
             </div>
           </li>

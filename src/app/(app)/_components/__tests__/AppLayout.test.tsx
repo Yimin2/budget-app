@@ -209,7 +209,7 @@ describe('앱 틀 (app)/layout', () => {
     await startDemo(h);
     const dialog = await screen.findByRole('dialog');
     const pending = current(h).ledger.pendingMonthEnd!;
-    fireEvent.click(within(dialog).getByRole('button', { name: '이번 달 생활비로 넘기기' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '이번 달로 넘기기' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const row = current(h).ledger.data!.monthEnds.find((m) => m.month === '2026-10')!;
     expect(row.choice).toBe('carryover');

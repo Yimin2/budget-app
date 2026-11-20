@@ -4,7 +4,7 @@ import type { Expense, Id, ISODate, LedgerData, Transfer, Won } from './types';
 const MONTH_END_PREFIX = 'monthend:';
 
 /**
- * 잔액에 넣는 이체인지: 삭제 안 됨 · done · 그리고 월말 처리 이체(monthend:<월>)는 그달 월말 행이 '저수지'로 정해졌을 때만.
+ * 잔액에 넣는 이체인지: 삭제 안 됨 · done · 그리고 월말 처리 이체(monthend:<월>)는 그달 월말 행이 '저수지' · '용돈'으로 정해졌을 때만.
  * (두 사람이 동시에 다른 선택을 하거나, 이체만 저장되고 월말 행 저장이 실패해도 돈이 두 번 잡히지 않게)
  */
 export function isCountedTransfer(data: LedgerData, t: Transfer): boolean {
@@ -12,7 +12,7 @@ export function isCountedTransfer(data: LedgerData, t: Transfer): boolean {
   if (t.id.startsWith(MONTH_END_PREFIX)) {
     // 사람별 생활비 통장이 여럿이면 monthend:<월>@<통장id>
     const month = t.id.slice(MONTH_END_PREFIX.length).split('@')[0];
-    return data.monthEnds.some((m) => m.month === month && m.choice === 'reservoir');
+    return data.monthEnds.some((m) => m.month === month && (m.choice === 'reservoir' || m.choice === 'allowance'));
   }
   return true;
 }

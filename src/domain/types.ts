@@ -301,7 +301,8 @@ export interface Trip {
   deleted: boolean;
 }
 
-export type MonthEndChoice = 'pending' | 'reservoir' | 'carryover';
+/** allowance = 남은 돈을 주인 용돈 통장으로 (개인 지출용, 2026-11) */
+export type MonthEndChoice = 'pending' | 'reservoir' | 'carryover' | 'allowance';
 
 /** 월말 항목별 남은 돈. categoryId=null 은 예전 '생활비' 한 줄 또는 '기타(예산 없음)' 묶음 */
 export interface MonthEndItem {
@@ -326,6 +327,11 @@ export interface MonthEnd {
    * null = 예전 기록 (항목 구분 없음) → 이월 금액 전체가 categoryId=null 묶음으로 간다
    */
   items: MonthEndItem[] | null;
+  /**
+   * 넘친 돈은 언제나 다음 달 같은 항목에서 빼요 (2026-11부터 고른 달). 이때 leftover 는 남은 항목(양수)만의 합이고,
+   * 저수지 · 용돈으로 보내도 넘친 항목(음수)은 다음 달로 넘어가요. 예전 기록(없음)은 예전처럼 합계로 셈
+   */
+  overCarried?: boolean;
 }
 
 export interface Category {
@@ -516,7 +522,10 @@ export interface LivingStatus {
 /** 아직 고르지 않은 월말 처리 (항목별 남은 돈 포함) */
 export interface PendingMonthEnd {
   month: YearMonth;
+  /** 남은 항목(양수)만의 합. 이 돈의 갈 곳을 골라요 */
   leftover: Won;
+  /** 넘친 항목(음수)의 합 (0 이하). 고르지 않아도 다음 달 같은 항목에서 빠져요 */
+  over: Won;
   items: (MonthEndItem & { name: string; icon: string })[];
 }
 

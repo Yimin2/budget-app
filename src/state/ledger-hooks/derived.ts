@@ -72,7 +72,11 @@ export function useLedgerDerived(ctx: LedgerCoreCtx) {
         : null,
     [data, today, eventProjection],
   );
-  const pendingMonthEnd = useMemo(() => (data ? pendingMonthEndDomain(data, today) : null), [data, today]);
+  // 남은 돈이 있는 달만 물어요 (넘친 돈만 있는 달은 불러올 때 저절로 처리)
+  const pendingMonthEnd = useMemo(() => {
+    const p = data ? pendingMonthEndDomain(data, today) : null;
+    return p && p.leftover > 0 ? p : null;
+  }, [data, today]);
   const claims = useMemo(() => (data ? summarizeClaims(data, today) : null), [data, today]);
   const claimPayers = useMemo(() => (data ? claimPayersDomain(data) : []), [data]);
   const settlement = useMemo(

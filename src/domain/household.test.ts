@@ -121,7 +121,7 @@ describe('사람별 생활비 월말 처리', () => {
       { categoryId: 'food', leftover: 70_000, name: '가람 식비', icon: 'utensils', accountId: a.id },
       { categoryId: 'food', leftover: -10_000, name: '나래 식비', icon: 'utensils', accountId: b.id },
     ]);
-    expect(pendingMonthEnd(base(), '2026-11-02')?.leftover).toBe(60_000);
+    expect(pendingMonthEnd(base(), '2026-11-02')).toMatchObject({ leftover: 70_000, over: -10_000 });
   });
 
   it('저수지로: 남은 돈이 있는 통장마다 한 건씩 결정적 id 로 보내고, 월말 행이 저수지일 때만 잔액에 들어가요', () => {

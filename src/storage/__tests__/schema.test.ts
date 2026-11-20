@@ -11,7 +11,7 @@ describe('schema', () => {
     expect(canonicalHeaders('transfers')).toEqual([
       'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨', '보냄',
     ]);
-    expect(canonicalHeaders('monthEnds')).toEqual(['월', '남은생활비', '처리', '처리자', '처리일시', '항목별']);
+    expect(canonicalHeaders('monthEnds')).toEqual(['월', '남은생활비', '처리', '처리자', '처리일시', '항목별', '넘친돈이월']);
     expect(canonicalHeaders('accounts')).toEqual(['id', '이름', '역할', '시작잔액', '시작일', '순서', '주인', '주인이메일', '삭제됨', '은행', '계좌번호']);
     expect(canonicalHeaders('fixedExpenses')).toContain('나눠쓰기');
     expect(canonicalHeaders('forecasts')).toEqual([
@@ -48,7 +48,7 @@ describe('schema', () => {
       '2026-11-09T10:00:00.000Z', '2026-11-09T10:00:00.000Z', false, '',
     ]);
     expect(encodeRow('accounts', d.accounts[3]!)[2]).toBe('저수지');
-    expect(encodeRow('monthEnds', d.monthEnds[1]!)).toEqual(['2026-09', 0, '미정', '', '', '']);
+    expect(encodeRow('monthEnds', d.monthEnds[1]!)).toEqual(['2026-09', 0, '미정', '', '', '', '']);
     expect(encodeRow('monthEnds', d.monthEnds[0]!)[5]).toBe('{"c1":55000,"":-3000,"a-al|c1":1000}');
     expect(encodeRow('fixedExpenses', d.fixedExpenses[1]!)).toContain('한달');
   });
