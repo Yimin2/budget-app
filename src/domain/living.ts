@@ -167,11 +167,14 @@ interface Bucket {
  * accountId 의 항목만: 통장이 적힌 항목은 그 통장, 통장이 없는 예전 항목은 첫 생활비 통장(primary)
  */
 function carryItems(data: LedgerData, month: YearMonth, accountId: Id | null, primary: Id | null): MonthEndItem[] {
-  const prev = data.monthEnds.find((m) => m.month === addMonths(month, -1) && m.choice === 'carryover');
+  const prev = data.monthEnds.find((m) => m.month === addMonths(month, -1) && m.choice !== 'pending');
   if (!prev) return [];
+  // 이월이면 모든 항목, 저수지 · 용돈으로 보낸 달은 넘친 항목만 (넘친 돈은 언제나 다음 달에서 빼요, overCarried 기록만)
+  if (prev.choice !== 'carryover' && !prev.overCarried) return [];
   const all: MonthEndItem[] =
-    prev.items && prev.items.length > 0 ? prev.items : prev.leftover !== 0 ? [{ categoryId: null, leftover: prev.leftover }] : [];
-  return all.filter((i) => (i.accountId ? i.accountId === accountId : accountId === primary));
+    prev.items && prev.items.length > 0 ? prev.items : prev.leftover !== 0 && prev.choice === 'carryover' ? [{ categoryId: null, leftover: prev.leftover }] : [];
+  const carried = prev.choice === 'carryover' ? all : all.filter((i) => i.leftover < 0);
+  return carried.filter((i) => (i.accountId ? i.accountId === accountId : accountId === primary));
 }
 
 /**

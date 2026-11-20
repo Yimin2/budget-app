@@ -4,7 +4,7 @@ import {
   mergeMembers, type MemberSelf, type SharingList, 
   monthOf, pendingAllowanceIncome, pendingAutoRecords,
   projectEventAccount, pendingSnapshot, toISODate,
-  duplicateAutoIncome,
+  autoMonthEnds, duplicateAutoIncome,
 } from '@/domain';
 import type { ISODate, LedgerData } from '@/domain/types';
 import { isConflict } from '@/storage/sheets';
@@ -300,6 +300,25 @@ export function useLedgerCore() {
   );
 
   /**
+   * 넘친 돈만 있는 지난달(남은 항목 없음)은 묻지 않고 월말을 적어요 (2026-11): 넘친 항목을 다음 달 같은 항목 예산에서 빼요.
+   * 쓰지 못하면(보기 권한 등) 그대로 두고 다음에 열 때 다시 해 봐요
+   */
+  const recordOverspentMonths = useCallback(
+    async (repo: LedgerRepository, loaded: LedgerData): Promise<LedgerData> => {
+      const rows = autoMonthEnds(loaded, todayRef.current, nowIso());
+      if (rows.length === 0) return loaded;
+      try {
+        await repo.upsertMany('monthEnds', rows);
+      } catch {
+        return loaded;
+      }
+      const months = new Set(rows.map((r) => r.month));
+      return { ...loaded, monthEnds: [...loaded.monthEnds.filter((m) => !months.has(m.month)), ...rows] };
+    },
+    [nowIso, todayRef],
+  );
+
+  /**
    * 기존 시트 자동 고치기 (8-2): 예전 '용돈' 고정지출 행을 용돈 통장으로 가는 배분 또는 일반 고정비로 옮겨요.
    * 구글 시트 가계부만. 배분 → 고정지출 순서로 한 번에 쓰고(다시 해도 같음), 다 썼을 때만 한 번 알려요
    */
@@ -374,7 +393,8 @@ export function useLedgerCore() {
       const moved = await migrateAllowances(repo, members);
       const repaired = await repairAllowanceRules(repo, moved, todayRef.current);
       const kinds = await migrateRuleKinds(repo, repaired, todayRef.current);
-      const fresh = await removeDuplicateIncome(repo, kinds);
+      const deduped = await removeDuplicateIncome(repo, kinds);
+      const fresh = await recordOverspentMonths(repo, deduped);
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
       const merged = withPendingWrites(synced, loadStart);
@@ -403,7 +423,7 @@ export function useLedgerCore() {
     } finally {
       setLoadingCount((n) => n - 1);
     }
-  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, removeDuplicateIncome, syncAutoRecords, withPendingWrites, saveForecastSnapshot]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, removeDuplicateIncome, recordOverspentMonths, syncAutoRecords, withPendingWrites, saveForecastSnapshot]);
   const loadAllRef = useRef(loadAll);
   useEffect(() => {
     loadAllRef.current = loadAll;

@@ -338,7 +338,7 @@ export const TRANSFER_STATUS_LABELS: Record<TransferStatus, string> = { done: '�
 export const FIXED_KIND_LABELS: Record<FixedKind, string> = { bill: '일반', living: '생활비', allowance: '용돈', installment: '할부' };
 export const EVENT_STATUS_LABELS: Record<EventStatus, string> = { planned: '예정', done: '완료', canceled: '취소' };
 export const REPEAT_LABELS: Record<Repeat, string> = { none: '없음', monthly: '매월', yearly: '매년' };
-export const MONTH_END_LABELS: Record<MonthEndChoice, string> = { pending: '미정', reservoir: '저수지', carryover: '이월' };
+export const MONTH_END_LABELS: Record<MonthEndChoice, string> = { pending: '미정', reservoir: '저수지', carryover: '이월', allowance: '용돈' };
 export const LEDGER_KIND_LABELS: Record<LedgerKind, string> = { shared: '공용', personal: '개인' };
 /** 생활비 항목 쓰는 방식. 빈 셀은 하루 (예전 생활비 한 줄도 지금처럼 하루에 나눠 써요) */
 export const SPREAD_LABELS: Record<LivingSpread, string> = { daily: '하루', monthly: '한달' };
@@ -570,6 +570,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('choice', '처리', enumCodec(MONTH_END_LABELS, 'pending')),
       c('decidedBy', '처리자', optStr), c('decidedAt', '처리일시', optTs),
       c('items', '항목별', monthEndItems),
+      // 넘친 돈은 다음 달에서 빼요 (2026-11). 나중에 더한 열이라 빈 칸 = 예전 기록(합계로 셈)
+      c('overCarried', '넘친돈이월', yesFlag),
     ],
   },
   categories: {
