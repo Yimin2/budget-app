@@ -4,7 +4,7 @@ import { accountBalance } from './balances';
 import { projectEventAccount } from './events';
 import { autoTransferId } from './ids';
 import {
-  conflictingRemainderRule, incomeRecordId, paydayPlans, pendingIncomeRecords, plannedIncome, projectRemainders, remainderAmount,
+  conflictingRemainderRule, duplicateAutoIncome, incomeRecordId, incomeRecorded, paydayPlans, plannedIncome, projectRemainders, remainderAmount,
 } from './income';
 import { pendingAutoRecords } from './recurring';
 import type { AllocationRule, IncomePlan, LedgerData } from './types';
@@ -49,67 +49,82 @@ function household(extra: Partial<LedgerData> = {}): LedgerData {
   });
 }
 
+/** 직접 기록한 월급 (계획 날짜 · 금액 그대로) */
+const in21 = transfer({ id: 'in-21', date: '2026-11-21', kind: 'income', toAccountId: salary.id, amount: 2_970_000 });
+const in25 = transfer({ id: 'in-25', date: '2026-11-25', kind: 'income', toAccountId: salary.id, amount: 3_000_000 });
+
 function withRecords(data: LedgerData, today: string): LedgerData {
   const auto = pendingAutoRecords(data, today, 'a@x', NOW);
   return { ...data, transfers: [...data.transfers, ...auto.transfers], expenses: [...data.expenses, ...auto.expenses] };
 }
 
 describe('수입 계획', () => {
-  it('받는 날이 지난 회차만 수입으로 기록하고 id 는 계획과 월로 정해요', () => {
-    const d = household();
-    expect(pendingIncomeRecords(d, '2026-11-20', 'a@x', NOW)).toEqual([]);
-    const recs = pendingIncomeRecords(d, '2026-11-21', 'a@x', NOW);
-    expect(recs.map((t) => [t.id, t.kind, t.toAccountId, t.amount, t.date, t.memo])).toEqual([
-      [incomeRecordId('garam', '2026-11'), 'income', salary.id, 2_970_000, '2026-11-21', '가람 월급'],
-    ]);
-    // 이미 있으면(지운 것도) 다시 만들지 않아요
-    expect(pendingIncomeRecords({ ...d, transfers: [{ ...recs[0]!, deleted: true }] }, '2026-11-21', 'a@x', NOW)).toEqual([]);
+  it('월급은 직접 기록해요: 받는 날이 지나도 수입을 자동으로 만들지 않아요', () => {
+    const recs = pendingAutoRecords(household(), '2026-11-30', 'a@x', NOW);
+    expect(recs.transfers.filter((t) => t.kind === 'income')).toEqual([]);
+    expect(plannedIncome(household(), '2026-11', salary.id)).toBe(5_970_000);
   });
 
-  it('받는 통장 시작일 전 · 지운 계획 · 끝난 계획은 기록하지 않아요', () => {
+  it('지운 계획 · 끝난 계획은 기대 수입에 넣지 않아요', () => {
     const d = household({
-      accounts: [{ ...salary, openingDate: '2026-11-22' }, livA, livB, allowA, allowB, eventAcc, reservoir, savings],
       incomePlans: [
         plan({ id: 'garam', personName: '가람', amount: 2_970_000, dayOfMonth: 21 }),
         plan({ id: 'gone', personName: '가람', amount: 1, dayOfMonth: 1, deleted: true }),
         plan({ id: 'old', personName: '나래', amount: 1, dayOfMonth: 1, startMonth: '2026-01', endMonth: '2026-10' }),
       ],
     });
-    expect(pendingIncomeRecords(d, '2026-11-30', 'a@x', NOW)).toEqual([]);
     expect(plannedIncome(d, '2026-11')).toBe(2_970_000);
-    expect(plannedIncome(household(), '2026-11', salary.id)).toBe(5_970_000);
+  });
+
+  it('직접 기록한 월급은 가장 가까운 계획 몫으로 받은 것으로 봐요 (예측이 두 번 세지 않게)', () => {
+    const d = household({ transfers: [transfer({ id: 'in-19', date: '2026-11-19', kind: 'income', toAccountId: salary.id, amount: 2_950_000 })] });
+    const [garam, narae] = d.incomePlans;
+    expect(incomeRecorded(d, garam!, '2026-11')).toBe(true);
+    expect(incomeRecorded(d, narae!, '2026-11')).toBe(false);
+  });
+
+  it('예전에 자동으로 만든 월급 기록이 직접 기록한 월급과 겹치면 겹친 것만 지워요 (다시 해도 같아요)', () => {
+    const auto = transfer({ id: incomeRecordId('garam', '2026-11'), date: '2026-11-21', kind: 'income', toAccountId: salary.id, amount: 2_970_000 });
+    const autoNarae = transfer({ id: incomeRecordId('narae', '2026-11'), date: '2026-11-25', kind: 'income', toAccountId: salary.id, amount: 3_000_000 });
+    const mine = transfer({ id: 'in-19', date: '2026-11-19', kind: 'income', toAccountId: salary.id, amount: 2_950_000 });
+    const d = household({ transfers: [auto, autoNarae, mine] });
+    const gone = duplicateAutoIncome(d, NOW);
+    expect(gone.map((t) => [t.id, t.deleted])).toEqual([[auto.id, true]]);
+    const after = { ...d, transfers: d.transfers.map((t) => gone.find((g) => g.id === t.id) ?? t) };
+    expect(duplicateAutoIncome(after, NOW)).toEqual([]);
   });
 });
 
 describe('나머지 전부 보내기', () => {
   it('같은 날 정한 금액을 먼저 보내고 남은 돈을 모두 보내요 (예: 297만 − 260.06만 = 36.94만)', () => {
-    const recs = pendingAutoRecords(household(), '2026-11-21', 'a@x', NOW);
+    const recs = pendingAutoRecords(household({ transfers: [in21] }), '2026-11-21', 'a@x', NOW);
     const rest = recs.transfers.find((t) => t.id === autoTransferId('a-rest-21', '2026-11'))!;
     expect(rest).toMatchObject({ fromAccountId: salary.id, toAccountId: reservoir.id, amount: 369_400, ruleId: 'a-rest-21', date: '2026-11-21' });
-    expect(accountBalance(withRecords(household(), '2026-11-21'), salary.id, '2026-11-21')).toBe(0);
+    expect(accountBalance(withRecords(household({ transfers: [in21] }), '2026-11-21'), salary.id, '2026-11-21')).toBe(0);
     // 25일 규칙은 아직
     expect(recs.transfers.some((t) => t.id === autoTransferId('a-rest-25', '2026-11'))).toBe(false);
   });
 
   it('늦게 열어 두 월급날이 함께 밀려 있어도 날짜 순으로 각자 그날 남은 돈만 보내요', () => {
-    const recs = pendingAutoRecords(household(), '2026-11-26', 'a@x', NOW);
+    const recs = pendingAutoRecords(household({ transfers: [in21, in25] }), '2026-11-26', 'a@x', NOW);
     const amount = (id: string) => recs.transfers.find((t) => t.id === autoTransferId(id, '2026-11'))?.amount;
     expect(amount('a-rest-21')).toBe(369_400);
     expect(amount('a-rest-25')).toBe(2_200_000);
     // 금액 0 인 정한 금액 배분(주식)은 기록하지 않아요
     expect(recs.transfers.some((t) => t.ruleId === 'r25-sav')).toBe(false);
-    const after = withRecords(household(), '2026-11-26');
+    const after = withRecords(household({ transfers: [in21, in25] }), '2026-11-26');
     expect(accountBalance(after, salary.id, '2026-11-26')).toBe(0);
     expect(accountBalance(after, reservoir.id, '2026-11-26')).toBe(2_569_400);
   });
 
   it('다시 계산해도 같은 기록이 또 생기지 않고, 한 번 기록된 금액은 그대로예요', () => {
-    const d = withRecords(household(), '2026-11-21');
+    const d = withRecords(household({ transfers: [in21] }), '2026-11-21');
     expect(pendingAutoRecords(d, '2026-11-21', 'a@x', NOW)).toEqual({ transfers: [], expenses: [] });
     // 21일 날짜로 돈이 더 들어와도 21일 나머지는 그대로, 25일 나머지 때 함께 나가요
     const late = { ...d, transfers: [...d.transfers, transfer({ date: '2026-11-21', kind: 'income', toAccountId: salary.id, amount: 100_000 })] };
     expect(pendingAutoRecords(late, '2026-11-22', 'a@x', NOW).transfers).toEqual([]);
-    const rest25 = pendingAutoRecords(late, '2026-11-25', 'a@x', NOW).transfers.find((t) => t.id === autoTransferId('a-rest-25', '2026-11'));
+    const late25 = { ...late, transfers: [...late.transfers, in25] };
+    const rest25 = pendingAutoRecords(late25, '2026-11-25', 'a@x', NOW).transfers.find((t) => t.id === autoTransferId('a-rest-25', '2026-11'));
     expect(rest25?.amount).toBe(2_300_000);
   });
 
@@ -157,7 +172,7 @@ describe('예측과 미리보기', () => {
       expect(est.get(`a-rest-25:${m}`)).toBe(2_200_000);
     }
     // 이미 기록된 회차는 빼요
-    const est2 = projectRemainders(withRecords(household(), '2026-11-21'), '2026-11-21', 2);
+    const est2 = projectRemainders(withRecords(household({ transfers: [in21] }), '2026-11-21'), '2026-11-21', 2);
     expect(est2.has('a-rest-21:2026-11')).toBe(false);
     expect(est2.get('a-rest-25:2026-11')).toBe(2_200_000);
   });
@@ -254,12 +269,10 @@ describe('월급이 들어온 날 배분하기', () => {
     expect(at('a-rest-25')).toMatchObject({ date: '2026-11-24', amount: 2_200_000 });
   });
 
-  it('수입 계획이 있어도 그 월급날 몫을 손으로 기록했으면 계획 기록은 만들지 않아요 (두 번 들어오지 않게)', () => {
+  it('수입 계획이 있어도 수입은 만들지 않고, 손으로 넣은 295만으로 21일 몫을 배분해요', () => {
     const data = household({ transfers: [income('2026-11-19', 2_950_000)] });
-    const recs = pendingIncomeRecords(data, '2026-11-26', 'a@x', NOW);
-    expect(recs.map((t) => t.id)).toEqual([incomeRecordId('narae', '2026-11')]);
-    // 21일 몫은 손으로 넣은 295만으로 배분
-    const auto = pendingAutoRecords(data, '2026-11-26', 'a@x', NOW);
+    const auto = pendingAutoRecords(data, '2026-11-21', 'a@x', NOW);
+    expect(auto.transfers.some((t) => t.kind === 'income')).toBe(false);
     expect(auto.transfers.find((t) => t.id === autoTransferId('a-rest-21', '2026-11'))).toMatchObject({ date: '2026-11-19', amount: 349_400 });
   });
 

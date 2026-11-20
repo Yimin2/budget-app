@@ -6,7 +6,7 @@ import { isCountedTransfer } from '../balances';
 import { eventRecords, isLiveTripExpense, liveTripIds, recordPhase } from '../eventRecords';
 import { monthOf } from '../dates';
 import { autoTransferId } from '../ids';
-import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isComputedRule, projectRemainders, ruleAmountFor } from '../income';
+import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecorded, isComputedRule, projectRemainders, ruleAmountFor } from '../income';
 import { ruleOccurrenceDate } from '../recurring';
 import { isLoanTransferId } from './loans';
 import type { Settlement } from './claimsAllocation';
@@ -51,7 +51,7 @@ function monthIncoming(data: LedgerData, accountId: Id, today: ISODate): Won {
     total += ruleAmountFor(r, month, remainders, data);
   }
   for (const p of activeIncomePlans(data, month, accountId)) {
-    if (incomePlanOccurrenceDate(data, p, month) === null || transferIds.has(incomeRecordId(p.id, month))) continue;
+    if (incomePlanOccurrenceDate(data, p, month) === null || incomeRecorded(data, p, month, transferIds)) continue;
     total += p.amount;
   }
   return total;

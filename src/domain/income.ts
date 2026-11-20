@@ -2,8 +2,9 @@
  * 수입 계획과 '나머지 전부 보내기' 배분 — PLAN 4-13.
  *
  * 수입 계획: 누가 · 얼마를 · 매달 며칠에 · 어느 통장(보통 함께 쓰는 월급통장)으로 받는지.
- * - 그날이 되면 수입 기록 income:<계획id>:<월> 이 자동으로 생긴다 (받는 통장 시작일 전 회차는 만들지 않는다)
- * - 기대 수입(배분과 비교할 수입)은 그달 유효한 계획 금액 합이다
+ * - 월급은 **직접 기록해요** (실제로 들어온 날 · 금액). 계획은 예상 금액이라 수입을 자동으로 기록하지 않아요 (2026-11)
+ * - 기대 수입(배분과 비교할 수입)은 그달 유효한 계획 금액 합이다. 그 월급날 몫을 기록했으면 받은 것으로 보고 예측에서 빼요
+ * - 예전에 자동으로 만든 수입 기록 income:<계획id>:<월> 은 그대로 둬요 (직접 기록한 월급과 겹치면 겹친 것만 지워요)
  *
  * 나머지 전부 보내기(kind='remainder'):
  * - 같은 날 같은 통장에서 나가는 정한 금액 배분 · 그날까지의 수입이 모두 들어간 뒤, 보내는 통장에 남은 돈을 모두 보낸다
@@ -82,40 +83,30 @@ function manualIncomeCovers(data: LedgerData, plan: IncomePlan, month: YearMonth
   );
 }
 
-/** 아직 만들지 않은 수입 계획 기록 (시작월 ~ 이번 달, 날짜가 오늘 이전(포함)인 회차) */
-export function pendingIncomeRecords(data: LedgerData, today: ISODate, author: string, now: string): Transfer[] {
-  const thisMonth = monthOf(today);
-  const ids = new Set(data.transfers.map((t) => t.id));
+/**
+ * 그달 이 계획의 월급을 받은 것으로 볼지: 예전 자동 기록(income:<계획id>:<월>)이 있거나, 같은 통장에 직접 기록한 수입이
+ * 이 계획 날짜에 가장 가까우면 true. 예측 · 정산이 기록된 월급과 계획 금액을 두 번 세지 않게 해요
+ */
+export function incomeRecorded(data: LedgerData, plan: IncomePlan, month: YearMonth, ids?: Set<string>): boolean {
+  const id = incomeRecordId(plan.id, month);
+  if (ids ? ids.has(id) : data.transfers.some((t) => t.id === id)) return true;
+  const date = incomePlanOccurrenceDate(data, plan, month);
+  return date !== null && manualIncomeCovers(data, plan, month, date);
+}
+
+/**
+ * 예전에 자동으로 만든 월급 기록 중 직접 기록한 월급과 겹치는 것 (지울 것, deleted=true 로 돌려줘요).
+ * 같은 통장 · 같은 달에 그 계획 날짜에 가장 가까운 직접 기록 수입이 있으면 겹친 거예요. 다시 해도 같아요
+ */
+export function duplicateAutoIncome(data: LedgerData, now: string): Transfer[] {
   const out: Transfer[] = [];
-  for (const plan of data.incomePlans ?? []) {
-    if (plan.deleted || plan.amount <= 0 || !isValidMonth(plan.startMonth)) continue;
-    const opening = data.accounts.find((a) => a.id === plan.accountId)?.openingDate;
-    let from = plan.startMonth;
-    if (opening && isValidMonth(monthOf(opening)) && compareMonth(monthOf(opening), from) > 0) from = monthOf(opening);
-    for (const m of monthRange(from, thisMonth)) {
-      const date = incomePlanOccurrenceDate(data, plan, m);
-      if (date === null || date > today) continue;
-      const id = incomeRecordId(plan.id, m);
-      if (ids.has(id)) continue;
-      // 이 계획 날짜에 가장 가까운 수입을 손으로 이미 기록했으면 (월급이 실제로 들어온 날 · 금액) 계획 기록은 만들지 않아요
-      if (manualIncomeCovers(data, plan, m, date)) continue;
-      ids.add(id);
-      out.push({
-        id,
-        date,
-        kind: 'income',
-        fromAccountId: null,
-        toAccountId: plan.accountId,
-        amount: plan.amount,
-        status: 'done',
-        ruleId: null,
-        memo: incomePlanMemo(plan),
-        author,
-        createdAt: now,
-        updatedAt: now,
-        deleted: false,
-      });
-    }
+  for (const t of data.transfers) {
+    if (t.deleted || t.kind !== 'income' || !t.id.startsWith('income:')) continue;
+    const [, planId, month] = t.id.split(':');
+    const plan = (data.incomePlans ?? []).find((p) => p.id === planId);
+    if (!plan || !month) continue;
+    const date = incomePlanOccurrenceDate(data, plan, month);
+    if (date !== null && manualIncomeCovers(data, plan, month, date)) out.push({ ...t, deleted: true, updatedAt: now });
   }
   return out;
 }
@@ -272,7 +263,7 @@ export function projectRemainders(data: LedgerData, today: ISODate, horizonMonth
     for (const month of monthRange(thisMonth, last)) {
       for (const p of activeIncomePlans(data, month, source)) {
         const date = incomePlanOccurrenceDate(data, p, month);
-        if (date === null || recorded.has(incomeRecordId(p.id, month))) continue;
+        if (date === null || incomeRecorded(data, p, month, recorded)) continue;
         events.push({ date, order: 0, delta: p.amount, remainder: null, key: p.id });
       }
       for (const r of data.rules) {

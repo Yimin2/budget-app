@@ -1034,7 +1034,7 @@ export function planImport(
   if (remainderCount > 0) warnings.push(`남는 돈 전부 ${remainderCount}개는 그날 남은 돈을 모두 보내요. 금액은 그날 기록될 때 정해져요`);
   const activePlans = (data.incomePlans ?? []).filter((p) => !p.deleted).length;
   if (rows.incomePlans.length > 0 && activePlans > 0) warnings.push(`가계부에 수입 계획이 이미 ${activePlans}개 있어요. 가져오면 함께 더해져요`);
-  if (rows.incomePlans.length > 0) warnings.push('수입 계획은 받는 날마다 수입을 자동으로 기록해요. 같은 월급을 손으로 또 기록하지 마세요');
+  if (rows.incomePlans.length > 0) warnings.push('수입 계획은 예상 금액이에요. 월급이 들어오면 직접 기록해 주세요');
   const activeFixed = data.fixedExpenses.filter((f) => !f.deleted).length;
   if (rows.fixedExpenses.length > 0 && activeFixed > 0) warnings.push(`가계부에 고정 지출 · 생활비 예산이 이미 ${activeFixed}개 있어요. 가져오면 함께 더해져요`);
 

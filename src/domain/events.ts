@@ -10,7 +10,7 @@ import { lunarToSolar, parseLunarMonthDay } from './holidays';
 import { tripOutflows } from './trips';
 import { ruleOccurrenceDate } from './recurring';
 import { manWon, usualForMonth, usualHistory, usualSpread } from './usual';
-import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isComputedRule, projectRemainders, ruleAmountFor } from './income';
+import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecorded, isComputedRule, projectRemainders, ruleAmountFor } from './income';
 import type {
   EventProjection, Id, ISODate, LedgerData, PlannedEvent, ProjectionMonth, ProjectionRange, Repeat, Shortage, ShortageFix, YearMonth, Won,
 } from './types';
@@ -193,7 +193,7 @@ function projectAccount(
   // 이 통장으로 들어올 수입 계획 중 아직 기록되지 않은 회차
   const incomeIn = (month: YearMonth) =>
     activeIncomePlans(data, month, accountId).reduce((s, p) => {
-      if (incomePlanOccurrenceDate(data, p, month) === null || transferIds.has(incomeRecordId(p.id, month))) return s;
+      if (incomePlanOccurrenceDate(data, p, month) === null || incomeRecorded(data, p, month, transferIds)) return s;
       return s + p.amount;
     }, 0);
 

@@ -4,6 +4,7 @@ import {
   mergeMembers, type MemberSelf, type SharingList, 
   monthOf, pendingAllowanceIncome, pendingAutoRecords,
   projectEventAccount, pendingSnapshot, toISODate,
+  duplicateAutoIncome,
 } from '@/domain';
 import type { ISODate, LedgerData } from '@/domain/types';
 import { isConflict } from '@/storage/sheets';
@@ -278,6 +279,27 @@ export function useLedgerCore() {
   );
 
   /**
+   * 월급은 직접 기록해요 (PLAN 4-13, 2026-11): 예전에 수입 계획이 자동으로 만든 월급 기록(income:…) 중
+   * 직접 기록한 월급과 겹치는 것만 지워요 (지운 표시, 다시 해도 같음). 겹친 게 있으면 한 번 알려요
+   */
+  const removeDuplicateIncome = useCallback(
+    async (repo: LedgerRepository, loaded: LedgerData): Promise<LedgerData> => {
+      const gone = duplicateAutoIncome(loaded, nowIso());
+      if (gone.length === 0) return loaded;
+      try {
+        await repo.upsertMany('transfers', gone);
+      } catch {
+        // 보기 권한 등: 그대로 두고 다음에 열 때 다시 해 봐요
+        return loaded;
+      }
+      setNotice(`직접 기록한 월급과 겹친 자동 월급 기록 ${gone.length}건을 지웠어요`);
+      const byId = new Map(gone.map((t) => [t.id, t]));
+      return { ...loaded, transfers: loaded.transfers.map((t) => byId.get(t.id) ?? t) };
+    },
+    [nowIso, setNotice],
+  );
+
+  /**
    * 기존 시트 자동 고치기 (8-2): 예전 '용돈' 고정지출 행을 용돈 통장으로 가는 배분 또는 일반 고정비로 옮겨요.
    * 구글 시트 가계부만. 배분 → 고정지출 순서로 한 번에 쓰고(다시 해도 같음), 다 썼을 때만 한 번 알려요
    */
@@ -351,7 +373,8 @@ export function useLedgerCore() {
       const members = await syncMembers(repo, await repo.load());
       const moved = await migrateAllowances(repo, members);
       const repaired = await repairAllowanceRules(repo, moved, todayRef.current);
-      const fresh = await migrateRuleKinds(repo, repaired, todayRef.current);
+      const kinds = await migrateRuleKinds(repo, repaired, todayRef.current);
+      const fresh = await removeDuplicateIncome(repo, kinds);
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
       const merged = withPendingWrites(synced, loadStart);
@@ -380,7 +403,7 @@ export function useLedgerCore() {
     } finally {
       setLoadingCount((n) => n - 1);
     }
-  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, syncAutoRecords, withPendingWrites, saveForecastSnapshot]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, removeDuplicateIncome, syncAutoRecords, withPendingWrites, saveForecastSnapshot]);
   const loadAllRef = useRef(loadAll);
   useEffect(() => {
     loadAllRef.current = loadAll;
