@@ -97,9 +97,11 @@ export function TransferDialog({ mode: initialMode, accountId, onClose, kindSwit
         memo: memo.trim(),
       });
       const toName = accounts.find((a) => a.id === to)?.name ?? '';
+      // 이 통장에서 나가는 배분이 있으면 수입을 기록하면서 계획대로 바로 배분해요 (오늘까지 날짜일 때)
+      const allocates = mode === 'income' && date <= ledger.today && (ledger.data?.rules ?? []).some((r) => !r.deleted && r.fromAccountId === to);
       toast.success(
         mode === 'income'
-          ? `${toName}에 ${formatWon(amount!)} 수입을 기록했어요`
+          ? `${toName}에 ${formatWon(amount!)} 수입을 기록했어요${allocates ? ' · 계획대로 배분했어요' : ''}`
           : `${toName}${ro(toName)} ${formatWon(amount!)} 옮긴 기록을 남겼어요`,
       );
       onClose();

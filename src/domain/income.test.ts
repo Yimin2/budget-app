@@ -214,3 +214,57 @@ describe('예전 가계부', () => {
     expect(plannedIncome(legacy, '2026-11')).toBe(0);
   });
 });
+
+describe('월급이 들어온 날 배분하기', () => {
+  /** 수입 계획 없이 월급을 손으로 기록하는 가계부 */
+  const manual = (extra: Partial<LedgerData> = {}) => household({ incomePlans: [], ...extra });
+  const income = (date: string, amount: number) => transfer({ id: `in-${date}`, date, kind: 'income', toAccountId: salary.id, amount });
+
+  it('월급이 배분일보다 일찍 들어오면 그날 바로 정한 금액과 나머지를 보내요 (예: 11/19 에 295만 → 21일 배분을 19일에)', () => {
+    const data = manual({ transfers: [income('2026-11-19', 2_950_000)] });
+    const recs = pendingAutoRecords(data, '2026-11-19', 'a@x', NOW);
+    const at = (id: string) => recs.transfers.find((t) => t.id === autoTransferId(id, '2026-11'));
+    expect(at('r21-a')).toMatchObject({ date: '2026-11-19', amount: 828_000 });
+    expect(at('r21-b')).toMatchObject({ date: '2026-11-19', amount: 1_272_600 });
+    expect(at('r21-ev')).toMatchObject({ date: '2026-11-19', amount: 500_000 });
+    // 295만 − 260.06만 = 34.94만이 저수지로
+    expect(at('a-rest-21')).toMatchObject({ date: '2026-11-19', amount: 349_400 });
+    // 25일 몫은 아직 (그 몫의 수입이 없어요)
+    expect(at('r25-a')).toBeUndefined();
+    expect(accountBalance(withRecords(data, '2026-11-19'), salary.id, '2026-11-19')).toBe(0);
+  });
+
+  it('월급이 배분일보다 늦게 들어오면, 배분일에 0원이라 못 보낸 나머지를 들어온 날 보내요', () => {
+    // 21일에 열었을 때는 수입이 없어 정한 금액만 나가고 나머지는 0 → 기록 안 됨
+    const before = withRecords(manual(), '2026-11-21');
+    expect(before.transfers.some((t) => t.id === autoTransferId('a-rest-21', '2026-11'))).toBe(false);
+    // 22일에 월급 297만을 기록하면 그날 남은 돈 36.94만을 보내요
+    const data = { ...before, transfers: [...before.transfers, income('2026-11-22', 2_970_000)] };
+    const rest = pendingAutoRecords(data, '2026-11-22', 'a@x', NOW).transfers.find((t) => t.id === autoTransferId('a-rest-21', '2026-11'));
+    expect(rest).toMatchObject({ date: '2026-11-22', amount: 369_400 });
+  });
+
+  it('두 사람 월급이 한 통장으로 들어오면 가장 가까운 월급날 몫으로 나눠요', () => {
+    const data = manual({ transfers: [income('2026-11-20', 2_970_000), income('2026-11-24', 3_000_000)] });
+    const recs = pendingAutoRecords(data, '2026-11-24', 'a@x', NOW);
+    const at = (id: string) => recs.transfers.find((t) => t.id === autoTransferId(id, '2026-11'));
+    expect(at('r21-a')?.date).toBe('2026-11-20');
+    expect(at('r25-a')?.date).toBe('2026-11-24');
+    expect(at('a-rest-21')).toMatchObject({ date: '2026-11-20', amount: 369_400 });
+    expect(at('a-rest-25')).toMatchObject({ date: '2026-11-24', amount: 2_200_000 });
+  });
+
+  it('수입 계획이 있어도 그 월급날 몫을 손으로 기록했으면 계획 기록은 만들지 않아요 (두 번 들어오지 않게)', () => {
+    const data = household({ transfers: [income('2026-11-19', 2_950_000)] });
+    const recs = pendingIncomeRecords(data, '2026-11-26', 'a@x', NOW);
+    expect(recs.map((t) => t.id)).toEqual([incomeRecordId('narae', '2026-11')]);
+    // 21일 몫은 손으로 넣은 295만으로 배분
+    const auto = pendingAutoRecords(data, '2026-11-26', 'a@x', NOW);
+    expect(auto.transfers.find((t) => t.id === autoTransferId('a-rest-21', '2026-11'))).toMatchObject({ date: '2026-11-19', amount: 349_400 });
+  });
+
+  it('수입이 없으면 예전처럼 정해 둔 날에 배분해요', () => {
+    const recs = pendingAutoRecords(household(), '2026-11-21', 'a@x', NOW);
+    expect(recs.transfers.find((t) => t.id === autoTransferId('r21-a', '2026-11'))?.date).toBe('2026-11-21');
+  });
+});

@@ -5,7 +5,7 @@ import { autoFixedExpenseId, autoTransferId } from './ids';
 import {
   installmentDay, installmentGroups, installmentMemo, installmentPayments, installmentPlanId, installmentRowEnd, isInstallment,
 } from './installments';
-import { isRemainderRule, pendingIncomeRecords, remainderAmount } from './income';
+import { isRemainderRule, paydayIncomeDates, pendingIncomeRecords, remainderAmount, ruleDueDate } from './income';
 import type { AllocationRule, AutoRecords, Expense, FixedExpense, Id, ISODate, LedgerData, Transfer, YearMonth } from './types';
 
 /** 이 통장들 중 가장 늦은 시작일 (모르는 통장은 건너뜀). 그날 전의 기록은 잔액에 들어가지 않는다 */
@@ -69,6 +69,7 @@ export function fixedOccurrenceDate(data: LedgerData, f: FixedExpense, month: Ye
  * - 미래 planned 이체가 같은 규칙 회차를 대신하지 않는다
  * - 통장 시작일보다 앞선 회차는 만들지 않는다 (시작 잔액에 이미 들어 있음). 시작월이 'YYYY-MM' 이 아니면 건너뛴다
  * - 수입 계획(PLAN 4-13): 받는 날이 지난 회차 → 수입 income:<계획id>:<월>
+ * - 월급이 들어온 날 배분: 그 월급날 몫의 수입이 기록돼 있으면 배분은 정해 둔 날 대신 수입이 들어온 날에 나가요 (ruleDueDate)
  * - 나머지 전부 보내기 규칙: 위 기록(수입 · 정한 금액 배분 · 고정 지출)을 모두 더한 뒤 날짜 순으로 하나씩 금액을 정한다
  *   (remainderAmount). 0 이면 만들지 않는다 (다음에 열 때 다시 계산). id 는 정한 금액 배분과 같은 auto:<규칙id>:<월>
  */
@@ -83,6 +84,15 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
     transferIds.add(t.id);
     transfers.push(t);
   }
+  // 수입 기록(방금 만든 계획 기록 포함)을 월급날에 붙여 둬요 (통장 · 달마다 한 번)
+  const withIncome: LedgerData = { ...data, transfers: [...data.transfers, ...transfers] };
+  const incomeCache = new Map<string, Map<ISODate, ISODate[]>>();
+  const dueOf = (rule: AllocationRule, m: YearMonth, planned: ISODate) => {
+    const key = `${rule.fromAccountId}|${m}`;
+    let map = incomeCache.get(key);
+    if (!map) incomeCache.set(key, (map = paydayIncomeDates(withIncome, rule.fromAccountId, m)));
+    return ruleDueDate(withIncome, rule, m, planned, map);
+  };
 
   const remainders: { rule: AllocationRule; month: YearMonth; date: ISODate }[] = [];
   for (const rule of data.rules) {
@@ -90,8 +100,10 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
     if (isRemainderRule(rule)) {
       const from = firstMonth(rule.startMonth, latestOpeningDate(data, [rule.fromAccountId, rule.toAccountId]));
       for (const m of monthRange(from, thisMonth)) {
-        const date = ruleOccurrenceDate(data, rule, m);
-        if (date === null || date > today || transferIds.has(autoTransferId(rule.id, m))) continue;
+        const planned = ruleOccurrenceDate(data, rule, m);
+        if (planned === null || transferIds.has(autoTransferId(rule.id, m))) continue;
+        const date = dueOf(rule, m, planned);
+        if (date > today) continue;
         remainders.push({ rule, month: m, date });
       }
       continue;
@@ -100,8 +112,10 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
     if (!auto && rule.amount <= 0) continue;
     const from = firstMonth(rule.startMonth, latestOpeningDate(data, [rule.fromAccountId, rule.toAccountId]));
     for (const m of monthRange(from, thisMonth)) {
-      const date = ruleOccurrenceDate(data, rule, m);
-      if (date === null || date > today) continue;
+      const planned = ruleOccurrenceDate(data, rule, m);
+      if (planned === null) continue;
+      const date = dueOf(rule, m, planned);
+      if (date > today) continue;
       const id = autoTransferId(rule.id, m);
       if (transferIds.has(id)) continue;
       // 필요한 만큼 (자동): 그 배분 기간의 고정 결제 + 생활비 항목 예산을 지금 정해 그대로 둔다. 0 이면 다음에 다시 (PLAN 4-15)

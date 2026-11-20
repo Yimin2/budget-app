@@ -63,8 +63,10 @@ export function useAccountActions(ctx: InstallmentActionsCtx) {
         ...stamp(),
       };
       await insertRows('transfers', [row], '기록하지 못했어요');
+      // 월급(수입)을 기록하면 그 월급날 배분을 바로 만들어요 (정해 둔 날을 기다리지 않고 들어온 날에)
+      if (row.kind === 'income') await syncAutoNow();
     },
-    [insertRows, stamp],
+    [insertRows, stamp, syncAutoNow],
   );
 
   const deleteTransfer = useCallback(
