@@ -11,7 +11,7 @@ import type { InstallmentActionsCtx } from './installments';
 /** 통장 · 이체 · 실제 잔액 맞추기 */
 export function useAccountActions(ctx: InstallmentActionsCtx) {
   const {
-    todayRef, nowIso, requireData, upsertRow, insertRows, stamp, syncAutoNow,
+    todayRef, nowIso, requireData, upsertRow, insertRows, stamp, syncAutoNow, upsertTransfers,
   } = ctx;
   /* ---------- 통장·이체 ---------- */
 
@@ -78,6 +78,25 @@ export function useAccountActions(ctx: InstallmentActionsCtx) {
     [requireData, upsertRow, nowIso],
   );
 
+  /** '오늘 보낼 돈'에서 보냈어요 · 바꿨어요 (sent=false 면 되돌려요). 여러 줄을 한 번에 */
+  const markSent = useCallback<LedgerApi['markSent']>(
+    async (ids, sent) => {
+      const { data: d } = requireData();
+      const at = nowIso();
+      const rows = d.transfers
+        .filter((t) => ids.includes(t.id) && !t.deleted)
+        .map((t) => {
+          const next: Transfer = { ...t, updatedAt: at };
+          if (sent) next.sentAt = at;
+          else delete next.sentAt;
+          return next;
+        });
+      if (rows.length === 0) return;
+      await upsertTransfers(rows, sent ? '보냈다고 표시하지 못했어요' : '되돌리지 못했어요');
+    },
+    [requireData, nowIso, upsertTransfers],
+  );
+
   const adjustBalance = useCallback(
     async (accountId: Id, actual: Won) => {
       const { data: d } = requireData();
@@ -102,7 +121,7 @@ export function useAccountActions(ctx: InstallmentActionsCtx) {
   );
 
   return {
-    saveAccount, addAccount, addTransfer, deleteTransfer, adjustBalance,
+    saveAccount, addAccount, addTransfer, deleteTransfer, markSent, adjustBalance,
   };
 }
 

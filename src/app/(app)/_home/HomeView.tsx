@@ -11,6 +11,7 @@ import styles from './home.module.css';
 import { MeChooser, TodayCard } from './TodayCard';
 import { LivingItemsCard, MonthSpentCard, LivingSetupCard } from './LivingItemsCard';
 import { QuickSuggestions } from './QuickSuggestions';
+import { SendCard } from './SendCard';
 import { EventAccountCard, RecentExpenses } from './HomeCards';
 
 /** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 부족 알림 · 이벤트통장 · 최근 지출 (통장 잔액은 내역) */
@@ -78,6 +79,8 @@ function HomeBody() {
   return (
     <>
       <div className={styles.col}>
+        {/* 월급을 기록해 배분이 생기면 은행에서 보낼 일 (다 보내면 사라져요) */}
+        <SendCard className={styles.oSend} />
         {ledger.meChoices.length > 0 ? <MeChooser names={ledger.meChoices} /> : null}
         {living && hasLivingBudget(living) ? (
           <TodayCard

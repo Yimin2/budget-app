@@ -2,7 +2,7 @@
 /** 월급(수입)을 기록하면 그 월급날 배분을 바로 만들어요 — 상태 계층 */
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { autoTransferId, incomeRecordId } from '@/domain';
+import { autoTransferId, incomeRecordId, sendList } from '@/domain';
 import type { Transfer } from '@/domain/types';
 import type { LedgerData } from '@/domain/types';
 import { createMemoryStorage, LocalBackend } from '@/storage';
@@ -120,5 +120,25 @@ describe('월급을 기록하면 계획대로 배분', () => {
     // 직접 기록한 월급은 그대로
     expect(L(r).data!.transfers.filter((t) => t.kind === 'income' && !t.deleted && t.toAccountId === salary.id).map((t) => t.amount)).toEqual([2_950_000]);
     expect((await stored(r)).transfers.find((t) => t.id === auto.id)?.deleted).toBe(true);
+  });
+
+  it('보냈어요를 누르면 배분 이체에 보낸 시각이 시트에 남고, 되돌리면 지워져요', async () => {
+    const r = setup();
+    await startDemo(r);
+    const salary = L(r).data!.accounts.find((a) => a.name === '월급통장')!;
+    await act(async () => {
+      await L(r).addTransfer({ date: '2026-11-20', kind: 'income', fromAccountId: null, toAccountId: salary.id, amount: 2_950_000, memo: '민지 월급' });
+    });
+    await waitFor(() => expect(sendList(L(r).data!, L(r).today).pendingCount).toBeGreaterThan(0));
+    const first = sendList(L(r).data!, L(r).today).sources[0]!.items.find((i) => i.pending)!;
+    await act(async () => {
+      await L(r).markSent([first.transfer.id], true);
+    });
+    expect(L(r).data!.transfers.find((t) => t.id === first.transfer.id)?.sentAt).toBeTruthy();
+    expect((await stored(r)).transfers.find((t) => t.id === first.transfer.id)?.sentAt).toBeTruthy();
+    await act(async () => {
+      await L(r).markSent([first.transfer.id], false);
+    });
+    expect(L(r).data!.transfers.find((t) => t.id === first.transfer.id)?.sentAt).toBeUndefined();
   });
 });

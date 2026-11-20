@@ -200,6 +200,11 @@ export function IncomingRules({
                   sub={
                     <>
                       <span>{RULE_KIND_LABEL[kind]}</span>
+                      {r.autoDebit ? (
+                        <Badge size="sm" tone="info" dot={false}>
+                          자동이체
+                        </Badge>
+                      ) : null}
                       {label ? (
                         <Badge size="sm" tone="info">
                           {label}
@@ -241,6 +246,8 @@ interface RuleDraft {
   kind: RuleKind;
   amount: number | null;
   day: number;
+  /** 은행 자동이체로 보내요 ('오늘 보낼 돈'에서 따로 보내지 않아요) */
+  autoDebit: boolean;
 }
 
 type RuleErrors = Partial<Record<'from' | 'amount' | 'kind', string>>;
@@ -266,12 +273,12 @@ function RuleEditor({
   const [draft, setDraft] = useState<RuleDraft>(() => {
     if (rule) {
       const kind = kindOf(rule);
-      return { fromAccountId: rule.fromAccountId, kind, amount: kind === 'fixed' ? rule.amount : null, day: rule.dayOfMonth };
+      return { fromAccountId: rule.fromAccountId, kind, amount: kind === 'fixed' ? rule.amount : null, day: rule.dayOfMonth, autoDebit: rule.autoDebit === true };
     }
     const from = ledger.incomeAccounts.find((a) => a.id !== to.id) ?? sources[0];
     const payday = (ledger.data.incomePlans ?? []).filter((p) => !p.deleted && p.accountId === from?.id).sort((a, b) => a.dayOfMonth - b.dayOfMonth)[0];
     // 생활비 통장은 '알아서 맞추기'가 기본, 용돈 · 이벤트통장 등은 '매달 같은 금액'
-    return { fromAccountId: from?.id ?? '', kind: autoTarget ? 'auto' : 'fixed', amount: null, day: payday?.dayOfMonth ?? 1 };
+    return { fromAccountId: from?.id ?? '', kind: autoTarget ? 'auto' : 'fixed', amount: null, day: payday?.dayOfMonth ?? 1, autoDebit: false };
   });
   const [errors, setErrors] = useState<RuleErrors>({});
   const title = rule ? `${to.name} 배분 고치기` : `${to.name} 들어오는 돈 추가`;
@@ -311,11 +318,17 @@ function RuleEditor({
             dayOfMonth: draft.day,
             startMonth: startMonthForNew(ledger.today, draft.day),
             endMonth: null,
+            ...(draft.autoDebit ? { autoDebit: true } : {}),
           });
           return;
         }
-        const prev = ledger.data.rules.find((r) => r.id === rule.id);
-        if (!prev) throw new Error('매달 배분 규칙을 찾을 수 없어요');
+        const found = ledger.data.rules.find((r) => r.id === rule.id);
+        if (!found) throw new Error('매달 배분 규칙을 찾을 수 없어요');
+        // 자동이체 표시는 먼저 그 자리에서 (금액을 바꿔 규칙이 나뉘어도 따라가요)
+        const prev: AllocationRule = { ...found };
+        if (draft.autoDebit) prev.autoDebit = true;
+        else delete prev.autoDebit;
+        if ((found.autoDebit === true) !== draft.autoDebit && kindOf(found) === draft.kind) await ledger.saveRule(prev);
         if (kindOf(prev) !== draft.kind) {
           // 방식을 바꾸면 그 자리에서 고쳐요 (이미 생긴 이체 기록은 그대로)
           await ledger.saveRule({ ...prev, fromAccountId: draft.fromAccountId, dayOfMonth: draft.day, kind: draft.kind, amount });
@@ -397,6 +410,10 @@ function RuleEditor({
       <Field label="이체일" hint={rule ? undefined : startMonthHint(ledger.today, draft.day)}>
         <Select value={String(draft.day)} onChange={(v) => setDraft({ ...draft, day: Number(v) })} options={DAY_OPTIONS} />
       </Field>
+      <label className="st-check">
+        <input type="checkbox" checked={draft.autoDebit} onChange={(e) => setDraft({ ...draft, autoDebit: e.target.checked })} />
+        <span>은행 자동이체로 보내요 (오늘 보낼 돈에서 따로 보내지 않고, 금액이 바뀌면 알려 줘요)</span>
+      </label>
       <div className={styles.monthActions}>
         <Button type="submit" loading={busy === 'save'} disabled={busy === 'delete'}>
           저장

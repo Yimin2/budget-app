@@ -1,0 +1,139 @@
+/* 홈 '오늘 보낼 돈' 카드 */
+.card {
+  gap: var(--space-3);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.count {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+}
+.lead {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-muted);
+}
+.source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sourceName {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'main amount'
+    'actions actions';
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.rowDone .toName,
+.rowDone .amount {
+  color: var(--text-muted);
+}
+.rowMain {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.toName {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 700;
+}
+.badge {
+  vertical-align: middle;
+}
+.bank {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.bankMissing {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+.change {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--warning-text);
+}
+.amount {
+  grid-area: amount;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.done {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 36px;
+  font-size: 14px;
+  color: var(--success-text);
+}
+.leftover {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+  font-size: 14px;
+  line-height: 22px;
+}
+.leftover > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.all {
+  align-self: flex-end;
+}

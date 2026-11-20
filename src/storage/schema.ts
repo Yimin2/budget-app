@@ -188,6 +188,13 @@ const month: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toYearMonth
 const optMonth: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toYearMonth(c) };
 const ts: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toTimestamp(c) ?? '' };
 const optTs: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => toTimestamp(c) };
+/** 나중에 더한 글 칸: 빈 칸 = 없음(undefined). 계좌번호처럼 숫자만 있어도 글로 읽어요 */
+const optText: Codec = {
+  enc: (v) => (v === null || v === undefined ? '' : String(v)),
+  dec: (c) => (isBlank(c) ? undefined : String(c).trim()),
+};
+/** 나중에 더한 시각 칸: 빈 칸 = 없음(undefined) */
+const optStamp: Codec = { enc: (v) => (v ? String(v) : ''), dec: (c) => (isBlank(c) ? undefined : (toTimestamp(c) ?? undefined)) };
 
 /** 월말 항목 키: 사람별 생활비 통장이면 '<통장id>|<카테고리id>', 아니면 '<카테고리id>' ('' = 카테고리 없는 묶음) */
 const ITEM_SEP = '|';
@@ -473,6 +480,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('order', '순서', int),
       c('ownerName', '주인', optStr, ['명의']), c('ownerEmail', '주인이메일', optStr),
       c('deleted', '삭제됨', bool, ['삭제']),
+      // 은행 · 계좌번호 ('오늘 보낼 돈'). 나중에 더한 열이라 빈 칸 = 없음
+      c('bank', '은행', optText), c('accountNumber', '계좌번호', optText, ['계좌']),
     ],
   },
   rules: {
@@ -486,6 +495,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('kind', '방식', enumCodec(RULE_KIND_LABELS, 'fixed'), ['배분방식']),
       // 금액 확인 필요 (용돈 배분 되돌리기, 4-7). 나중에 더한 열이라 빈 칸 = 확인할 것 없음
       c('needsReview', '확인필요', yesFlag),
+      // 은행 자동이체로 보내는 배분. 나중에 더한 열이라 빈 칸 = 직접 보내요
+      c('autoDebit', '자동이체', yesFlag),
     ],
   },
   transfers: {
@@ -497,6 +508,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('amount', '금액', int), c('status', '상태', enumCodec(TRANSFER_STATUS_LABELS, 'done')),
       c('ruleId', '월배분id', optStr), c('memo', '메모', str),
       ...audit,
+      // '오늘 보낼 돈'에서 보냈다고 표시한 시각. 나중에 더한 열이라 빈 칸 = 아직
+      c('sentAt', '보냄', optStamp),
     ],
   },
   fixedExpenses: {

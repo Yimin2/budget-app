@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
-import { formatWon } from '@/domain';
+import { formatWon, salaryAccounts } from '@/domain';
 import type { Account, Id } from '@/domain/types';
 import { useLedger } from '@/state';
 import { Button, DateInput, Dialog, Field, MoneyInput, SegmentedControl, TextInput, useToast, focusFirstInvalid } from '@/ui';
@@ -38,7 +38,8 @@ export function TransferDialog({ mode: initialMode, accountId, onClose, kindSwit
   const accounts = ledger.activeAccounts;
   const preset = accountId && accounts.some((a) => a.id === accountId) ? accountId : null;
   const incomeAccounts = ledger.incomeAccounts;
-  const incomeId = incomeAccounts[0]?.id ?? null;
+  // 수입은 배분 규칙이 나가는 월급통장으로 먼저 (없으면 첫 수입통장)
+  const incomeId = (ledger.data ? salaryAccounts(ledger.data)[0]?.id : undefined) ?? incomeAccounts[0]?.id ?? null;
 
   const [mode, setMode] = useState<RecordMode>(initialMode);
   const [from, setFrom] = useState<string>(() => preset ?? incomeId ?? accounts[0]?.id ?? '');
