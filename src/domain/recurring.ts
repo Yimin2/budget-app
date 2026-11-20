@@ -5,7 +5,7 @@ import { autoFixedExpenseId, autoTransferId } from './ids';
 import {
   installmentDay, installmentGroups, installmentMemo, installmentPayments, installmentPlanId, installmentRowEnd, isInstallment,
 } from './installments';
-import { isRemainderRule, paydayIncomeDates, pendingIncomeRecords, remainderAmount, ruleDueDate } from './income';
+import { isRemainderRule, paydayIncomeDates, remainderAmount, ruleDueDate } from './income';
 import type { AllocationRule, AutoRecords, Expense, FixedExpense, Id, ISODate, LedgerData, Transfer, YearMonth } from './types';
 
 /** 이 통장들 중 가장 늦은 시작일 (모르는 통장은 건너뜀). 그날 전의 기록은 잔액에 들어가지 않는다 */
@@ -68,7 +68,7 @@ export function fixedOccurrenceDate(data: LedgerData, f: FixedExpense, month: Ye
  * - 이미 같은 id 가 있으면(삭제 포함) 만들지 않는다. 종료월·삭제된 규칙 제외
  * - 미래 planned 이체가 같은 규칙 회차를 대신하지 않는다
  * - 통장 시작일보다 앞선 회차는 만들지 않는다 (시작 잔액에 이미 들어 있음). 시작월이 'YYYY-MM' 이 아니면 건너뛴다
- * - 수입 계획(PLAN 4-13): 받는 날이 지난 회차 → 수입 income:<계획id>:<월>
+ * - 수입(월급)은 만들지 않아요. 직접 기록한 수입에 맞춰 배분해요 (PLAN 4-13)
  * - 월급이 들어온 날 배분: 그 월급날 몫의 수입이 기록돼 있으면 배분은 정해 둔 날 대신 수입이 들어온 날에 나가요 (ruleDueDate)
  * - 나머지 전부 보내기 규칙: 위 기록(수입 · 정한 금액 배분 · 고정 지출)을 모두 더한 뒤 날짜 순으로 하나씩 금액을 정한다
  *   (remainderAmount). 0 이면 만들지 않는다 (다음에 열 때 다시 계산). id 는 정한 금액 배분과 같은 auto:<규칙id>:<월>
@@ -80,12 +80,8 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
   const transfers: Transfer[] = [];
   const expenses: Expense[] = [];
 
-  for (const t of pendingIncomeRecords(data, today, author, now)) {
-    transferIds.add(t.id);
-    transfers.push(t);
-  }
-  // 수입 기록(방금 만든 계획 기록 포함)을 월급날에 붙여 둬요 (통장 · 달마다 한 번)
-  const withIncome: LedgerData = { ...data, transfers: [...data.transfers, ...transfers] };
+  // 기록한 수입을 월급날에 붙여 둬요 (통장 · 달마다 한 번). 월급은 직접 기록해요 — 수입은 자동으로 만들지 않아요
+  const withIncome: LedgerData = data;
   const incomeCache = new Map<string, Map<ISODate, ISODate[]>>();
   const dueOf = (rule: AllocationRule, m: YearMonth, planned: ISODate) => {
     const key = `${rule.fromAccountId}|${m}`;

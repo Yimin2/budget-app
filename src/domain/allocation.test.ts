@@ -228,7 +228,9 @@ describe('알아서 맞추기 (자동) 배분', () => {
   const restRule = rule({ id: 'r-rest', fromAccountId: salary.id, toAccountId: res.id, amount: 0, kind: 'remainder', dayOfMonth: 21, startMonth: '2026-11' });
 
   it('records the required amount on the allocation day: income → fixed → auto → remainder', () => {
-    const d = ledger({ rules: [autoRule, eventRule, restRule], incomePlans: [plan(1_000_000)] });
+    // 월급은 직접 기록해요 (계획 날짜 · 금액 그대로)
+    const paid = transfer({ id: 'in-21', date: '2026-11-21', kind: 'income', toAccountId: salary.id, amount: 1_000_000 });
+    const d = ledger({ rules: [autoRule, eventRule, restRule], incomePlans: [plan(1_000_000)], transfers: [paid] });
     const out = pendingAutoRecords(d, '2026-11-21', 'a', NOW);
     const byRule = Object.fromEntries(out.transfers.map((t) => [t.ruleId ?? t.id, t.amount]));
     expect(byRule['r-auto']).toBe(595_000);

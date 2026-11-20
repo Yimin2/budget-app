@@ -493,7 +493,7 @@ export function IncomePlanRows({ ledger, account, readOnly }: { ledger: ReadyLed
           })}
         </ul>
       ) : (
-        <p className="st-desc">수입 계획을 넣으면 받는 날 수입이 자동으로 기록되고, 매달 배분과 남는 돈을 미리 계산해요.</p>
+        <p className="st-desc">수입 계획을 넣으면 매달 배분과 남는 돈을 미리 계산해요. 월급은 들어오면 직접 기록하고, 기록하면 계획대로 배분해요.</p>
       )}
       {readOnly ? null : editing === 'new' ? (
         <IncomePlanEditor id={`${baseId}-new`} ledger={ledger} account={account} plan={null} onDone={() => setEditing(null)} />

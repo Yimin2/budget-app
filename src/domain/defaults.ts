@@ -313,24 +313,29 @@ export function createDemoLedger(
       }))
     : [];
 
-  const salary = (id: string, to: Account, amount: number, author: string): Transfer => ({
+  const salary = (id: string, to: Account, amount: number, author: string, date: string = first, memo = '월급'): Transfer => ({
     id,
-    date: first,
+    date,
     kind: 'income',
     fromAccountId: null,
     toAccountId: to.id,
     amount,
     status: 'done',
     ruleId: null,
-    memo: '월급',
+    memo,
     author,
     createdAt: now,
     updatedAt: now,
     deleted: false,
   });
-  // 부부 예시는 수입 계획이 월급날에 수입을 기록한다
+  // 부부 예시: 월급은 직접 기록해요 — 오늘까지 지난 월급날은 계획 금액 그대로 기록해 둬요 (그날 배분이 나가요)
   const transfers: Transfer[] = couple
-    ? []
+    ? DEMO_COUPLE.income
+        .filter((x) => `${M}-${String(x.day).padStart(2, '0')}` <= today)
+        .map((x) => {
+          const who = DEMO_MEMBERS[x.member as 0 | 1];
+          return salary(`demo-salary-${x.key}`, incomeMinji, x.amount, who.email, `${M}-${String(x.day).padStart(2, '0')}`, `${who.displayName} 월급`);
+        })
     : [salary('demo-salary', incomeMinji, 3_000_000, minji), salary('demo-salary-junho', incomeJunho, 2_000_000, junho)];
 
   const fx = (

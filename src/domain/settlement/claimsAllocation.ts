@@ -8,7 +8,7 @@ import { dateInMonth, monthOf } from '../dates';
 import { projectEventAccount } from '../events';
 import { autoTransferId } from '../ids';
 import { unrecordedInstallmentPayments } from '../installments';
-import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecordId, isComputedRule, projectRemainders, ruleAmountFor } from '../income';
+import { activeIncomePlans, incomePlanOccurrenceDate, incomeRecorded, isComputedRule, projectRemainders, ruleAmountFor } from '../income';
 import { firstAccountByRole } from '../internal';
 import { formatWon } from '../money';
 import { ruleOccurrenceDate } from '../recurring';
@@ -83,7 +83,7 @@ export function balanceWithScheduled(data: LedgerData, accountId: Id, today: ISO
   }
   for (const p of activeIncomePlans(data, month, accountId)) {
     const date = incomePlanOccurrenceDate(data, p, month);
-    if (date === null || date > asOf || transferIds.has(incomeRecordId(p.id, month))) continue;
+    if (date === null || date > asOf || incomeRecorded(data, p, month, transferIds)) continue;
     balance += p.amount;
   }
   for (const t of data.transfers) {
@@ -216,7 +216,7 @@ function scheduledDate(data: LedgerData, accountId: Id, today: ISODate, asOf: IS
   }
   for (const p of activeIncomePlans(data, month, accountId)) {
     const date = incomePlanOccurrenceDate(data, p, month);
-    if (date !== null && date <= asOf && !transferIds.has(incomeRecordId(p.id, month))) dates.add(date);
+    if (date !== null && date <= asOf && !incomeRecorded(data, p, month, transferIds)) dates.add(date);
   }
   for (const t of data.transfers) {
     if (t.deleted || t.status !== 'planned' || monthOf(t.date) !== month || t.date > asOf) continue;

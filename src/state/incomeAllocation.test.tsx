@@ -3,6 +3,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { autoTransferId, incomeRecordId } from '@/domain';
+import type { Transfer } from '@/domain/types';
 import type { LedgerData } from '@/domain/types';
 import { createMemoryStorage, LocalBackend } from '@/storage';
 import type { LedgerBackend, LedgerRef, LedgerRepository, TableName, TableRows } from '@/storage/types';
@@ -98,5 +99,26 @@ describe('월급을 기록하면 계획대로 배분', () => {
     // 21일에 열어도 민지 월급 계획 기록(320만)은 또 생기지 않아요
     const plan = after.incomePlans.find((p) => p.dayOfMonth === 21 && p.accountId === salary.id)!;
     expect(after.transfers.some((t) => t.id === incomeRecordId(plan.id, '2026-11'))).toBe(false);
+  });
+
+  it('예전에 자동으로 만든 월급 기록이 직접 기록한 월급과 겹치면, 열 때 자동 기록만 지우고 한 번 알려요', async () => {
+    const r = setup();
+    await startDemo(r);
+    const d = L(r).data!;
+    const salary = d.accounts.find((a) => a.name === '월급통장')!;
+    const plan = d.incomePlans.find((p) => p.dayOfMonth === 21 && p.accountId === salary.id)!;
+    const auto: Transfer = {
+      id: incomeRecordId(plan.id, '2026-11'), date: '2026-11-21', kind: 'income', fromAccountId: null, toAccountId: salary.id,
+      amount: 3_200_000, status: 'done', ruleId: null, memo: '민지 월급', author: 'a@b.c', createdAt: '', updatedAt: '', deleted: false,
+    };
+    await act(async () => {
+      await r.local.open(L(r).ref!).insert('transfers', [auto]);
+      await L(r).addTransfer({ date: '2026-11-20', kind: 'income', fromAccountId: null, toAccountId: salary.id, amount: 2_950_000, memo: '민지 월급' });
+      await L(r).reload();
+    });
+    await waitFor(() => expect(L(r).data!.transfers.find((t) => t.id === auto.id)?.deleted).toBe(true));
+    // 직접 기록한 월급은 그대로
+    expect(L(r).data!.transfers.filter((t) => t.kind === 'income' && !t.deleted && t.toAccountId === salary.id).map((t) => t.amount)).toEqual([2_950_000]);
+    expect((await stored(r)).transfers.find((t) => t.id === auto.id)?.deleted).toBe(true);
   });
 });

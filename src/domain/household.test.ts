@@ -22,8 +22,10 @@ describe('부부 체험 예시 (월급통장 하나 · 수입 계획 · 나머�
       ['준호', 2_800_000, 25],
     ]);
     const tr = (id: string) => d.transfers.find((t) => t.id === id);
-    expect(tr(incomeRecordId('demo-income-minji', '2026-11'))?.amount).toBe(3_200_000);
-    expect(tr(incomeRecordId('demo-income-junho', '2026-11'))?.amount).toBe(2_800_000);
+    // 월급은 직접 기록한 것 (예시는 지난 월급날을 계획 금액으로 기록해 둬요). 자동 수입 기록은 없어요
+    expect(tr('demo-salary-minji')).toMatchObject({ amount: 3_200_000, date: '2026-11-21' });
+    expect(tr('demo-salary-junho')).toMatchObject({ amount: 2_800_000, date: '2026-11-25' });
+    expect(tr(incomeRecordId('demo-income-minji', '2026-11'))).toBeUndefined();
     expect(tr(autoTransferId('demo-rule-21-reservoir', '2026-11'))?.amount).toBe(900_000);
     expect(tr(autoTransferId('demo-rule-25-reservoir', '2026-11'))?.amount).toBe(1_050_000);
     expect(accountBalance(d, 'demo-acc-income', '2026-11-26')).toBe(0);
