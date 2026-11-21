@@ -94,18 +94,6 @@ describe('앱 틀 (app)/layout', () => {
     expect(within(dock).getAllByRole('link', { current: 'page' }).map((a) => a.textContent)).toEqual(['내역']);
   });
 
-  it('정산(/plan/settle): 아래 고정 막대를 가리지 않게 오른쪽 아래 + 는 숨겨요 (사이드바 + 기록은 그대로)', async () => {
-    nav.pathname = '/plan/settle';
-    const h = renderApp(
-      <AppLayout>
-        <p>정산 내용</p>
-      </AppLayout>,
-    );
-    await startDemo(h);
-    expect(document.querySelector('.fab')).toBeNull();
-    expect(document.querySelector('.side-create')?.getAttribute('aria-label')).toBe('기록');
-  });
-
   it('+ 기록: 지출 기록 · 사도 돼? · 이체 기록 중에서 골라요', async () => {
     nav.pathname = '/history';
     const h = renderApp(

@@ -10,7 +10,7 @@
  * - 쓴 돈 = 그달에 쓴(쓸) 이벤트통장 돈. 지난 청구를 돌려주는 돈 · 옮겨 갈 돈은 쓴 돈이 아니다
  */
 import { accountBalance } from './balances';
-import { addDays, addMonths, dateInMonth, daysInMonth, monthOf } from './dates';
+import { addDays, addMonths, dateInMonth, daysInMonth, monthOf, monthRange } from './dates';
 import { eventRecords, eventRecordStatus, liveTransferIds } from './eventRecords';
 import { claimSettledOn, monthSpentItems, thisMonthSpending, type MonthSpentRow, type ThisMonthSpending } from './monthSpent';
 import { accountFlow, pastMonthEnds } from './pastBalances';
@@ -44,6 +44,11 @@ export interface SpentBasisMonth {
   repaid: Won;
   /** 앞으로 달이면 예측 한 달 */
   projection?: ProjectionMonth;
+  /**
+   * 이벤트통장 시작일 전 지난 달 (2026-11): 들어온 돈 기록이 없어 잔액을 모르니 그달 쓴 돈(spent)만 알아요.
+   * start · inflow · end 는 0 (차트는 쓴 돈 막대로)
+   */
+  spentOnly?: boolean;
 }
 
 export interface SpentBasisView {
@@ -106,8 +111,16 @@ export function spentBasisView(data: LedgerData, projection: EventProjection | n
   const thisMonth = monthOf(today);
   const months: SpentBasisMonth[] = [];
 
-  // 지난 달
-  for (const p of pastMonthEnds(data, accountId, today, SPENT_BASIS_PAST_MONTHS)) {
+  // 지난 달: 통장 시작일 전 달은 쓴 돈만 (잔액을 모름)
+  const pasts = pastMonthEnds(data, accountId, today, SPENT_BASIS_PAST_MONTHS);
+  const known = new Set(pasts.map((p) => p.month));
+  for (const month of monthRange(addMonths(thisMonth, -SPENT_BASIS_PAST_MONTHS), addMonths(thisMonth, -1))) {
+    if (known.has(month)) continue;
+    const spent = monthSpentItems(data, accountId, month, { reservoirClaims: false }).total;
+    if (spent <= 0) continue; // 기록도 없는 달은 빼요
+    months.push({ month, kind: 'past', start: 0, inflow: 0, spent, transferOut: 0, other: 0, end: 0, bankEnd: 0, owed: 0, repaid: 0, spentOnly: true });
+  }
+  for (const p of pasts) {
     const first = dateInMonth(p.month, 1);
     const last = dateInMonth(p.month, daysInMonth(p.month));
     const startOwed = owedAt(spans, addDays(first, -1));

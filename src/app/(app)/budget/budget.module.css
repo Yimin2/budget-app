@@ -235,19 +235,25 @@
 .inRows {
   border-radius: var(--radius-sm);
   background: var(--surface-subtle);
-  padding: 0 var(--space-3);
+  overflow: hidden;
 }
+/* 줄이 회색 칸 너비를 다 채워요 (마우스를 올리면 칸 전체가 조금 진해져요. 안쪽에 흰 상자가 생기지 않게) */
 .inRow {
   min-height: 48px;
+  padding-inline: var(--space-3);
+  border-radius: 0;
   text-align: left;
+}
+.inRows > li > :not(.inRow) {
+  padding-inline: var(--space-3);
 }
 .inRow:focus-visible {
   outline: 2px solid var(--focus, var(--primary));
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 @media (hover: hover) {
   button.inRow:hover {
-    background: var(--surface);
+    background: color-mix(in srgb, var(--text) 6%, var(--surface-subtle));
   }
 }
 .inTitle {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { eventRecordStatus, formatMan, formatManShort, formatShortDate, formatWon, liveTransferIds, lunarRepeatLabel, monthOf, tripPeriodText } from '@/domain';
+import { addMonths, eventRecordStatus, formatMan, formatManShort, formatShortDate, formatWon, liveTransferIds, lunarRepeatLabel, monthOf, tripPeriodText } from '@/domain';
 import type { Category, EventRecordStatus, Expense, Id, ISODate, LedgerData, PlannedEvent, TripStatus, Won, YearMonth } from '@/domain';
 import { RECURRING_HINT_KEY } from '@/state';
 import { Badge, Button, Card, Icon, cx } from '@/ui';
@@ -50,7 +50,8 @@ type RowProps = Pick<ScheduleCardProps, 'today' | 'categories' | 'spent' | 'disp
 
 const PAST_PAGE = 10;
 /** 처음 펼쳐 두는 다가오는 달 수 (일정 · 여행이 있는 달) */
-export const SHOWN_MONTHS = 3;
+/** 연간 일정에서 처음부터 펼쳐 둘 가까운 달 수 (이번 달 포함) */
+export const SHOWN_MONTHS = 6;
 
 /** '매년 반복되는 일 N건을 찾았어요' 안내를 이 기기에서 닫았는지 (못 읽으면 안 닫은 것으로) */
 function readHintDismissed(): boolean {
@@ -120,16 +121,34 @@ export function ScheduleCard(props: ScheduleCardProps) {
   const ids = useId().replace(/:/g, '');
   const [hintHidden, setHintHidden] = useState(readHintDismissed);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [showAll, setShowAll] = useState(false);
   const groups = useMemo(() => scheduleGroups(sections, trips, today), [sections, trips, today]);
+  // 연간 일정 (2026-11): 이번 달부터 12개월을 달마다 한 줄로. 누르면 그 달 일정이 펼쳐져요 (가까운 6개월은 처음부터)
+  const year = useMemo(() => {
+    const out: { month: YearMonth; group: EntryGroup | null }[] = [];
+    const byMonth = new Map(groups.map((g) => [g.month, g]));
+    for (let k = 0; k < 12; k++) {
+      const month = addMonths(monthOf(today), k);
+      out.push({ month, group: byMonth.get(month) ?? null });
+    }
+    // 12개월 뒤 일정도 빼지 않아요
+    for (const g of groups) if (!out.some((x) => x.month === g.month)) out.push({ month: g.month, group: g });
+    return out;
+  }, [groups, today]);
+  const [openMonths, setOpenMonths] = useState<ReadonlySet<string>>(
+    () => new Set(Array.from({ length: SHOWN_MONTHS }, (_, k) => addMonths(monthOf(today), k))),
+  );
+  const toggleMonth = (m: string) =>
+    setOpenMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m);
+      else next.add(m);
+      return next;
+    });
   const count = groups.reduce((s, g) => s + g.entries.length, 0);
   const total = groups.reduce((s, g) => s + g.total, 0);
   const pastTrips = trips.filter((t) => t.phase === 'past').length;
   const empty = sections.total === 0;
   const thisMonth = monthOf(today);
-  // 가까운 3개 달만 펼쳐 두고 나머지는 [N건 더]로
-  const shownGroups = showAll ? groups : groups.slice(0, SHOWN_MONTHS);
-  const hiddenCount = groups.slice(SHOWN_MONTHS).reduce((s, g) => s + g.entries.length, 0);
 
   useEffect(() => {
     if (focusReq > 0) panelRef.current?.focus();
@@ -147,7 +166,7 @@ export function ScheduleCard(props: ScheduleCardProps) {
     <Card as="section" className={cx(cardStyles.card, styles.card)} aria-labelledby={titleId}>
       <CardHead
         titleId={titleId}
-        title={count > 0 ? `달별 일정 · ${count}건 ${formatMan(total)}` : '달별 일정'}
+        title={count > 0 ? `연간 일정 · ${count}건 ${formatMan(total)}` : '연간 일정'}
       />
 
       {panel ? (
@@ -181,32 +200,44 @@ export function ScheduleCard(props: ScheduleCardProps) {
           {sections.overdue.length > 0 ? <OverdueSection {...props} /> : null}
           <div className={styles.listArea}>
             <section aria-label="다가오는 일정" className={styles.upcoming}>
-              {groups.length === 0 ? (
-                <p className={styles.emptyLine}>새 일정을 넣으면 여기에 달별로 보여요</p>
-              ) : (
-                <div id={`${ids}-groups`} className={styles.groupsFlow}>
-                  {shownGroups.map((g) => {
-                    const headId = `${ids}-${g.month}`;
-                    return (
-                      <div key={g.month} className={styles.group}>
-                        <div className={styles.groupHead}>
-                          <h3 id={headId} className={styles.groupTitle}>
-                            {monthLabel(g.month, today)}
-                            {g.month === thisMonth ? ' · 이번 달' : ''}
-                          </h3>
-                          <span className={styles.groupTotal}>
-                            {g.entries.length}건 · {formatManShort(g.total)}
-                            {props.monthEnds?.has(g.month) ? (
-                              <>
-                                {' · 달 말 '}
-                                <strong className={props.monthEnds.get(g.month)! < 0 ? styles.groupShort : undefined} data-testid={`month-end-${g.month}`}>
-                                  {formatManShort(props.monthEnds.get(g.month)!)}
-                                </strong>
-                              </>
-                            ) : null}
-                          </span>
-                        </div>
-                        <ul className={styles.rows} aria-labelledby={headId}>
+              <ul id={`${ids}-groups`} className={styles.yearList} aria-label="앞으로 12개월">
+                {year.map(({ month, group: g }) => {
+                  const headId = `${ids}-${month}`;
+                  const panelId = `${headId}-list`;
+                  const isOpen = g !== null && openMonths.has(month);
+                  const end = props.monthEnds?.get(month);
+                  const names = g ? g.entries.map((e) => (e.kind === 'event' ? e.event.name : e.trip.trip.name)) : [];
+                  const summary = names.length === 0 ? '일정 없음' : names.length <= 2 ? names.join(' · ') : `${names.slice(0, 2).join(' · ')} 외 ${names.length - 2}건`;
+                  return (
+                    <li key={month} className={cx(styles.yearRow, !g && styles.yearEmpty, end !== undefined && end < 0 && styles.yearShort)}>
+                      <button
+                        type="button"
+                        id={headId}
+                        className={styles.yearHead}
+                        aria-expanded={g ? isOpen : undefined}
+                        aria-controls={isOpen ? panelId : undefined}
+                        disabled={!g}
+                        onClick={() => toggleMonth(month)}
+                        // 이름은 줄마다 따로 읽어요: 달 · 건수 · 합계 · 달 말 잔액만
+                        aria-label={`${monthLabel(month, today)}${month === thisMonth ? ' 이번 달' : ''} · ${g ? `${g.entries.length}건 ${formatWon(g.total)}` : '일정 없음'}${end !== undefined ? ` · 달 말 ${formatWon(end)}` : ''}`}
+                      >
+                        <span className={styles.yearMonth}>
+                          {monthLabel(month, today)}
+                          {month === thisMonth ? <span className={styles.yearThis}>이번 달</span> : null}
+                        </span>
+                        <span className={styles.yearNames}>{summary}</span>
+                        <span className={styles.yearAmounts}>
+                          <span className={styles.yearTotal}>{g ? formatManShort(g.total) : ''}</span>
+                          {end !== undefined ? (
+                            <span className={styles.yearEnd} data-testid={`month-end-${month}`}>
+                              달 말 <strong>{formatManShort(end)}</strong>
+                            </span>
+                          ) : null}
+                        </span>
+                        {g ? <Icon name="chevron-down" size={16} className={cx(styles.yearChevron, isOpen && styles.yearChevronOpen)} /> : <span aria-hidden />}
+                      </button>
+                      {isOpen && g ? (
+                        <ul id={panelId} className={styles.rows} aria-label={monthLabel(month, today)}>
                           {g.entries.map((e) =>
                             e.kind === 'event' ? (
                               <EventRow key={e.event.id} event={e.event} variant="upcoming" {...props} />
@@ -215,24 +246,11 @@ export function ScheduleCard(props: ScheduleCardProps) {
                             ),
                           )}
                         </ul>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {hiddenCount > 0 ? (
-                <Button
-                  variant="ghost"
-                  iconRight={showAll ? 'chevron-up' : 'chevron-down'}
-                  className={styles.moreToggle}
-                  aria-expanded={showAll}
-                  aria-controls={`${ids}-groups`}
-                  aria-label={showAll ? '다가오는 일정 접기' : `다가오는 일정 ${hiddenCount}건 더 보기`}
-                  onClick={() => setShowAll((v) => !v)}
-                >
-                  {showAll ? '접기' : `${hiddenCount}건 더`}
-                </Button>
-              ) : null}
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
             {sections.past.length > 0 ? <PastSection {...props} /> : null}
             {pastTrips > 0 ? (

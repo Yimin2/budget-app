@@ -7,7 +7,8 @@ import { useLedger } from '@/state';
 import { Button, Card, cx, useToast } from '@/ui';
 import styles from './claims.module.css';
 
-export const SETTLE_HREF = '/plan/settle';
+/** 정산: 이벤트 화면의 달별 내역 (2026-11 정산 화면을 합쳤어요) */
+export const SETTLE_HREF = '/plan#paid';
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 

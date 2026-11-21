@@ -24,7 +24,7 @@ describe('매년 돌아오는 일 (머리의 [+ 추가 ▾] → 기록에서 찾
   /** 머리의 [+ 추가 ▾] 메뉴에서 '기록에서 찾기'를 눌러 '일정' 카드 안에서 펼쳐요 */
   function openRecurring() {
     chooseScheduleAdd(/^기록에서 찾기/);
-    const schedule = screen.getByRole('region', { name: /^달별 일정 · / });
+    const schedule = screen.getByRole('region', { name: /^연간 일정 · / });
     return { card: within(schedule).getByRole('region', { name: '매년 돌아오는 일' }) };
   }
   const addMenu = () => {

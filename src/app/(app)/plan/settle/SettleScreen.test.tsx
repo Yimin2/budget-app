@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { claimLoanTransferId, claimTransferId } from '@/domain';
 import { makeHarness } from '../testHarness';
-import SettlePage, { metadata } from './page';
+import { SettleScreen as SettlePage } from './SettleScreen';
 import { SettleScreen } from './SettleScreen';
 
 vi.mock('next/navigation', () => ({
@@ -42,7 +42,6 @@ describe('정산 화면', () => {
   it("'/plan/settle' 페이지: 제목 '정산 · 정산일'과 그 위 [‹ 이벤트] (→ /plan)", async () => {
     const h = makeHarness();
     render(<SettlePage />, { wrapper: h.Wrapper });
-    expect(metadata.title).toBe('정산');
     await screen.findByRole('list', { name: '달별 기록' });
     const date = L(h).settlement!.date;
     const [, m, d] = date.split('-').map(Number);
@@ -181,7 +180,8 @@ describe('정산 화면', () => {
 
   it('줄 수 있는 돈보다 많이 고르면 넘는 돈을 빨갛게 보이고, [저수지에서 빌려 지급]은 넘는 것만 빌려요', async () => {
     const { h, list, bar } = await renderScreen();
-    expect((within(bar).getByRole('button', { name: '저수지에서 빌려 지급' }) as HTMLButtonElement).disabled).toBe(true);
+    // 줄 수 있는 돈 안이면 [저수지에서 빌려 지급]은 아예 안 보여요
+    expect(within(bar).queryByRole('button', { name: '저수지에서 빌려 지급' })).toBeNull();
     await act(async () => {
       await L(h).addExpense({ date: '2026-11-04', amount: 900_000, accountId: 'demo-acc-event', categoryId: eventCat(h), memo: '바다 결혼 선물', paidBy: '민지' });
     });
@@ -368,9 +368,8 @@ describe('정산 화면 — 오래된 것 먼저 · 여행 배지 · 좁은 막�
     await waitFor(() => expect(within(list).queryByRole('link', { name: '여행 제주 여행 보기' })).toBeNull());
   });
 
-  it('좁은 화면용 짧은 글자 [저수지에서 빌려 주기]가 있어도 버튼 이름은 그대로', async () => {
+  it('통장 돈으로 충분하면 [저수지에서 빌려 주기]는 보이지 않아요', async () => {
     const { bar } = await renderScreen();
-    const borrow = within(bar).getByRole('button', { name: '저수지에서 빌려 지급' });
-    expect(borrow.textContent).toContain('빌려 지급');
+    expect(within(bar).queryByRole('button', { name: '저수지에서 빌려 지급' })).toBeNull();
   });
 });

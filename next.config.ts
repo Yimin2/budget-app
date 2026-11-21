@@ -33,6 +33,8 @@ const nextConfig: NextConfig = {
       { source: '/accounts', destination: '/history?tab=accounts', permanent: false },
       { source: '/events', destination: '/plan', permanent: false },
       { source: '/events/trips', destination: '/plan/trips', permanent: false },
+      // 정산은 이벤트 화면의 달별 내역으로 합쳤어요 (2026-11)
+      { source: '/plan/settle', destination: '/plan#paid', permanent: false },
       { source: '/members', destination: '/settings#members', permanent: false },
     ];
   },

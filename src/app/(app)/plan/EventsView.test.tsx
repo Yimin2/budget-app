@@ -38,19 +38,17 @@ describe('EventsView — 체험 가계부', () => {
     expect(h.probe.ledger!.eventProjection!.months.every((m) => m.usual > 0)).toBe(true);
   });
 
-  it('불러오는 동안 뼈대, 다 불러오면 상태 카드 (모자라는 달 · 쓸 수 있는 돈 · 다음 적립)', async () => {
+  it('불러오는 동안 뼈대, 다 불러오면 달별 내역 · 달 말 잔액(모자라는 달은 차트 위 한 줄) · 연간 일정', async () => {
     const h = makeHarness();
     render(<EventsView />, { wrapper: h.Wrapper });
     expect(screen.getByText('일정을 불러오는 중이에요')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '달별 내역' })).toBeTruthy();
     const status = await screen.findByTestId('events-status');
-    expect(within(status).getByRole('heading', { level: 2 }).textContent).toMatch(/^2027년 4월에 .+만 모자라요/);
-    expect(status.textContent).toContain('결혼식 4건 · 어버이날');
-    // 시작 600,000 + 적립 300,000 − 제주 여행 숙소 예약금 150,000 (돌려줄 돈이 있으면 뺀 금액)
-    expect(within(status).getByTestId('status-usable').textContent).toMatch(/^지금 쓸 수 있는 돈/);
-    expect(within(status).getByTestId('status-next').textContent).toMatch(/^다음 적립\+30만/);
-    // 숫자 카드 · 12개월 카드 · 범위 띠는 없어요
-    expect(screen.queryByTestId('kpi-strip')).toBeNull();
-    expect(screen.queryByRole('region', { name: /12개월/ })).toBeNull();
+    expect(status.textContent).toMatch(/^2027년 4월에 .+만 모자라요/);
+    expect(within(status).getByRole('button', { name: '대처하기' })).toBeTruthy();
+    expect(screen.getByTestId('balance-chart')).toBeTruthy();
+    // 예전 상태 카드의 숫자 칸은 없어요
+    expect(screen.queryByTestId('status-usable')).toBeNull();
     expect(h.probe.ledger!.eventProjection!.shortages).toHaveLength(1);
   });
 
@@ -100,26 +98,24 @@ describe('EventsView — 체험 가계부', () => {
       await h.probe.ledger!.applyFromReservoir(h.probe.ledger!.shortageFix!.fromReservoir!);
     });
     await waitFor(() => expect(h.probe.ledger!.eventProjection!.shortages).toHaveLength(0));
-    await waitFor(() =>
-      expect(within(screen.getByTestId('events-status')).getByRole('heading', { level: 2 }).textContent).toMatch(/모자라지 않아요$/),
-    );
+    // 모자라는 달이 없으면 한 줄도 없어요
+    await waitFor(() => expect(screen.queryByTestId('events-status')).toBeNull());
   });
 
   it('다가오는 일정은 달별로, 반복 · 작성자 · 카테고리를 함께 보여요', async () => {
     await renderEvents();
     // 일정 7건 1,900,000원 + 제주 여행 남은 예산 450,000원을 날짜순으로 한 목록에
-    const card = screen.getByRole('region', { name: '달별 일정 · 8건 235만' });
+    const card = screen.getByRole('region', { name: '연간 일정 · 8건 235만' });
     const upcoming = within(card).getByRole('region', { name: '다가오는 일정' });
-    expect(within(upcoming).getByRole('heading', { level: 3, name: '2027년 1월' })).toBeTruthy();
     const jan = within(upcoming).getByRole('list', { name: '2027년 1월' });
     expect(within(jan).getByText('명절 부모님 용돈')).toBeTruthy();
     expect(within(jan).getByText('민지 · 명절')).toBeTruthy();
     // 금액은 만 단위 (정확한 금액은 화면 읽기용 글과 일정 창에)
-        expect(within(upcoming).getByText(/^1건 · 40만 · 달 말/)).toBeTruthy();
+        expect(within(upcoming).getByRole('button', { name: /^2027년 1월 · 1건 400,000원 · 달 말 / })).toBeTruthy();
     expect(within(jan).getByRole('button', { name: /명절 부모님 용돈/ }).textContent).toContain('40만400,000원');
-    // 가까운 3개 달(1월 · 2월 · 4월)만 펼쳐 두고, 8월 결혼기념일(매년)은 [1건 더]로
+    // 가까운 6개월(1월 · 2월 · 4월)은 펼쳐 두고, 8월 결혼기념일(매년)은 그 달 줄을 눌러 펼쳐요
     expect(within(upcoming).queryByRole('list', { name: '2027년 8월' })).toBeNull();
-    fireEvent.click(within(upcoming).getByRole('button', { name: '다가오는 일정 1건 더 보기' }));
+    fireEvent.click(within(upcoming).getByRole('button', { name: /^2027년 8월 · / }));
     expect(within(upcoming).getByRole('list', { name: '2027년 8월' })).toBeTruthy();
     expect(within(upcoming).getByText('매년')).toBeTruthy();
     // 지난 일정은 없어요
@@ -225,7 +221,7 @@ describe('EventsView — 체험 가계부', () => {
 
   it('일정 카드의 여행 줄: 여행 표시 · 쓴 돈 / 예산 · 남은 예산, 누르면 여행 화면, 머리의 [+ 추가 ▾] 메뉴로 여행 추가', async () => {
     const h = await renderEvents();
-    const card = screen.getByRole('region', { name: /^달별 일정 · / });
+    const card = screen.getByRole('region', { name: /^연간 일정 · / });
     const link = within(card).getByRole('link', { name: /제주 여행/ });
     expect(link.getAttribute('href')).toBe('/plan/trips?id=demo-trip-jeju');
     expect(link.textContent).toContain('여행');
@@ -262,9 +258,9 @@ describe('EventsView — 체험 가계부', () => {
     await screen.findByText('‘오사카’ 여행을 추가했어요');
     const added = h.probe.ledger!.trips.find((t) => t.trip.name === '오사카')!;
     expect(added.budget).toBe(400_000);
-    expect(await within(screen.getByRole('region', { name: /^달별 일정 · / })).findByRole('link', { name: /오사카/ })).toBeTruthy();
+    expect(await within(screen.getByRole('region', { name: /^연간 일정 · / })).findByRole('link', { name: /오사카/ })).toBeTruthy();
     // 미리 낸 돈이 없으면 그 문구와 [펼치기]가 없어요
-    const osaka = within(screen.getByRole('region', { name: /^달별 일정 · / })).getByRole('link', { name: /오사카/ });
+    const osaka = within(screen.getByRole('region', { name: /^연간 일정 · / })).getByRole('link', { name: /오사카/ });
     expect(osaka.textContent).not.toContain('미리 낸 돈');
     expect(screen.queryByRole('button', { name: '오사카 미리 낸 돈 펼치기' })).toBeNull();
   });
@@ -277,7 +273,7 @@ describe('EventsView — 체험 가계부', () => {
     expect(await screen.findByText('아직 넣은 일정이 없어요')).toBeTruthy();
     expect(screen.getByText(/결혼식, 명절, 여행처럼 고정비가 아닌 큰 지출을 미리 넣어 두세요/)).toBeTruthy();
     // 다가오는 여행은 빈 상태 아래에 그대로 보여요
-    expect(within(screen.getByRole('region', { name: /^달별 일정/ })).getByRole('link', { name: /제주 여행/ })).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: /^연간 일정/ })).getByRole('link', { name: /제주 여행/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '명절' }));
     const dialog = await screen.findByRole('dialog', { name: '일정 추가' });
     expect((within(dialog).getByLabelText(/이름/) as HTMLInputElement).value).toBe('설날');
@@ -289,7 +285,7 @@ describe('EventsView — 체험 가계부', () => {
 describe('EventsView — 추천 타협안', () => {
   afterEach(() => window.localStorage.clear());
 
-  it('[대처하기] 창: 요약 · 셈 · 개월 칩 · 카테고리별 줄일 금액, 고른 개월 수는 이 기기에 저장하고 정산 줄의 저수지 줄도 따라요', async () => {
+  it('[대처하기] 창: 요약 · 셈 · 개월 칩 · 카테고리별 줄일 금액, 고른 개월 수는 이 기기에 저장해요', async () => {
     const h = await renderEvents();
     await act(async () => {
       await h.probe.ledger!.addExpense({ date: '2026-10-12', amount: 900_000, accountId: 'demo-acc-event', categoryId: null });
@@ -308,7 +304,6 @@ describe('EventsView — 추천 타협안', () => {
     expect(chip12.getAttribute('aria-pressed')).toBe('true');
     expect(within(dialog).getByTestId('compromise-cut').textContent).toContain('저수지 빚을 12개월에 갚으려면 쓰는 돈을 월 2.5만원 줄여야 해요');
     expect(window.localStorage.getItem('budget:repayMonths')).toBe('12');
-    expect(within(screen.getByTestId('events-settle')).getByTestId('loan-line').textContent).toContain('매달 2.5만 ·');
     // 자동으로 바꾸는 버튼은 없어요
     expect(within(dialog).queryByRole('button', { name: /적용|바꾸기|올리기/ })).toBeNull();
   });

@@ -227,7 +227,7 @@ export function loanRecords(loan: LoanStatus): LoanRecord[] {
  * 그 밖의 이체는 null
  */
 export function settleEditHref(transferId: string): string | null {
-  if (transferId.startsWith('claim:')) return '/plan/settle#paid';
-  if (isLoanTransferId(transferId) || isLoanRepayId(transferId)) return '/plan/settle#loan';
+  if (transferId.startsWith('claim:')) return '/plan#paid';
+  if (isLoanTransferId(transferId) || isLoanRepayId(transferId)) return '/plan#loan';
   return null;
 }

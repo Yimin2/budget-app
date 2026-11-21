@@ -49,6 +49,7 @@ export function MonthBlock({
   isOn,
   setMany,
   onOpen,
+  planned,
 }: {
   m: SettleMonth;
   data: LedgerData;
@@ -59,8 +60,11 @@ export function MonthBlock({
   isOn: (id: Id) => boolean;
   setMany: (ids: Id[], on: boolean) => void;
   onOpen: (e: Expense) => void;
+  /** 이번 달 일정 (이벤트 화면의 달별 내역에서만): 기록 위에 '예정'으로, 연하게 */
+  planned?: { id: Id; name: string; date: string; amount: number }[];
 }) {
   const label = formatMonthKo(m.month, baseYear);
+  const plannedTotal = (planned ?? []).reduce((t, e) => t + e.amount, 0);
   const listId = useId();
   const pendingIds = m.rows.filter((r) => r.item).map((r) => r.expense.id);
   const on = pendingIds.filter(isOn).length;
@@ -83,16 +87,37 @@ export function MonthBlock({
             {label}
             <span className={styles.monthSum}>
               {' '}
-              · 합계 {formatMan(m.total)} · {m.pendingCount > 0 ? `줄 돈 ${formatMan(m.pendingTotal)}` : '다 정리됨'}
+              · {planned ? `쓴 돈 ${formatMan(m.total)}` : `합계 ${formatMan(m.total)}`}
+              {plannedTotal > 0 ? ` · 예정 ${formatMan(plannedTotal)}` : ''} · {m.pendingCount > 0 ? `줄 돈 ${formatMan(m.pendingTotal)}` : planned ? '줄 돈 없음' : '다 정리됨'}
             </span>
           </h3>
         </div>
-        {pendingIds.length > 0 ? null : (
+        {pendingIds.length > 0 || planned ? null : (
           <ExpandButton open={open} onToggle={onToggle} controls={listId} openLabel="펼치기" closeLabel="접기" label={label} />
         )}
       </div>
       {open ? (
         <ul id={listId} className={styles.rows} aria-label={`${label} 기록`}>
+          {(planned ?? []).map((e) => (
+            <li key={`plan:${e.id}:${e.date}`} className={cx(styles.row, styles.rowPlanned)} data-testid="history-planned">
+              <span className={styles.dot} aria-hidden />
+              <span className={styles.date}>{formatShortDate(e.date)}</span>
+              <div className={styles.main}>
+                <span className={styles.titleLine}>
+                  <span className={styles.plannedName}>{e.name}</span>
+                </span>
+                <span className={styles.meta}>
+                  <span className={styles.metaDate}>{formatShortDate(e.date)} · </span>일정 · 아직 안 썼어요
+                </span>
+              </div>
+              <span className={styles.badge}>
+                <Badge size="sm" tone="neutral" variant="soft" dot={false}>
+                  예정
+                </Badge>
+              </span>
+              <span className={styles.amount}>{formatMan(e.amount)}</span>
+            </li>
+          ))}
           {m.rows.map((r) => (
             <Row
               key={r.expense.id}
