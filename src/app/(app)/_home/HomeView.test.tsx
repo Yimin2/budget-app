@@ -61,10 +61,9 @@ describe('HomeView — 체험 가계부', () => {
     // 생활비 항목 + 맨 아래 '이벤트' 한 줄 (이번 달 이벤트통장 쓴 돈 / 적립액, 누르면 이벤트 화면)
     expect(rows).toHaveLength(living.items.length + 1);
     const ev = within(card).getByTestId('living-event');
-    expect(within(ev).getByRole('link').getAttribute('href')).toBe('/plan');
     expect(ev.textContent).toContain('이벤트');
     // 항목 한 줄 = 펼치기 버튼 (막대는 버튼 글과 같은 숫자라 화면 읽기에서 숨겨요)
-    expect(within(card).getAllByRole('button').filter((b) => b.getAttribute('aria-expanded') === 'false')).toHaveLength(living.items.length);
+    expect(within(card).getAllByRole('button').filter((b) => b.getAttribute('aria-expanded') === 'false')).toHaveLength(living.items.length + 1);
     expect(card.querySelectorAll('.bar')).toHaveLength(living.items.length + 1);
     const food = living.items.find((i) => i.name === '식비')!;
     const foodRow = itemRow(card, '식비');
@@ -227,7 +226,7 @@ describe('HomeView — 항목별 생활비 펼쳐 보기 (부부 예시)', () =>
     expect(within(card).getByRole('link', { name: /내역 보기/ }).getAttribute('href')).toBe(`/history?month=2026-11&account=${MINJI}`);
   });
 
-  it('항목을 누르면 창 없이 그 아래로 이번 달 지출(새것부터)이 펼쳐지고, 합 = 카드의 쓴 돈. 여러 개를 함께 펼치고 다시 누르면 접혀요', async () => {
+  it('항목을 누르면 창 없이 그 아래로 이번 달 최근 지출 5건(새것부터)이 펼쳐지고, 더 있으면 전체 N건 보기. 여러 개를 함께 펼치고 다시 누르면 접혀요', async () => {
     const { h, card } = await renderCouple();
     const view = h.probe.ledger!.livingViews.find((v) => v.accountId === MINJI)!;
     const food = view.status.items.find((i) => i.name === '식비')!;
@@ -245,18 +244,17 @@ describe('HomeView — 항목별 생활비 펼쳐 보기 (부부 예시)', () =>
     const expected = livingItemExpenses(h.probe.ledger!.data!, view.status, food);
     expect(expected.length).toBeGreaterThan(0);
     const rows = within(panel).getAllByRole('button', { name: /고치기$/ });
-    expect(rows).toHaveLength(expected.length);
-    // 합 = 카드에 보이는 식비 쓴 돈
-    const total = rows.reduce((s, b) => s + amountOf(b), 0);
-    expect(total).toBe(food.spent);
+    expect(rows).toHaveLength(Math.min(5, expected.length));
+    // 보이는 5건 = 최근 5건, 전체 합은 카드에 보이는 식비 쓴 돈
+    expect(rows.reduce((s, b) => s + amountOf(b), 0)).toBe(expected.slice(0, 5).reduce((s, e) => s + e.amount, 0));
+    expect(expected.reduce((s, e) => s + e.amount, 0)).toBe(food.spent);
     expect(itemRow(card, '식비').textContent).toContain(`${food.spent.toLocaleString('ko-KR')} / `);
     // 새것부터
     expect(rows[0]!.getAttribute('aria-label')).toContain(expected[0]!.amount.toLocaleString('ko-KR'));
     expect(expected.map((e) => e.date)).toEqual([...expected.map((e) => e.date)].sort().reverse());
-    // 남은 돈 한 줄 · 식비 내역 전체 보기
-    expect(panel.textContent).toContain(`이번 달 남은 돈 ${formatWon(food.remaining)}`);
-    expect(panel.textContent).toContain(`${view.status.daysLeft}일 남음`);
-    expect(within(panel).getByRole('link', { name: /식비 내역 전체 보기/ }).getAttribute('href')).toBe(
+    // 더 있으면 '식비 전체 N건 보기' (없으면 '식비 내역 보기')
+    const more = expected.length > 5 ? `식비 전체 ${expected.length}건 보기` : '식비 내역 보기';
+    expect(within(panel).getByRole('link', { name: more }).getAttribute('href')).toBe(
       `/history?month=2026-11&account=${MINJI}&category=${food.categoryId}`,
     );
 
@@ -267,7 +265,8 @@ describe('HomeView — 항목별 생활비 펼쳐 보기 (부부 예시)', () =>
     expect(cafeBtn.getAttribute('aria-expanded')).toBe('true');
     const cafePanel = document.getElementById(cafeBtn.getAttribute('aria-controls')!)!;
     const cafeRows = within(cafePanel).queryAllByRole('button', { name: /고치기$/ });
-    expect(cafeRows.reduce((s, b) => s + amountOf(b), 0)).toBe(cafe.spent);
+    const cafeExpected = livingItemExpenses(h.probe.ledger!.data!, view.status, cafe);
+    expect(cafeRows.reduce((s, b) => s + amountOf(b), 0)).toBe(cafeExpected.slice(0, 5).reduce((s, e) => s + e.amount, 0));
 
     // 다시 누르면 접혀요
     fireEvent.click(foodBtn);
@@ -287,5 +286,26 @@ describe('HomeView — 항목별 생활비 펼쳐 보기 (부부 예시)', () =>
     const dialog = await screen.findByRole('dialog', { name: '지출 고치기' });
     expect((within(dialog).getByLabelText(/^금액/) as HTMLInputElement).value.replace(/,/g, '')).toBe(String(first.amount));
     expect((within(dialog).getByLabelText(/통장/) as HTMLSelectElement).value).toBe(MINJI);
+  });
+});
+
+describe('HomeView — 항목별 생활비의 이벤트 줄', () => {
+  it('누르면 이번 달 이벤트통장 지출(여행 포함)이 펼쳐지고, 여행 지출에는 여행 표시가 붙어요', async () => {
+    const h = await renderHome();
+    const card = await screen.findByRole('region', { name: '항목별 생활비' });
+    const ev = within(card).getByTestId('living-event');
+    const toggle = within(ev).getAllByRole('button')[0]!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const panel = within(ev).getByRole('group', { name: '이번 달 이벤트통장 지출' });
+    const d = h.probe.ledger!.data!;
+    const acc = d.accounts.find((a) => a.role === 'event')!;
+    const month = h.probe.ledger!.today.slice(0, 7);
+    const mine = d.expenses.filter((e) => !e.deleted && e.accountId === acc.id && e.date.startsWith(month) && e.date <= h.probe.ledger!.today);
+    if (mine.length === 0) expect(within(panel).getByText('이번 달 이벤트통장 지출이 없어요.')).toBeTruthy();
+    else expect(within(panel).getAllByRole('button', { name: /고치기$/ }).length).toBe(mine.length);
+    if (mine.some((e) => e.tripId)) expect(within(panel).getAllByRole('button', { name: /\(여행 .+\)/ }).length).toBeGreaterThan(0);
+    expect(within(panel).getByRole('link', { name: /이벤트 화면 보기/ }).getAttribute('href')).toBe('/plan');
   });
 });

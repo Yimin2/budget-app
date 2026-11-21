@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useId, useMemo, useState } from 'react';
 import {
-  formatMan, formatNumber, formatShortDate, formatWon, livingDayNote, livingItemExpenses, livingItemKey, scheduleLabel,
+  eventRecords, formatMan, formatNumber, formatShortDate, formatWon, livingDayNote, livingItemExpenses, livingItemKey, recordPhase, scheduleLabel,
 } from '@/domain';
 import type { EventMonthBudget, Expense, LivingItem, LivingStatus } from '@/domain';
 import { useLedger } from '@/state';
@@ -128,7 +128,15 @@ export function LivingItemsCard({ living, owner = null, event = null }: { living
             </li>
           );
         })}
-        {event ? <EventItemRow event={event} /> : null}
+        {event ? (
+          <EventItemRow
+            event={event}
+            uid={uid}
+            open={open.has('event:')}
+            onToggle={() => toggle('event:')}
+            onEdit={(expense, toggleId) => setEditing({ expense, toggleId })}
+          />
+        ) : null}
       </ul>
       {editing ? (
         <ExpenseDialog
@@ -141,13 +149,35 @@ export function LivingItemsCard({ living, owner = null, event = null }: { living
   );
 }
 
-/** 항목별 생활비의 '이벤트' 줄: 생활비 항목과 같은 모양, 누르면 이벤트 화면 */
-function EventItemRow({ event }: { event: EventMonthBudget }) {
+/**
+ * 항목별 생활비의 '이벤트' 줄: 생활비 항목과 같은 모양. 누르면 그 아래로 이번 달 이벤트통장 지출(여행 포함, 새것부터)이 펼쳐지고,
+ * 지출을 누르면 고치기 창. 여행 지출은 한도와 견주지 않고 '여행' 표시만
+ */
+function EventItemRow({ event, open, onToggle, onEdit, uid }: { event: EventMonthBudget; open: boolean; onToggle: () => void; onEdit: (e: Expense, toggleId: string) => void; uid: string }) {
+  const { data, today } = useLedger();
   const remaining = event.limit - event.spent;
   const tone = remaining < 0 ? 'danger' : event.limit > 0 && event.spent / event.limit >= 0.8 ? 'warning' : 'primary';
+  const toggleId = `li${uid}-event`;
+  const panelId = `${toggleId}-panel`;
+  const rows = useMemo(() => {
+    if (!data) return [];
+    const month = today.slice(0, 7);
+    return eventRecords(data, event.accountId, { reservoirClaims: false, month })
+      .filter((r) => recordPhase(r.record, today) === 'spent')
+      .map((r) => r.expense)
+      .sort((x, y) => (x.date !== y.date ? (x.date < y.date ? 1 : -1) : y.createdAt.localeCompare(x.createdAt)));
+  }, [data, today, event.accountId]);
+  const trips = useMemo(() => new Map((data?.trips ?? []).filter((t) => !t.deleted).map((t) => [t.id, t.name])), [data]);
   return (
     <li className={styles.item} data-testid="living-event">
-      <Link href="/plan" className={styles.itemToggle} aria-label={`이벤트 이번 달 ${formatWon(event.spent)} 썼어요. 이벤트 화면 보기`}>
+      <button
+        type="button"
+        id={toggleId}
+        className={styles.itemToggle}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={onToggle}
+      >
         <span className={styles.itemHead}>
           <span className={styles.itemName}>
             <Icon name="calendar" size={20} />
@@ -164,7 +194,7 @@ function EventItemRow({ event }: { event: EventMonthBudget }) {
                 <span className={styles.itemCap}>남은 돈</span> <Money amount={remaining} className={styles.amountCell} />
               </>
             )}
-            <Icon name="chevron-right" size={20} className={styles.itemChevron} />
+            <Icon name="chevron-down" size={20} className={cx(styles.itemChevron, open && styles.itemChevronOpen)} />
           </span>
         </span>
         <ProgressBar
@@ -182,10 +212,55 @@ function EventItemRow({ event }: { event: EventMonthBudget }) {
           </span>
           <span>{event.tripSpent > 0 ? `여행 ${formatMan(event.tripSpent)} 따로` : '이번 달 적립 한도'}</span>
         </span>
-      </Link>
+      </button>
+      {open && data ? (
+        <div id={panelId} className={styles.itemPanel} role="group" aria-label="이번 달 이벤트통장 지출">
+          {rows.length === 0 ? (
+            <p className={styles.emptyLine}>이번 달 이벤트통장 지출이 없어요.</p>
+          ) : (
+            <ul className={styles.itemExpenses}>
+              {rows.slice(0, PANEL_MAX).map((e) => {
+                const title = expenseTitle(e, data.categories);
+                const trip = e.tripId ? trips.get(e.tripId) : undefined;
+                return (
+                  <li key={e.id}>
+                    <button
+                      type="button"
+                      className={styles.itemExpense}
+                      onClick={() => onEdit(e, toggleId)}
+                      aria-label={`${formatShortDate(e.date)} ${title}${trip ? ` (여행 ${trip})` : ''} ${formatWon(e.amount)} 고치기`}
+                    >
+                      <span className={styles.itemExpenseDate}>{formatShortDate(e.date)}</span>
+                      <span className={styles.itemExpenseTitle}>
+                        {title}
+                        {trip ? (
+                          <>
+                            {' '}
+                            <Badge size="sm" tone="brand" dot={false}>
+                              여행
+                            </Badge>
+                          </>
+                        ) : null}
+                      </span>
+                      <Money amount={e.amount} className={styles.amountCell} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <Link href="/plan" className={styles.itemPanelMore}>
+            {rows.length > PANEL_MAX ? `전체 ${rows.length}건은 이벤트 화면에서` : '이벤트 화면 보기'}
+            <Icon name="chevron-right" size={16} />
+          </Link>
+        </div>
+      ) : null}
     </li>
   );
 }
+
+/** 펼친 목록에 보여 줄 최근 지출 수 (더 있으면 '전체 N건 보기') */
+const PANEL_MAX = 5;
 
 /** 펼친 생활비 항목: 이번 달 그 항목 지출(날짜 · 내용 · 금액) · 남은 돈 한 줄 · 그 항목 내역 전체 보기 */
 function LivingItemPanel({
@@ -205,9 +280,6 @@ function LivingItemPanel({
   // 기타 묶음은 예산 항목이 없는 카테고리도 들어가서, 모두 카테고리가 없을 때만 '카테고리 없음'으로 걸러요
   const category = item.categoryId ?? (rows.length > 0 && rows.every((e) => e.categoryId === null) ? 'none' : null);
   const accountId = item.accountId ?? living.livingAccountId;
-  const left =
-    item.remaining < 0 ? `이번 달 ${formatWon(-item.remaining)} 넘었어요` : `이번 달 남은 돈 ${formatWon(item.remaining)}`;
-  const daily = item.dailyBudget !== null ? `하루 ${formatWon(item.dailyBudget)}` : null;
 
   return (
     <div id={id} className={styles.itemPanel} role="group" aria-label={`이번 달 ${item.name} 지출`}>
@@ -215,7 +287,7 @@ function LivingItemPanel({
         <p className={styles.emptyLine}>이번 달 {item.name} 지출이 없어요.</p>
       ) : (
         <ul className={styles.itemExpenses}>
-          {rows.map((e) => {
+          {rows.slice(0, PANEL_MAX).map((e) => {
             const title = expenseTitle(e, data.categories);
             return (
               <li key={e.id}>
@@ -234,14 +306,10 @@ function LivingItemPanel({
           })}
         </ul>
       )}
-      <p className={cx(styles.itemPanelNote, item.remaining < 0 && styles.bad)}>
-        {[left, daily, `${living.daysLeft}일 남음`].filter(Boolean).join(' · ')}
-      </p>
-      <div className={styles.itemPanelFoot}>
-        <Button href={livingHistoryHref(living.month, accountId, category)} variant="ghost" iconRight="chevron-right">
-          {item.name} 내역 전체 보기
-        </Button>
-      </div>
+      <Link href={livingHistoryHref(living.month, accountId, category)} className={styles.itemPanelMore}>
+        {rows.length > PANEL_MAX ? `${item.name} 전체 ${rows.length}건 보기` : `${item.name} 내역 보기`}
+        <Icon name="chevron-right" size={16} />
+      </Link>
     </div>
   );
 }
