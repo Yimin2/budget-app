@@ -77,9 +77,9 @@
   .home > .col {
     grid-column: auto;
   }
-  /* 두 칸에서 이번 달 쓴 돈은 오른쪽 칸 이벤트통장 바로 아래 (같은 순서 안에서 DOM 순서) */
-  .oSpent {
-    order: 5;
+  /* 항목별 생활비가 없으면 왼쪽 칸이 두 칸 너비로 */
+  .home > .colFull {
+    grid-column: 1 / -1;
   }
 }
 
@@ -812,4 +812,16 @@
 }
 .itemPanelMore:hover {
   text-decoration: underline;
+}
+
+/* 이벤트 줄의 예정 일정: 쓴 지출과 같은 줄 모양, 글은 흐리게 · 밑줄 없이 */
+a.itemPlanned {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.itemPlanned + * {
+  border-top: 0;
+}
+.itemPanel > .itemExpenses + .itemExpenses {
+  border-top: 1px dashed var(--border);
 }

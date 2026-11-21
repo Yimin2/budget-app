@@ -154,8 +154,15 @@ export function LivingItemsCard({ living, owner = null, event = null }: { living
  * 지출을 누르면 고치기 창. 여행 지출은 한도와 견주지 않고 '여행' 표시만
  */
 function EventItemRow({ event, open, onToggle, onEdit, uid }: { event: EventMonthBudget; open: boolean; onToggle: () => void; onEdit: (e: Expense, toggleId: string) => void; uid: string }) {
-  const { data, today } = useLedger();
-  const remaining = event.limit - event.spent;
+  const { data, today, eventProjection } = useLedger();
+  // 이번 달 일정에 넣어 둔 것 (아직 안 쓴 일정 · 반복 회차): 목록 맨 위에 '예정'으로, 남은 돈에서도 미리 빼요
+  const planned = useMemo(() => {
+    const month = today.slice(0, 7);
+    const m = eventProjection?.months.find((x) => x.month === month);
+    return (m?.events ?? []).filter((e) => e.date.startsWith(month)).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }, [eventProjection, today]);
+  const plannedTotal = planned.reduce((t, e) => t + e.amount, 0);
+  const remaining = event.limit - event.spent - plannedTotal;
   const tone = remaining < 0 ? 'danger' : event.limit > 0 && event.spent / event.limit >= 0.8 ? 'warning' : 'primary';
   const toggleId = `li${uid}-event`;
   const panelId = `${toggleId}-panel`;
@@ -210,13 +217,39 @@ function EventItemRow({ event, open, onToggle, onEdit, uid }: { event: EventMont
           <span>
             {formatNumber(event.spent)} / {formatWon(event.limit)}
           </span>
-          <span>{event.tripSpent > 0 ? `여행 ${formatMan(event.tripSpent)} 따로` : '이번 달 적립 한도'}</span>
+          <span>
+            {[plannedTotal > 0 ? `예정 ${formatMan(plannedTotal)} 포함` : null, event.tripSpent > 0 ? `여행 ${formatMan(event.tripSpent)} 따로` : null]
+              .filter(Boolean)
+              .join(' · ') || '이번 달 적립 한도'}
+          </span>
         </span>
       </button>
       {open && data ? (
         <div id={panelId} className={styles.itemPanel} role="group" aria-label="이번 달 이벤트통장 지출">
+          {planned.length > 0 ? (
+            <ul className={styles.itemExpenses} aria-label="이번 달 예정 일정">
+              {planned.map((e) => (
+                <li key={`${e.id}:${e.date}`}>
+                  <Link
+                    href="/plan"
+                    className={cx(styles.itemExpense, styles.itemPlanned)}
+                    aria-label={`${formatShortDate(e.date)} ${e.name} ${formatWon(e.amount)} 예정. 이벤트 화면에서 보기`}
+                  >
+                    <span className={styles.itemExpenseDate}>{formatShortDate(e.date)}</span>
+                    <span className={styles.itemExpenseTitle}>
+                      {e.name}{' '}
+                      <Badge size="sm" tone="neutral" dot={false}>
+                        예정
+                      </Badge>
+                    </span>
+                    <Money amount={e.amount} className={styles.amountCell} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {rows.length === 0 ? (
-            <p className={styles.emptyLine}>이번 달 이벤트통장 지출이 없어요.</p>
+            planned.length === 0 ? <p className={styles.emptyLine}>이번 달 이벤트통장 지출이 없어요.</p> : null
           ) : (
             <ul className={styles.itemExpenses}>
               {rows.slice(0, PANEL_MAX).map((e) => {
