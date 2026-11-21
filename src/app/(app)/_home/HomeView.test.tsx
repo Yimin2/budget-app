@@ -308,4 +308,20 @@ describe('HomeView — 항목별 생활비의 이벤트 줄', () => {
     if (mine.some((e) => e.tripId)) expect(within(panel).getAllByRole('button', { name: /\(여행 .+\)/ }).length).toBeGreaterThan(0);
     expect(within(panel).getByRole('link', { name: /이벤트 화면 보기/ }).getAttribute('href')).toBe('/plan');
   });
+
+  it('이번 달 일정에 넣어 둔 것도 맨 위에 예정으로 보여 주고, 남은 돈에서 미리 빼요', async () => {
+    const h = await renderHome();
+    await screen.findByRole('region', { name: '항목별 생활비' });
+    await act(async () => {
+      await h.probe.ledger!.addEvent({ date: '2026-11-28', name: '친구 돌잔치', amount: 100_000 });
+    });
+    const ev = screen.getByTestId('living-event');
+    const before = h.probe.ledger!;
+    expect(ev.textContent).toContain('예정 10만 포함');
+    fireEvent.click(within(ev).getAllByRole('button')[0]!);
+    const list = within(ev).getByRole('list', { name: '이번 달 예정 일정' });
+    const row = within(list).getByRole('link', { name: /친구 돌잔치 100,000원 예정/ });
+    expect(row.getAttribute('href')).toBe('/plan');
+    expect(before.today.slice(0, 7)).toBe('2026-11');
+  });
 });

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ledgerPeople, eventMonthBudget, formatDateKo, hasLivingBudget } from '@/domain';
 import { useLedger, useSession } from '@/state';
-import { AvatarGroup, PageHeader } from '@/ui';
+import { AvatarGroup, PageHeader, cx } from '@/ui';
 import { LedgerSwitcher } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
 import styles from './home.module.css';
@@ -70,29 +70,36 @@ function HomeBody() {
     [ledger.data, ledger.settlement, ledger.today],
   );
 
+  const showItems = !!living && living.items.length > 0 && (!multi || !!selected);
+  // 넓은 화면(1280px 이상)은 두 칸: 왼쪽 = 보낼 돈 · 오늘 써도 되는 돈 · 자주 쓰는 지출, 오른쪽 = 항목별 생활비.
+  // 그보다 좁으면 한 줄로 위에서 아래 (보이는 순서 = 읽는 순서). 항목별 생활비가 없으면 왼쪽 칸이 넓게
   return (
-    <div className={styles.col}>
-      {/* 월급을 기록해 배분이 생기면 은행에서 보낼 일 (다 보내면 사라져요) */}
-      <SendCard className={styles.oSend} />
-      {ledger.meChoices.length > 0 ? <MeChooser names={ledger.meChoices} /> : null}
-      {living && hasLivingBudget(living) ? (
-        <TodayCard
-          living={living}
-          person={person}
-          views={multi ? views : []}
-          myAccountId={ledger.myLivingAccountId}
-          household={multi ? ledger.living : null}
-          onPick={setViewId}
-        />
-      ) : (
-        <LivingSetupCard />
-      )}
-      <QuickSuggestions />
+    <>
+      <div className={cx(styles.col, !showItems && styles.colFull)}>
+        {/* 월급을 기록해 배분이 생기면 은행에서 보낼 일 (다 보내면 사라져요) */}
+        <SendCard className={styles.oSend} />
+        {ledger.meChoices.length > 0 ? <MeChooser names={ledger.meChoices} /> : null}
+        {living && hasLivingBudget(living) ? (
+          <TodayCard
+            living={living}
+            person={person}
+            views={multi ? views : []}
+            myAccountId={ledger.myLivingAccountId}
+            household={multi ? ledger.living : null}
+            onPick={setViewId}
+          />
+        ) : (
+          <LivingSetupCard />
+        )}
+        <QuickSuggestions />
+      </div>
       {/* 모두 합친 화면(나를 고르기 전)에서는 항목이 사람마다 겹쳐 보여서 빼요 */}
-      {living && living.items.length > 0 && (!multi || selected) ? (
-        <LivingItemsCard key={selected?.accountId ?? ''} living={living} owner={selected?.name ?? null} event={event} />
+      {showItems ? (
+        <div className={styles.col}>
+          <LivingItemsCard key={selected?.accountId ?? ''} living={living!} owner={selected?.name ?? null} event={event} />
+        </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
