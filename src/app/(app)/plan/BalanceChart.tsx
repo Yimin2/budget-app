@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useMemo, useState, type CSSProperties } from 'react';
+import { useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { eventMonthlyCosts, formatManShort, formatShortDate, formatWon, monthOf, pastMonthRows } from '@/domain';
 import type { Id, ISODate, LedgerData, MonthSpentRow, SpentBasisMonth, SpentBasisView, Won, YearMonth } from '@/domain';
 import { Badge, Button, Card, Dialog, Icon, cx } from '@/ui';
@@ -20,18 +20,22 @@ export interface BalanceChartProps {
   data: LedgerData;
   today: ISODate;
   accountId: Id;
+  /** 차트 위 한 줄 (모자라는 달 알림 · 대처하기) */
+  notice?: ReactNode;
 }
 
 /**
  * 이벤트 화면 '달 말 잔액' 카드 (PLAN 4-2, 쓴 날 기준): 지난 3개월(회색) + 이번 달부터 예측(파랑, 0 아래는 빨강).
  * 막대를 누르면 그달 상세가 시트로 올라와요 (휴대폰은 아래에서, 넓은 화면은 가운데 창)
  */
-export function BalanceChart({ view, data, today, accountId }: BalanceChartProps) {
+export function BalanceChart({ view, data, today, accountId, notice }: BalanceChartProps) {
   const titleId = useId();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const months = view.months;
   const thisMonth = monthOf(today);
-  const maxPos = Math.max(1, ...months.map((m) => m.end));
+  // 시작일 전 달(쓴 돈만)은 쓴 돈 높이로
+  const height = (m: SpentBasisMonth) => (m.spentOnly ? m.spent : m.end);
+  const maxPos = Math.max(1, ...months.map(height));
   const maxNeg = Math.max(0, ...months.map((m) => -m.end));
   const scale = POS_H / Math.max(maxPos, maxNeg * (POS_H / NEG_MAX));
   const negH = maxNeg > 0 ? Math.min(NEG_MAX, Math.ceil(maxNeg * scale)) : 0;
@@ -39,25 +43,33 @@ export function BalanceChart({ view, data, today, accountId }: BalanceChartProps
 
   return (
     <Card as="section" className={cardStyles.card} aria-labelledby={titleId} data-testid="balance-chart">
-      <CardHead titleId={titleId} title="달 말 잔액" actions={<span className={styles.basis}>쓴 날 기준</span>} />
+      <CardHead titleId={titleId} title="달 말 잔액" actions={<span className={styles.basis}>막대 위 = 그달 말 잔액(예상)</span>} />
+      {notice}
       <ul className={styles.chart} style={{ '--cols': months.length } as CSSProperties} aria-label="달마다 달 말 잔액">
         {months.map((m, i) => {
           const isThis = m.month === thisMonth;
-          const short = m.end < 0;
+          const short = !m.spentOnly && m.end < 0;
           const name = monthLabel(m.month, today);
+          const value = m.spentOnly ? `쓴 ${formatManShort(m.spent)}` : formatManShort(m.end);
           return (
             <li key={m.month} style={{ display: 'flex', minWidth: 0 }}>
               <button
                 type="button"
                 className={styles.col}
                 onClick={() => setOpenIndex(i)}
-                aria-label={`${name}${isThis ? '(이번 달)' : ''} 달 말 ${formatWon(m.end)}${short ? ' · 모자라요' : ''}${m.kind === 'past' ? ' · 지난 달' : ''}. 자세히 보기`}
+                aria-label={
+                  m.spentOnly
+                    ? `${name} 쓴 돈 ${formatWon(m.spent)} · 통장 시작 전이라 잔액은 몰라요. 자세히 보기`
+                    : `${name}${isThis ? '(이번 달)' : ''} 달 말 ${formatWon(m.end)}${short ? ' · 모자라요' : ''}${m.kind === 'past' ? ' · 지난 달' : ''}. 자세히 보기`
+                }
                 data-testid={`bar-${m.month}`}
               >
                 <span className={styles.pos} aria-hidden="true">
+                  {/* 막대 위 금액: 달 말 잔액(예상), 시작일 전 달은 '쓴 ○만' */}
+                  <span className={cx(styles.val, isThis && styles.valThis, short && styles.valShort, m.spentOnly && styles.valSpent)}>{value}</span>
                   <span
-                    className={cx(styles.bar, m.kind === 'past' && styles.barPast, m.end <= 0 && styles.barZero)}
-                    style={{ height: m.end > 0 ? Math.max(2, Math.round(m.end * scale)) : 0 }}
+                    className={cx(styles.bar, m.kind === 'past' && styles.barPast, m.spentOnly && styles.barSpent, height(m) <= 0 && styles.barZero)}
+                    style={{ height: height(m) > 0 ? Math.max(2, Math.round(height(m) * scale)) : 0 }}
                   />
                 </span>
                 <span className={styles.neg} style={{ '--neg-h': `${negH}px` } as CSSProperties} aria-hidden="true">
@@ -71,7 +83,9 @@ export function BalanceChart({ view, data, today, accountId }: BalanceChartProps
           );
         })}
       </ul>
-      <p className={styles.chartFoot}>막대를 누르면 그 달을 자세히 봐요 · 회색은 지난 달</p>
+      <p className={styles.chartFoot}>
+        막대를 누르면 그 달을 자세히 봐요 · 회색은 지난 달{months.some((m) => m.spentOnly) ? ' · 줄무늬는 통장 시작 전이라 쓴 돈만' : ''}
+      </p>
       {open ? (
         <Dialog open onClose={() => setOpenIndex(null)} title={`${monthLabel(open.month, today)}${open.month === thisMonth ? ' · 이번 달' : ''}`}>
           <MonthSheet
@@ -169,7 +183,7 @@ function MonthSheet({
 }) {
   const rows = useMemo(() => sheetRows(m, view, data, today, accountId), [m, view, data, today, accountId]);
   const name = monthLabel(m.month, today);
-  const short = m.end < 0;
+  const short = !m.spentOnly && m.end < 0;
   const past = m.kind === 'past';
   const totalLabel = past ? `${name}에 쓴 돈` : m.kind === 'this' ? '이번 달 쓴 돈 (예정 포함)' : `${name}에 쓸 돈 (예정)`;
   const won = (v: Won) => (
@@ -184,7 +198,7 @@ function MonthSheet({
       <div className={styles.sheetNav}>
         <span className={cx(styles.sheetState, short ? styles.bad : styles.ok)}>
           <Icon name={short ? 'alert-triangle' : 'check-circle'} size={16} />
-          {short ? `${formatManShort(-m.end)} 모자라요` : past ? '지난 달' : '모자라지 않아요'}
+          {m.spentOnly ? '통장 시작 전 달' : short ? `${formatManShort(-m.end)} 모자라요` : past ? '지난 달' : '모자라지 않아요'}
         </span>
         <span className={styles.navButtons}>
           <Button variant="ghost" iconOnly icon="chevron-left" aria-label="이전 달" onClick={onPrev} disabled={!onPrev} />
@@ -225,6 +239,11 @@ function MonthSheet({
         <p className={styles.empty}>{past ? '이 달에 쓴 돈이 없어요' : '이 달에 쓸 돈이 없어요'}</p>
       )}
 
+      {m.spentOnly ? (
+        <p className={styles.sheetNote} data-testid="sheet-note">
+          이벤트통장 시작일 전이라 들어온 돈 기록이 없어 잔액은 몰라요. 쓴 돈만 보여 줘요. 설정 › 통장에서 시작일 · 시작 잔액을 앞당기면 잔액도 나와요.
+        </p>
+      ) : (
       <dl className={styles.calc} data-testid="sheet-calc">
         <div>
           <dt>{name} 1일 잔액</dt>
@@ -258,6 +277,7 @@ function MonthSheet({
           <dd className={short ? styles.bad : undefined}>{won(m.end)}</dd>
         </div>
       </dl>
+      )}
 
       {m.repaid > 0 || m.owed > 0 ? (
         <p className={styles.sheetNote} data-testid="sheet-note">

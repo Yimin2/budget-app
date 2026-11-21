@@ -635,3 +635,23 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* ───────── 이벤트 화면의 달별 내역 (2026-11) ───────── */
+.listTitle {
+  margin: 0;
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 800;
+}
+/* 이번 달 예정 일정: 연한 바탕 · 흐린 글로 쓴 돈과 구분 */
+.rowPlanned {
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+}
+.plannedName {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.moreMonths {
+  align-self: center;
+}

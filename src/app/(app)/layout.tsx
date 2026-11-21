@@ -7,7 +7,7 @@ import { AppShell, Avatar, Banner, isNavActive, useToast } from '@/ui';
 import { CreateSheet, type CreateState } from './_components/CreateSheet';
 import { LedgerSwitcher } from './_components/LedgerSwitcher';
 import { MonthEndDialog } from './_components/MonthEndDialog';
-import { APP_NAV, FAB_HIDDEN_PATHS, MOBILE_NAV, SETTINGS_HREF } from './_components/nav';
+import { APP_NAV, FAB_HIDDEN_EXACT, FAB_HIDDEN_PATHS, MOBILE_NAV, SETTINGS_HREF } from './_components/nav';
 import { PageSkeleton, SwitcherSkeleton } from './_components/PageSkeleton';
 import { syncStatus } from './_components/syncLabel';
 // 설정·예산 화면 스타일도 앱 틀과 같은 묶음으로 불러요. 화면마다 따로 두면 메뉴 링크를 미리 불러올 때마다
@@ -92,7 +92,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               label: '기록',
               onClick: () => setCreate('expense'),
               expanded: create !== null,
-              fab: !FAB_HIDDEN_PATHS.some((p) => isNavActive(p, pathname)),
+              fab: !FAB_HIDDEN_PATHS.some((p) => isNavActive(p, pathname)) && !FAB_HIDDEN_EXACT.includes(pathname),
             }
           : undefined
       }

@@ -58,7 +58,7 @@ describe('scheduleGroups', () => {
 async function renderCard() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
-  const card = await screen.findByRole('region', { name: /^달별 일정 · / });
+  const card = await screen.findByRole('region', { name: /^연간 일정 · / });
   return { h, card, add: headerAddButton() };
 }
 
@@ -75,7 +75,7 @@ const itemNames = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').m
 describe('일정 카드', () => {
   it('카드에는 추가 버튼이 없고 화면 머리의 [+ 추가 ▾] 하나', async () => {
     const { card, add } = await renderCard();
-    expect(within(card).getByRole('heading', { level: 2 }).textContent).toMatch(/^달별 일정 · \d+건 .+만$/);
+    expect(within(card).getByRole('heading', { level: 2 }).textContent).toMatch(/^연간 일정 · \d+건 .+만$/);
     expect(within(card).queryByRole('button', { name: '추가' })).toBeNull();
     expect(card.contains(add)).toBe(false);
     expect(screen.getAllByRole('button', { name: /추가/ })).toHaveLength(1);
@@ -85,22 +85,23 @@ describe('일정 카드', () => {
     expect(add.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('가까운 3개 달만 펼쳐 두고 [N건 더 ▾]로 나머지, 폰에서 CSS 로 접는 [펼치기]는 없어요', async () => {
+  it('연간 일정: 이번 달부터 12개월을 달마다 한 줄로, 가까운 6개월은 펼쳐 두고 나머지는 눌러서 펼쳐요', async () => {
     const { card } = await renderCard();
     const upcoming = within(card).getByRole('region', { name: '다가오는 일정' });
-    expect(within(upcoming).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['2027년 1월', '2027년 2월', '2027년 4월']);
-    expect(within(card).queryByRole('button', { name: '일정 목록 펼치기' })).toBeNull();
-    const more = within(upcoming).getByRole('button', { name: '다가오는 일정 1건 더 보기' });
-    expect(more.textContent).toBe('1건 더');
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    expect(document.getElementById(more.getAttribute('aria-controls')!)).toBeTruthy();
-    fireEvent.click(more);
-    expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(more.textContent).toBe('접기');
-    expect(within(upcoming).getAllByRole('heading', { level: 3 })).toHaveLength(4);
-    expect(within(upcoming).getByText('결혼기념일')).toBeTruthy();
-    fireEvent.click(within(upcoming).getByRole('button', { name: '다가오는 일정 접기' }));
-    expect(within(upcoming).queryByText('결혼기념일')).toBeNull();
+    const year = within(upcoming).getByRole('list', { name: '앞으로 12개월' });
+    // 일정 없는 달도 한 줄 (12개월 + 그 뒤 일정이 있는 달)
+    expect(year.querySelectorAll(':scope > li').length).toBeGreaterThanOrEqual(12);
+    expect(within(year).getAllByText('일정 없음').length).toBeGreaterThan(0);
+    // 가까운 6개월 안의 일정은 펼쳐져 있어요
+    expect(within(upcoming).getByRole('list', { name: '2027년 1월' })).toBeTruthy();
+    // 결혼기념일(6개월 뒤)은 한 줄 요약으로만 보이다가, 그 달을 누르면 일정 줄이 펼쳐져요
+    expect(within(upcoming).queryByRole('button', { name: /결혼기념일/ })).toBeNull();
+    const farRow = [...year.querySelectorAll(':scope > li')].find((li) => li.textContent?.includes('결혼기념일'))!;
+    const far = farRow.querySelector('button')!;
+    expect(far.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(far);
+    expect(far.getAttribute('aria-expanded')).toBe('true');
+    expect(within(upcoming).getByRole('button', { name: /결혼기념일/ })).toBeTruthy();
   });
 });
 

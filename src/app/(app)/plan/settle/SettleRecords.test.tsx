@@ -305,10 +305,10 @@ describe('저수지 갚을 돈 카드 (#loan)', () => {
 
 describe('내역 → 이체의 정산 이체', () => {
   it('정산 이체는 고칠 곳을 알려 줘요 (claim: → #paid, loan: · loanpay: → #loan, 그 밖은 없음)', () => {
-    expect(settleEditHref('claim:x')).toBe('/plan/settle#paid');
-    expect(settleEditHref('loan:claim:x')).toBe('/plan/settle#loan');
-    expect(settleEditHref('loan:x')).toBe('/plan/settle#loan');
-    expect(settleEditHref('loanpay:2026-11')).toBe('/plan/settle#loan');
+    expect(settleEditHref('claim:x')).toBe('/plan#paid');
+    expect(settleEditHref('loan:claim:x')).toBe('/plan#loan');
+    expect(settleEditHref('loan:x')).toBe('/plan#loan');
+    expect(settleEditHref('loanpay:2026-11')).toBe('/plan#loan');
     expect(settleEditHref('t1')).toBeNull();
   });
 
@@ -326,11 +326,11 @@ describe('내역 → 이체의 정산 이체', () => {
     });
     fireEvent.click(settleRow);
     const link = screen.getByRole('link', { name: '정산 화면에서 고칠 수 있어요 →' });
-    expect(link.getAttribute('href')).toBe('/plan/settle#paid');
+    expect(link.getAttribute('href')).toBe('/plan#paid');
     expect(screen.queryByRole('dialog')).toBeNull();
 
     const loanRow = screen.getAllByRole('button', { name: /저수지에서 빌림/ })[0]!;
     fireEvent.click(loanRow);
-    expect(screen.getByRole('link', { name: '정산 화면에서 고칠 수 있어요 →' }).getAttribute('href')).toBe('/plan/settle#loan');
+    expect(screen.getByRole('link', { name: '정산 화면에서 고칠 수 있어요 →' }).getAttribute('href')).toBe('/plan#loan');
   });
 });

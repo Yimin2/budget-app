@@ -6,10 +6,10 @@ import type { Id, PlannedEvent, RepayMonths, TripStatus, Won } from '@/domain';
 import type { ReadyLedger } from '../_components';
 import { HashTarget } from '../_components/HashTarget';
 import { BalanceChart } from './BalanceChart';
+import { EventHistory, EventHistoryBarSpace } from './settle/SettleScreen';
 import { readRepayMonths, writeRepayMonths } from './CompromisePanel';
 import type { EventPreset } from './EventDialog';
 import { NoEventAccount } from './NoEventAccount';
-import { SettleLine } from './SettleLine';
 import { StatusCard } from './StatusCard';
 import { eventCategories, sectionEvents, spentByEvent } from './selectors';
 import { ScheduleCard, type SchedulePanel } from './ScheduleCard';
@@ -69,8 +69,8 @@ export function EventsBody({
   };
   // 쓴 날 기준 달 말 잔액 (지난 3개월 + 앞으로)
   const view = useMemo(() => spentBasisView(data, projection, today), [data, projection, today]);
-  const monthEnds = useMemo(() => new Map<string, Won>((view?.months ?? []).map((m) => [m.month, m.end])), [view]);
   const hasCandidates = useMemo(() => findExceptionCandidates(data, today).length > 0, [data, today]);
+  const monthEnds = useMemo(() => new Map<string, Won>((view?.months ?? []).map((m) => [m.month, m.end])), [view]);
 
   const schedule = (
     <ScheduleCard
@@ -96,21 +96,26 @@ export function EventsBody({
     />
   );
 
-  // 상태 → 정산 → 달 말 잔액 → (넓은 화면) 달별 일정 · 평소 쓰는 돈 나란히, 폰은 쌓아요
+  // 달별 내역 → 달 말 잔액 → 연간 일정 · 평소 쓰는 돈 (넓은 화면은 나란히)
   return (
     <div className={styles.grid}>
       {projection && hasEventAccount && view ? (
         <>
-          <div className={styles.top}>
-            <StatusCard view={view} today={today} compromise={compromise} repayMonths={repayMonths} onRepayMonths={chooseMonths} />
-            <SettleLine data={data} today={today} repayMonths={repayMonths} />
-          </div>
+          {/* 2026-11 개편: 달별 내역(정산 합침) → 달 말 잔액 → 연간 일정 · 평소 쓰는 돈. 모자라는 달은 차트 위 한 줄로 */}
+          <EventHistory ledger={ledger} />
           <HashTarget />
-          <BalanceChart view={view} data={data} today={today} accountId={projection.accountId!} />
+          <BalanceChart
+            view={view}
+            data={data}
+            today={today}
+            accountId={projection.accountId!}
+            notice={<StatusCard compact view={view} today={today} compromise={compromise} repayMonths={repayMonths} onRepayMonths={chooseMonths} />}
+          />
           <div className={styles.lower}>
             {schedule}
             <UsualCard data={data} accountId={projection.accountId!} insight={insight} today={today} hasCandidates={hasCandidates} />
           </div>
+          <EventHistoryBarSpace ledger={ledger} />
         </>
       ) : (
         <>

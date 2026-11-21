@@ -17,8 +17,10 @@ export const APP_NAV: NavItem[] = [HOME, HISTORY, PLAN, BUDGET];
  */
 export const MOBILE_NAV: NavItem[] = [HOME, HISTORY, PLAN, BUDGET];
 
-/** 아래 고정 막대가 있어 모바일 + 기록 버튼을 숨기는 화면 (정산: '○만 지급' 막대) */
-export const FAB_HIDDEN_PATHS = ['/plan/settle', '/check'];
+/** 아래 고정 막대가 있어 모바일 + 기록 버튼을 숨기는 화면 */
+export const FAB_HIDDEN_PATHS = ['/check'];
+/** 그 주소에서만 + 기록 버튼을 숨기는 화면 (이벤트 화면: 달별 내역의 '○만 지급' 막대, 머리에 [+ 추가]가 있어요) */
+export const FAB_HIDDEN_EXACT = ['/plan'];
 
 /** 내 정보 버튼이 여는 곳 */
 export const SETTINGS_HREF = '/settings';

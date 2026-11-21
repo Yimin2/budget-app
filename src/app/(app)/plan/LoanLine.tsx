@@ -14,7 +14,7 @@ export function loanSummaryText(loan: { borrowed: number; repaid: number; balanc
 }
 
 /** 정산 화면의 저수지 칸 (빌리고 갚은 기록 · 하나씩 바꾸기) */
-export const LOAN_HREF = '/plan/settle#loan';
+export const LOAN_HREF = '/plan#loan';
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 

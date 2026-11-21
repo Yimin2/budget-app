@@ -211,7 +211,8 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  height: 140px;
+  align-items: center;
+  height: 160px;
   border-bottom: 1px solid var(--text-muted);
 }
 .neg {
@@ -392,4 +393,57 @@
   font-size: 13px;
   line-height: 20px;
   color: var(--text-muted);
+}
+
+/* 차트 안 한 줄: '2027년 4월에 30만 모자라요 [대처하기]' (2026-11) */
+.shortLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.shortLine > span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 막대 위 금액 (2026-11): 좁은 칸이라 작게, 넘쳐도 옆 칸과 겹치지 않게 가운데 */
+.val {
+  margin-bottom: 2px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
+}
+.valThis {
+  color: var(--primary);
+}
+.valShort {
+  color: var(--danger-text);
+}
+.valSpent {
+  font-weight: 500;
+}
+/* 통장 시작 전 달: 쓴 돈 막대 (줄무늬) */
+.barSpent {
+  opacity: 1;
+  background: repeating-linear-gradient(135deg, var(--border) 0 4px, var(--surface-subtle) 4px 8px);
+  border: 1px solid var(--border);
+}
+@media (max-width: 420px) {
+  .val {
+    font-size: 9px;
+    letter-spacing: -0.5px;
+  }
 }

@@ -18,6 +18,8 @@ export interface StatusCardProps {
   compromise: CompromisePlan | null;
   repayMonths: RepayMonths;
   onRepayMonths: (m: RepayMonths) => void;
+  /** 한 줄만 (2026-11 이벤트 화면 개편: 모자라는 달이 있을 때 '○월에 ○만 모자라요 [대처하기]'만, 없으면 아무것도 안 그려요) */
+  compact?: boolean;
 }
 
 /**
@@ -25,7 +27,7 @@ export interface StatusCardProps {
  * 모자라는 달이 있으면 '2027년 4월에 30만 모자라요' + 그달 일정 이름 + [대처하기](추천 타협안 창),
  * 없으면 '앞으로 12개월 동안 모자라지 않아요'. 아래 두 칸: 지금 쓸 수 있는 돈(통장 − 돌려줄 돈) · 다음 적립
  */
-export function StatusCard({ view, today, compromise, repayMonths, onRepayMonths }: StatusCardProps) {
+export function StatusCard({ view, today, compromise, repayMonths, onRepayMonths, compact = false }: StatusCardProps) {
   const ledger = useLedger();
   const titleId = useId();
   // 홈의 [대처하기](/plan#fix)로 들어오면 바로 열어요 (화면은 가계부를 읽은 뒤에 그려져서 처음 값으로 충분해요)
@@ -44,6 +46,35 @@ export function StatusCard({ view, today, compromise, repayMonths, onRepayMonths
     s && s.incoming > 0 && s.incomingOn
       ? { value: `+${formatManShort(s.incoming)}`, note: `${Number(s.incomingOn.slice(5, 7))}월 ${Number(s.incomingOn.slice(8))}일` }
       : { value: `+${formatManShort(ahead[0]?.projection?.contributions || ahead[1]?.inflow || 0)}`, note: '매달 적립' };
+
+  const dialog = canFix ? (
+    <Dialog open={fixOpen && first !== null} onClose={() => setFixOpen(false)} title="모자라는 달 대처하기" wide>
+      {compromise ? (
+        <CompromisePanel plan={compromise} months={repayMonths} onMonths={onRepayMonths} />
+      ) : fix ? (
+        <FixWays fix={fix} today={today} />
+      ) : null}
+    </Dialog>
+  ) : null;
+
+  if (compact) {
+    if (!first) return null;
+    return (
+      <div className={styles.shortLine} data-testid="events-status">
+        <Icon name="alert-triangle" size={16} />
+        <span>
+          {monthLabel(first.month, today)}에 {formatManShort(-first.end)} 모자라요
+          <span className="sr-only"> ({formatWon(-first.end)})</span>
+        </span>
+        {canFix ? (
+          <Button variant="ghost" iconRight="chevron-right" onClick={() => setFixOpen(true)}>
+            대처하기
+          </Button>
+        ) : null}
+        {dialog}
+      </div>
+    );
+  }
 
   return (
     <section
@@ -86,15 +117,7 @@ export function StatusCard({ view, today, compromise, repayMonths, onRepayMonths
           </dd>
         </div>
       </dl>
-      {canFix ? (
-        <Dialog open={fixOpen && first !== null} onClose={() => setFixOpen(false)} title="모자라는 달 대처하기" wide>
-          {compromise ? (
-            <CompromisePanel plan={compromise} months={repayMonths} onMonths={onRepayMonths} />
-          ) : fix ? (
-            <FixWays fix={fix} today={today} />
-          ) : null}
-        </Dialog>
-      ) : null}
+      {dialog}
     </section>
   );
 }

@@ -64,4 +64,23 @@ describe('이벤트통장 달 말 잔액 (쓴 날 기준)', () => {
     const data = emptyLedger({ accounts: [account('fixed')] });
     expect(spentBasisView(data, projectEventAccount(data, '2026-11-20'), '2026-11-20')).toBeNull();
   });
+
+  it('통장 시작일 전 지난 달은 쓴 돈만 (잔액을 모름), 쓴 게 없는 달은 빼요', () => {
+    const data = emptyLedger({
+      accounts: [account('event', { openingBalance: 500_000, openingDate: '2026-11-01' }), account('fixed')],
+      expenses: [
+        expense({ id: 'old1', date: '2026-08-12', amount: 120_000, accountId: EV }),
+        expense({ id: 'old2', date: '2026-10-03', amount: 50_000, accountId: EV }),
+      ],
+    });
+    const today = '2026-11-20';
+    const view = spentBasisView(data, projectEventAccount(data, today), today)!;
+    const past = view.months.filter((m) => m.kind === 'past');
+    expect(past.map((m) => [m.month, m.spentOnly, m.spent])).toEqual([
+      ['2026-08', true, 120_000],
+      ['2026-10', true, 50_000],
+    ]);
+    // 모자라는 달로 세지 않아요
+    expect(view.shortages.every((m) => !m.spentOnly)).toBe(true);
+  });
 });

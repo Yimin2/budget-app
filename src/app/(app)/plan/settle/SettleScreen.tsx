@@ -72,7 +72,27 @@ function SettleBody({ ledger }: { ledger: ReadyLedger }) {
 
 type View = 'due' | 'all';
 
-function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
+/** 이벤트 화면에 처음 보여 줄 달 수 (최근 것부터, 더 있으면 '이전 달 더 보기') */
+const EMBED_MONTHS = 4;
+
+/**
+ * 이벤트 화면 맨 위 '달별 내역' (2026-11 이벤트 화면 개편, 정산 합침): 이벤트통장 기록을 최근 달부터,
+ * 이번 달 일정은 '예정'으로 함께, 줄 돈 옆 체크 + 아래 [○ 지급] 막대. 정산 화면에 따로 들어가지 않아요
+ */
+/** 이벤트 화면 맨 끝에 둘 아래 막대 자리 (줄 돈이 있어 [○ 지급] 막대가 뜰 때) */
+export function EventHistoryBarSpace({ ledger }: { ledger: ReadyLedger }) {
+  const s = ledger.settlement;
+  const any = s ? settleRoster(s).some((p) => p.items.length > 0) : false;
+  return any ? <div className={styles.barSpace} aria-hidden /> : null;
+}
+
+export function EventHistory({ ledger }: { ledger: ReadyLedger }) {
+  const s = ledger.settlement;
+  if (!s) return null;
+  return <SettleContent ledger={ledger} s={s} embedded />;
+}
+
+function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s: Settlement; embedded?: boolean }) {
   const data = ledger.data;
   const baseYear = Number(ledger.today.slice(0, 4));
   const { busy, run } = useSettleActions();
@@ -80,7 +100,15 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
   const defaults = useMemo(() => defaultSettlementSelection(s), [s]);
   const months = useMemo(() => settleList(data, s), [data, s]);
   const people = useMemo(() => ledgerPeople(data), [data]);
-  const [view, setView] = useState<View>(() => (currentHash() === '#paid' ? 'all' : 'due'));
+  const [view, setView] = useState<View>(() => (embedded || currentHash() === '#paid' ? 'all' : 'due'));
+  const [showAll, setShowAll] = useState(false);
+  const thisMonth = ledger.today.slice(0, 7);
+  // 이번 달 일정에 넣어 둔 것 (아직 안 쓴 일정 · 반복 회차) — 이벤트 화면에서는 이번 달 내역에 '예정'으로 함께
+  const planned = useMemo(() => {
+    if (!embedded) return [];
+    const m = ledger.eventProjection?.months.find((x) => x.month === thisMonth);
+    return (m?.events ?? []).filter((e) => e.date.startsWith(thisMonth)).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  }, [embedded, ledger.eventProjection, thisMonth]);
   const [person, setPerson] = useState<string | null>(null);
   const [picked, setPicked] = useState<Map<Id, boolean>>(() => new Map());
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -116,11 +144,23 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
   const canBorrow = s.reservoirAccountId !== null;
 
   const filtered = filterSettleList(data, months, person);
-  const shown = view === 'due' ? pendingOnly(filtered) : filtered;
+  const listed = view === 'due' ? pendingOnly(filtered) : filtered;
+  // 이벤트 화면: 최근 달부터, 이번 달은 기록이 없어도(예정만 있어도) 보여 줘요
+  const embeddedMonths = embedded
+    ? (() => {
+        const newest = [...listed].reverse();
+        if (planned.length > 0 && !newest.some((m) => m.month === thisMonth)) {
+          newest.unshift({ month: thisMonth, total: 0, pendingTotal: 0, pendingCount: 0, rows: [] });
+        }
+        return newest;
+      })()
+    : listed;
+  const shown = embedded && !showAll ? embeddedMonths.slice(0, EMBED_MONTHS) : embeddedMonths;
+  const hiddenMonths = embeddedMonths.length - shown.length;
   const visibleIds = shown.flatMap((m) => m.rows.filter((r) => r.item).map((r) => r.expense.id));
   const monthsRef = useRef<HTMLUListElement>(null);
   /** 전체 기록에서 처음 펼쳐진 달 (줄 돈이 있는 가장 오래된 달). 위에 접힌 달이 없으면 null */
-  const firstDue = view === 'all' ? shown.findIndex((m) => m.pendingCount > 0) : -1;
+  const firstDue = view === 'all' && !embedded ? shown.findIndex((m) => m.pendingCount > 0) : -1;
   const scrollMonth = firstDue > 0 ? shown[firstDue]!.month : null;
   const scrolled = useRef<string | null>(null);
 
@@ -218,10 +258,11 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
         />
 
         <Card as="section" id="paid" aria-labelledby="settle-list-title" className={styles.listCard}>
-          <h2 id="settle-list-title" className={styles.srOnly}>
-            정산 목록
+          <h2 id="settle-list-title" className={embedded ? styles.listTitle : styles.srOnly}>
+            {embedded ? '달별 내역' : '정산 목록'}
           </h2>
           <div className={styles.filters}>
+            {embedded ? null : (
             <ChipGroup label="보기">
               <Chip selected={view === 'due'} onClick={() => setView('due')}>
                 줄 돈만
@@ -230,6 +271,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
                 전체 기록
               </Chip>
             </ChipGroup>
+            )}
             {people.length > 0 ? (
               <ChipGroup label="사람">
                 <Chip selected={person === null} onClick={() => setPerson(null)}>
@@ -243,7 +285,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
               </ChipGroup>
             ) : null}
           </div>
-          {visibleIds.length > 0 ? (
+          {visibleIds.length > 0 && !embedded ? (
             <div className={styles.bulk}>
               <Button variant="ghost" onClick={() => setMany(visibleIds, true)} disabled={visibleIds.every(isOn)}>
                 {person ? '이 사람 모두 고르기' : '전체 선택'}
@@ -254,7 +296,9 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
             </div>
           ) : null}
           <p className={styles.note}>
-            이벤트통장 잔액 안에서 밀린 돈부터 오래된 순으로 미리 골라 뒀어요(이번 달 일정보다 먼저). 이름을 누르면 자세히 볼 수 있어요
+            {embedded
+              ? '줄 돈은 통장 잔액 안에서 밀린 것부터 미리 골라 뒀어요. 이름을 누르면 고칠 수 있어요'
+              : '이벤트통장 잔액 안에서 밀린 돈부터 오래된 순으로 미리 골라 뒀어요(이번 달 일정보다 먼저). 이름을 누르면 자세히 볼 수 있어요'}
           </p>
 
           {shown.length === 0 ? (
@@ -275,7 +319,8 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
                   data={data}
                   s={s}
                   baseYear={baseYear}
-                  open={m.pendingCount > 0 || opened.has(m.month)}
+                  open={m.pendingCount > 0 || (embedded && m.month === thisMonth) || opened.has(m.month)}
+                  planned={embedded && m.month === thisMonth ? planned : undefined}
                   onToggle={() =>
                     setOpened((o) => {
                       const next = new Set(o);
@@ -291,12 +336,18 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
               ))}
             </ul>
           )}
+          {embedded && hiddenMonths > 0 ? (
+            <Button variant="ghost" iconRight="chevron-down" className={styles.moreMonths} onClick={() => setShowAll(true)}>
+              이전 달 {hiddenMonths}개 더 보기
+            </Button>
+          ) : null}
         </Card>
       </div>
 
       {allIds.length > 0 ? (
         <>
-          <div className={styles.barSpace} aria-hidden />
+          {/* 이벤트 화면에서는 막대 자리를 화면 맨 끝에 둬요 (EventsBody) */}
+          {embedded ? null : <div className={styles.barSpace} aria-hidden />}
           <div className={cx(styles.bar, !plan.fits && styles.barOver)} role="region" aria-label="고른 항목">
             <div className={styles.barInner}>
               <div className={styles.barText} aria-live="polite">
@@ -318,9 +369,9 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
                 {visibleIds.length < selected.length ? <span>필터에 안 보이는 고른 항목도 함께 지급해요</span> : null}
               </div>
               <div className={styles.barActions}>
-                {canBorrow ? (
+                {canBorrow && !plan.fits ? (
                   <Button
-                    variant={plan.fits ? 'outline' : 'primary'}
+                    variant="primary"
                     loading={busy === 'borrow'}
                     disabled={plan.fits || (busy !== null && busy !== 'borrow')}
                     onClick={() => void payBorrow()}
@@ -343,7 +394,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
                   {`${formatMan(payAmount)} 지급`}
                 </Button>
               </div>
-              {canBorrow ? <p className={styles.barNote}>이벤트통장이 모자라면 저수지 돈으로 먼저 주고, 나중에 이벤트통장이 갚아요</p> : null}
+              {canBorrow && !plan.fits ? <p className={styles.barNote}>이벤트통장이 모자라면 저수지 돈으로 먼저 주고, 나중에 이벤트통장이 갚아요</p> : null}
             </div>
           </div>
         </>
