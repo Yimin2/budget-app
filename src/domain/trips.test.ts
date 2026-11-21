@@ -297,7 +297,8 @@ describe('체험 모드 여행', () => {
       expect(projectEventAccount(d, today).shortages).toEqual(projectEventAccount(plain, today).shortages);
       const noClaims = createDemoLedger(today, NOW, { trips: true });
       expect(tripStatus(noClaims, noClaims.trips[0]!, today).spent).toBe(450_000);
-      expect(projectEventAccount(noClaims, today).shortages).toEqual(projectEventAccount(plain, today).shortages);
+      const plainNoClaims = createDemoLedger(today, NOW, {});
+      expect(projectEventAccount(noClaims, today).shortages).toEqual(projectEventAccount(plainNoClaims, today).shortages);
     });
   }
 });

@@ -97,29 +97,6 @@ describe('지급한 줄 (전체 기록 · #paid)', () => {
     expect(L(h).balances['demo-acc-event']).toBe(before['demo-acc-event']);
   });
 
-  it("저수지에서 빌려 지급한 청구: '저수지에서 빌려 줌', [지급 취소]는 빌린 이체도 지우고 지출을 저수지로 되돌려요", async () => {
-    const h = await renderScreen();
-    const id = await addReservoirClaim(h, '나무 돌잔치');
-    const before = { ...L(h).balances };
-    await act(async () => {
-      await L(h).borrowReservoirClaims([id]);
-    });
-    expect(expense(h, id).accountId).toBe('demo-acc-event');
-    const row = await recordRow('나무 돌잔치', '10월');
-    expect(row.textContent).toContain('저수지에서 빌려 줌');
-
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: '민지 나무 돌잔치 120,000원 지급 취소' }));
-    });
-    await screen.findByText('민지에게 120,000원 지급한 기록을 취소했어요');
-    expect(live(h, claimTransferId(id))).toBeUndefined();
-    expect(live(h, claimLoanTransferId(id))).toBeUndefined();
-    expect(expense(h, id).accountId).toBe('demo-acc-reservoir');
-    expect(L(h).settlement!.loan.balance).toBe(0);
-    expect(L(h).balances).toEqual(before);
-    expect(L(h).settlement!.reservoirLoan.flatMap((g) => g.claims.map((c) => c.expense.id))).toContain(id);
-  });
-
   it('빌린 줄의 [금액 고치기]: 그 줄이 금액 칸 + [저장] / [취소]가 되고, 빌린 이체 금액만 고쳐요 (창 없음)', async () => {
     const h = await renderScreen();
     await act(async () => {

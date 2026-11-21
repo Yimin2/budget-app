@@ -54,9 +54,7 @@ function scenario(p: Partial<LedgerData> = {}): LedgerData {
       claim('c2', { amount: 350_000, date: '2026-10-02', claimDue: '2026-11-05', paidBy: '나래' }),
       claim('c3', { amount: 120_000, date: '2026-10-15' }),
       claim('c4', { amount: 50_000, date: '2026-11-08', claimDue: '2026-12-21', paidBy: '나래' }),
-      claim('f1', { amount: 30_000, date: '2026-10-20', accountId: 'fixed', paidBy: '나래' }),
-      claim('r1', { amount: 80_000, date: '2026-08-01', accountId: 'res', claimDue: '2026-08-01' }),
-      claim('r2', { amount: 40_000, date: '2026-08-03', accountId: 'res', claimDue: '2026-08-03' }),
+      // 생활비 · 저수지 통장에 기록한 청구도 이벤트통장에서 돌려줘요 (2026-11) — 아래 '개인 돈은 모두 이벤트통장에서'에서 따로 봐요
     ],
     ...p,
   });
@@ -148,17 +146,17 @@ describe('나누기 (오래된 순 · first-fit · 쪼개지 않음)', () => {
 describe('이번 달 정산', () => {
   it('사람별 이번 달 지급 · 다음 달로 넘어가요 · 저수지 몫 · 정산일이 안 된 돈', () => {
     const s = computeSettlement(scenario(), TODAY);
-    // 밀린 청구를 일정보다 먼저, 60만 안에서 오래된 순: 가람 20만(9월) → 나래 35만 → 가람 12만(안 들어감). 고정지출통장 몫(나래 3만)은 한도 없이
+    // 밀린 청구를 일정보다 먼저, 60만 안에서 오래된 순: 가람 20만(9월) → 나래 35만 → 가람 12만(안 들어감)
     expect(s.pay.map((g) => [g.name, g.amount])).toEqual([
       ['가람', 200_000],
-      ['나래', 380_000],
+      ['나래', 350_000],
     ]);
-    expect(ids(s.pay)).toEqual(['c1', 'c2', 'f1']);
+    expect(ids(s.pay)).toEqual(['c1', 'c2']);
     expect(s.eventPayTotal).toBe(550_000);
-    expect(s.payTotal).toBe(580_000);
+    expect(s.payTotal).toBe(550_000);
     expect(s.carry.map((g) => [g.name, g.amount])).toEqual([['가람', 120_000]]);
     expect(s.carryTotal).toBe(120_000);
-    expect(s.reservoir.map((g) => [g.name, g.amount, g.claims.length])).toEqual([['가람', 120_000, 2]]);
+    expect(s.reservoir).toEqual([]);
     expect(s.upcoming.map((g) => [g.name, g.amount, g.due])).toEqual([['나래', 50_000, '2026-12-21']]);
     expect(s.spare).toBe(0);
     expect(s.dueNow).toBe(true);
@@ -190,9 +188,9 @@ describe('이번 달 정산', () => {
     // 다시 눌러도(같은 키를 덮어써도) 하나만
     const ids2 = settleRows(once, ids([garam]));
     expect(ids2).toEqual([]);
-    // 가람이 낸 돈(−20만)이 돌아와요. 남은 건 넘어가는 12만과 아직 안 받은 저수지 몫 12만
-    expect(accountBalance(d, 'inc-a', TODAY)).toBe(-440_000);
-    expect(accountBalance(once, 'inc-a', TODAY)).toBe(-240_000);
+    // 가람이 낸 돈(−20만)이 돌아와요. 남은 건 넘어가는 12만
+    expect(accountBalance(d, 'inc-a', TODAY)).toBe(-320_000);
+    expect(accountBalance(once, 'inc-a', TODAY)).toBe(-120_000);
     expect(accountBalance(once, 'event', TODAY)).toBe(100_000 - 200_000);
     // 지급한 만큼 지급할 수 있는 돈이 줄고(남은 밀린 청구 35만), 넘어가는 돈은 그대로
     expect(after.payable).toBe(350_000);
@@ -225,36 +223,6 @@ describe('이번 달 정산', () => {
     const p2 = projectEventAccount(borrowed, TODAY).months[0]!;
     expect(p2.claims ?? 0).toBe((p1.claims ?? 0) - 120_000);
     expect(p2.endBalance).toBe(p1.endBalance + 120_000);
-  });
-
-  it('저수지통장 청구는 저수지 몫: 이벤트통장 한도와 상관없고, 저수지에서 돌려줘도 빌린 돈이 아니에요', () => {
-    const d = scenario();
-    const s = computeSettlement(d, TODAY);
-    expect(ids(s.reservoir)).toEqual(['r1', 'r2']);
-    const paid = withTransfers(d, settleRows(d, ids(s.reservoir)));
-    expect(paid.transfers.every((t) => t.fromAccountId === 'res')).toBe(true);
-    const s2 = computeSettlement(paid, TODAY);
-    expect(s2.reservoir).toEqual([]);
-    expect(s2.loan.balance).toBe(0);
-    expect(s2.payable).toBe(s.payable);
-    expect(isClaimPaidFromReservoir(paid, 'r1')).toBe(true);
-    expect(accountBalance(paid, 'res', TODAY)).toBe(5_000_000 - 120_000);
-  });
-
-  it('가져온 저수지 청구 13건(낸 사람 한 명)은 저수지 그룹 한 줄로 모여요', () => {
-    const rows = Array.from({ length: 13 }, (_, i) =>
-      claim(`imp:x:exp:${i}`, { amount: 10_000 * (i + 1), date: `2026-0${(i % 9) + 1}-0${(i % 9) + 1}`, accountId: 'res', paidBy: '다온', claimAccountId: null, claimDue: '2026-10-01' }),
-    );
-    const d = ledger({ expenses: rows });
-    const s = computeSettlement(d, TODAY);
-    expect(s.reservoir).toHaveLength(1);
-    expect(s.reservoir[0]).toMatchObject({ name: '다온', amount: 910_000 });
-    expect(s.reservoir[0]!.claims).toHaveLength(13);
-    expect(s.pay).toEqual([]);
-    expect(s.carry).toEqual([]);
-    const groups = claimsBySource(d, pendingClaims(d, TODAY));
-    expect(groups.shared).toEqual([]);
-    expect(groups.reservoir.map((g) => [g.name, g.amount])).toEqual([['다온', 910_000]]);
   });
 
   it('돌려줄 날이 된 청구가 없으면 홈에 보이지 않아요 (dueNow)', () => {
@@ -364,12 +332,12 @@ describe('저수지에서 빌린 돈 · 갚기', () => {
 });
 
 describe('하나씩 고르기 (정산 카드 항목 목록)', () => {
-  it('처음 골라 둔 것 = 이번 달 지급으로 나눈 청구 + 돌려줄 날이 된 저수지 청구', () => {
+  it('처음 골라 둔 것 = 이번 달 지급으로 나눈 청구 (통장 잔액 안)', () => {
     const s = computeSettlement(scenario(), TODAY);
-    expect([...defaultSettlementSelection(s)].sort()).toEqual(['c1', 'c2', 'f1', 'r1', 'r2']);
+    expect([...defaultSettlementSelection(s)].sort()).toEqual(['c1', 'c2']);
     const check = checkSettlementSelection(scenario(), s, defaultSettlementSelection(s));
     expect(check).toMatchObject({ eventTotal: 550_000, excess: 0, fits: true, over: [] });
-    expect(check.total).toBe(200_000 + 350_000 + 30_000 + 80_000 + 40_000);
+    expect(check.total).toBe(200_000 + 350_000);
   });
 
   it('넘어가는 청구까지 고르면 지급할 수 있는 돈보다 많아 넘는 금액과 빌려 줄 청구를 알려 줘요', () => {
@@ -382,7 +350,7 @@ describe('하나씩 고르기 (정산 카드 항목 목록)', () => {
     expect(check.over).toEqual(['c3']);
     expect(check.within).toEqual(['c1', 'c2']);
     // 고른 것을 바꾸면 다시 맞아요 (고정지출 · 저수지 청구는 한도와 견주지 않아요)
-    expect(checkSettlementSelection(d, s, ['c2', 'c3', 'f1', 'r1']).fits).toBe(true);
+    expect(checkSettlementSelection(d, s, ['c2', 'c3']).fits).toBe(true);
   });
 
   it('한 건만 지급하면 그 청구만 빠지고 같은 사람의 다른 청구는 남아요 (claim:<id> 이체 하나, 다시 넣어도 하나)', () => {
@@ -390,7 +358,7 @@ describe('하나씩 고르기 (정산 카드 항목 목록)', () => {
     const rows = settleRows(d, ['c3']);
     expect(rows.map((r) => r.id)).toEqual([claimTransferId('c3')]);
     const after = computeSettlement(withTransfers(d, rows), TODAY);
-    expect(ids(after.pay)).toEqual(['c1', 'f1']);
+    expect(ids(after.pay)).toEqual(['c1']);
     expect(after.pay.find((g) => g.name === '가람')!.amount).toBe(200_000);
     // 같은 키로 다시 써도(upsert) 한 번만 빠져요
     const twice = computeSettlement(withTransfers(d, rows), TODAY);
@@ -398,81 +366,8 @@ describe('하나씩 고르기 (정산 카드 항목 목록)', () => {
   });
 });
 
-describe('저수지통장 이벤트 청구 = 저수지에서 빌린 돈', () => {
-  // 이벤트통장에 돈이 없어 저수지 돈으로 낸 경조사 청구 (다온) + 저수지에서 지급할 청구(이벤트 아닌 카테고리)
-  const resEvent = (id: string, amount: number, date: string) =>
-    claim(id, { amount, date, accountId: 'res', categoryId: 'cat-gift', paidBy: '나래', claimDue: date });
-  const data = () =>
-    ledger({
-      expenses: [
-        resEvent('re1', 300_000, '2026-08-01'),
-        resEvent('re2', 150_000, '2026-09-01'),
-        claim('rn1', { amount: 40_000, date: '2026-08-05', accountId: 'res', categoryId: 'cat-food', claimDue: '2026-08-05' }),
-      ],
-    });
-
-  it('이벤트 카테고리 청구는 저수지에서 빌려 지급, 나머지는 저수지에서 지급으로 나눠요', () => {
-    const d = data();
-    const s = computeSettlement(d, TODAY);
-    expect(s.reservoirLoan.map((g) => [g.name, g.amount, g.claims.length])).toEqual([['나래', 450_000, 2]]);
-    expect(s.reservoirLoanTotal).toBe(450_000);
-    expect(s.reservoir.map((g) => [g.name, g.amount])).toEqual([['가람', 40_000]]);
-    expect(s.dueNow).toBe(true);
-    expect([...defaultSettlementSelection(s)].sort()).toEqual(['re1', 're2', 'rn1']);
-    // 빌려 지급할 청구는 지급할 수 있는 돈과 견주지 않아요
-    expect(checkSettlementSelection(d, s, ['re1', 're2']).fits).toBe(true);
-    const groups = claimsBySource(d, pendingClaims(d, TODAY));
-    expect(groups.reservoirLoan.map((g) => g.name)).toEqual(['나래']);
-    expect(groups.reservoir.map((g) => g.name)).toEqual(['가람']);
-  });
-
-  it('평소 쓰는 돈 기록에 이벤트통장 지출로 들어가요', () => {
-    const h = usualHistory(data(), 'event');
-    expect(h.byMonth.get('2026-08')?.get('cat-gift')).toBe(300_000);
-    expect(h.byMonth.get('2026-09')?.get('cat-gift')).toBe(150_000);
-    expect(h.byMonth.get('2026-08')?.get('cat-food')).toBeUndefined();
-  });
-
-  it('지급: 지출을 이벤트통장으로 옮기고 빌린 이체 + 돌려준 이체 → 저수지에 갚을 돈이 늘고 이벤트통장 잔액은 그대로', () => {
-    const d = data();
-    const before = allBalances(d, TODAY);
-    const moved: LedgerData = {
-      ...d,
-      expenses: d.expenses.map((e) => (e.id === 're1' ? { ...e, accountId: 'event' } : e)),
-    };
-    const paid = withTransfers(moved, settleRows(moved, ['re1'], { borrow: true }));
-    const after = allBalances(paid, TODAY);
-    expect(after.res).toBe(before.res! - 300_000);
-    expect(after.event).toBe(before.event);
-    expect(after['inc-b']).toBe(before['inc-b']! + 300_000);
-    expect(loanStatus(paid, TODAY).balance).toBe(300_000);
-    const s = computeSettlement(paid, TODAY);
-    expect(s.reservoirLoanTotal).toBe(150_000);
-  });
-
-  it('저수지에서 이미 돌려준 이벤트 청구를 찾아 갚을 돈으로 바꿀 수 있어요 (바꾼 뒤엔 다시 안 나와요, 잔액 그대로)', () => {
-    const d0 = data();
-    const settled = withTransfers(d0, settleRows(d0, ['re1', 're2', 'rn1'], { date: '2026-09-21' }));
-    expect(settledReservoirEventClaims(settled).map((e) => e.id)).toEqual(['re1', 're2']);
-    const before = allBalances(settled, TODAY);
-    // 바꾸기 (상태 계층과 같은 모양): 지출 → 이벤트통장, 돌려준 이체 → 이벤트통장에서, 빌린 이체 추가
-    const converted: LedgerData = {
-      ...settled,
-      expenses: settled.expenses.map((e) => (e.id === 're1' || e.id === 're2' ? { ...e, accountId: 'event' } : e)),
-      transfers: [
-        ...settled.transfers.map((t) => (t.id === claimTransferId('re1') || t.id === claimTransferId('re2') ? { ...t, fromAccountId: 'event' } : t)),
-        transfer({ id: claimLoanTransferId('re1'), date: '2026-09-21', amount: 300_000, fromAccountId: 'res', toAccountId: 'event' }),
-        transfer({ id: claimLoanTransferId('re2'), date: '2026-09-21', amount: 150_000, fromAccountId: 'res', toAccountId: 'event' }),
-      ],
-    };
-    expect(allBalances(converted, TODAY)).toEqual(before);
-    expect(loanStatus(converted, TODAY).balance).toBe(450_000);
-    expect(settledReservoirEventClaims(converted)).toEqual([]);
-  });
-});
-
 describe('정산 화면 · 한 줄 요약 (settleRoster · settlementSummary · planSettlement)', () => {
-  // 가람: 이벤트통장 청구 2건(하나는 넘어가요) · 나래: 저수지 돈으로 낸 이벤트 청구 · 생활비 청구(정산일 전)
+  // 가람: 이벤트통장 청구 2건(하나는 넘어가요) · 나래: 저수지 · 생활비 통장에 기록한 청구 (모두 이벤트통장에서 돌려줘요, 생활비는 정산일 전)
   const data = () =>
     ledger({
       expenses: [
@@ -488,7 +383,7 @@ describe('정산 화면 · 한 줄 요약 (settleRoster · settlementSummary · 
     const roster = settleRoster(s);
     expect(roster.map((p) => p.name)).toEqual(['가람', '나래']);
     expect(roster[0]!.items.map((i) => [i.claim.expense.id, i.kind])).toEqual([['e1', 'pay'], ['e2', 'carry']]);
-    expect(roster[1]!.items.map((i) => [i.claim.expense.id, i.kind])).toEqual([['re1', 'borrow'], ['f1', 'upcoming']]);
+    expect(roster[1]!.items.map((i) => [i.claim.expense.id, i.kind])).toEqual([['re1', 'pay'], ['f1', 'upcoming']]);
     expect(roster[1]!.amount).toBe(34_000);
   });
 
@@ -497,7 +392,7 @@ describe('정산 화면 · 한 줄 요약 (settleRoster · settlementSummary · 
     const sum = settlementSummary(s);
     expect(sum.total).toBe(1_224_000);
     expect(sum.people).toEqual([{ name: '가람', amount: 1_200_000 }, { name: '나래', amount: 24_000 }]);
-    expect(sum).toMatchObject({ fromEvent: 300_000, fromFixed: 0, fromReservoir: 0, borrow: 24_000, rest: 900_000, payable: 600_000 });
+    expect(sum).toMatchObject({ fromEvent: 324_000, fromFixed: 0, fromReservoir: 0, borrow: 0, rest: 900_000, payable: 600_000 });
     expect(sum.date).toBe('2026-11-21');
     expect(sum.carry?.amount).toBe(900_000);
     expect(sum.next).toEqual({ date: '2026-12-21', amount: 10_000 });
@@ -512,17 +407,18 @@ describe('정산 화면 · 한 줄 요약 (settleRoster · settlementSummary · 
     expect(settlementSummary(computeSettlement(ledger(), TODAY)).hasClaims).toBe(false);
   });
 
-  it('고른 것 나누기: 저수지 이벤트 청구는 늘 빌려 지급, 한도를 넘는 이벤트통장 청구는 over', () => {
+  it('고른 것 나누기: 어느 통장 청구든 이벤트통장 한도 안이면 지급, 넘는 것은 over', () => {
     const d = data();
     const s = computeSettlement(d, TODAY);
     const fit = planSettlement(d, s, ['e1', 're1']);
-    expect(fit).toMatchObject({ settle: ['e1'], over: [], borrow: ['re1'], total: 324_000, fits: true });
+    expect(fit).toMatchObject({ over: [], borrow: [], total: 324_000, fits: true });
+    expect([...fit.settle].sort()).toEqual(['e1', 're1']);
     const over = planSettlement(d, s, ['e1', 'e2', 're1', 'f1']);
     expect(over.fits).toBe(false);
     expect(over.excess).toBe(900_000);
     expect(over.over).toEqual(['e2']);
-    expect([...over.settle].sort()).toEqual(['e1', 'f1']);
-    expect(over.borrow).toEqual(['re1']);
+    expect([...over.settle].sort()).toEqual(['e1', 'f1', 're1']);
+    expect(over.borrow).toEqual([]);
     expect(over.claims.map((c) => c.expense.id)).toEqual(['e1', 'e2', 're1', 'f1']);
   });
 });
@@ -790,5 +686,22 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
     ).toBe('못 준 돈 70만은 다음 달로 (민구 55만 · 기쁜 15만)');
     expect(eventUsageNoteText(u, { ...sum, fromFixed: 30_000, borrow: 24_000 })).toBe('생활비 통장에서 3만 · 저수지에서 빌려 2.4만');
     expect(eventUsageNoteText(u, { ...sum, total: 0 })).toBe('이번 달 정산할 돈은 없어요');
+  });
+});
+
+describe('개인 돈은 모두 이벤트통장에서 돌려줘요 (2026-11)', () => {
+  it('생활비 · 저수지 통장에 기록한 청구도 이벤트통장 몫으로 줄 돈에 들어가고, 이벤트통장에서 돌려줘요', () => {
+    const d = ledger({
+      expenses: [
+        claim('liv', { amount: 30_000, date: '2026-10-20', accountId: 'fixed', categoryId: 'cat-food', paidBy: '나래', claimDue: '2026-11-05' }),
+        claim('res', { amount: 80_000, date: '2026-10-01', accountId: 'res', claimDue: '2026-11-05' }),
+      ],
+    });
+    const s = computeSettlement(d, TODAY);
+    expect(s.reservoir).toEqual([]);
+    expect(s.reservoirLoan).toEqual([]);
+    expect(ids(s.pay).sort()).toEqual(['liv', 'res']);
+    expect(s.eventPayTotal).toBe(110_000);
+    expect(pendingClaims(d, TODAY).every((c) => c.accountId === 'event')).toBe(true);
   });
 });

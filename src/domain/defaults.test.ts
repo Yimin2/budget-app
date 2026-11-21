@@ -91,8 +91,12 @@ describe('createDemoLedger', () => {
       // 이벤트통장 잔액이 넉넉해 제주 항공권은 오늘 돌려줄 차례
       expect(claims.dueNow.map((c) => c.expense.id)).toContain('demo-claim-jeju');
       expect(isClaimSettled(d, 'demo-claim-done')).toBe(true);
-      // 항공권은 제주 여행 일정에 연결돼 일정 합이 그대로 → 부족 금액도 그대로
-      expect(projectEventAccount(d, today).shortages).toEqual(projectEventAccount(plain, today).shortages);
+      // 항공권은 제주 여행 일정에 연결돼 일정 합이 그대로 → 처음 모자라는 달은 그대로.
+      // 준호가 개인 돈으로 낸 마트 장보기 2.4만은 이벤트통장에서 돌려줘서 그만큼 더 모자라요 (2026-11)
+      const withClaims = projectEventAccount(d, today).shortages;
+      const without = projectEventAccount(plain, today).shortages;
+      expect(withClaims[0]?.month).toBe(without[0]?.month);
+      expect(withClaims[0]!.amount - without[0]!.amount).toBe(24_000);
       expect(computeLiving(d, today).todayAvailable).toBeGreaterThan(0);
       expect(computeLiving(d, today).items.some((i) => i.unbudgeted)).toBe(false);
     });

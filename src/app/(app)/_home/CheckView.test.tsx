@@ -196,13 +196,13 @@ describe('CheckView — 사도 돼?', () => {
     const h = await renderCheck({ initialAmount: 100_000 });
     fireEvent.click(screen.getByRole('button', { name: '제주 여행' }));
     expect(screen.getByRole('radio', { name: '이벤트통장으로' }).getAttribute('aria-checked')).toBe('true');
-    // 여행 남은 예산 안이라 이미 예측에 있던 돈: 4월 부족은 그대로 300,000원 (여행 없이 보면 400,000원)
-    expect(await screen.findByText('사면 2027년 4월에 300,000원 모자라요')).toBeTruthy();
+    // 여행 남은 예산 안이라 이미 예측에 있던 돈: 4월 부족은 그대로 324,000원 (준호 개인 돈 2.4만도 이벤트통장에서 돌려줘요)
+    expect(await screen.findByText('사면 2027년 4월에 324,000원 모자라요')).toBeTruthy();
     expect(screen.getByText('제주 여행 남은 예산').nextElementSibling?.textContent).toBe('350,000원');
     fireEvent.click(screen.getByRole('button', { name: '제주 여행' }));
-    expect(await screen.findByText('사면 2027년 4월에 400,000원 모자라요')).toBeTruthy();
+    expect(await screen.findByText('사면 2027년 4월에 424,000원 모자라요')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '제주 여행' }));
-    await screen.findByText('사면 2027년 4월에 300,000원 모자라요');
+    await screen.findByText('사면 2027년 4월에 324,000원 모자라요');
     fireEvent.click(screen.getByRole('button', { name: /샀어요/ }));
     const dialog = await screen.findByRole('dialog', { name: '지출로 기록할게요' });
     expect(within(dialog).getByText('제주 여행')).toBeTruthy();

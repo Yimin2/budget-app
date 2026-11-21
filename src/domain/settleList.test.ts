@@ -78,7 +78,7 @@ describe('정산 화면 한 목록 (settleList)', () => {
     expect(oct!.rows[0]!.loan).toBeNull();
 
     // 저수지 돈으로 낸 이벤트 청구는 '저수지에서 빌려 지급'할 줄 돈
-    expect(sep!.rows.map((r) => [r.expense.id, r.status, r.item?.kind])).toEqual([['res', 'claimPending', 'borrow']]);
+    expect(sep!.rows.map((r) => [r.expense.id, r.status, r.item?.kind])).toEqual([['res', 'claimPending', 'pay']]);
   });
 
   it('줄 돈만: 고를 수 있는 줄만, 줄 돈이 없는 달은 빼요 (합계는 그대로)', () => {
