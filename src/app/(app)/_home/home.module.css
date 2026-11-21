@@ -268,9 +268,9 @@
   font-variant-numeric: tabular-nums;
 }
 .itemExpenseTitle {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 이름이 길면 잘리지 않고 다음 줄로 (여행 표시가 붙어도 다 보여요) */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .itemPanelNote {
   margin: 0;
@@ -804,10 +804,4 @@
 .sheetFieldset > legend {
   padding: 0;
   margin-bottom: var(--space-2);
-}
-
-/* 항목별 생활비의 '이벤트' 줄은 링크라 밑줄 · 링크 색 없이 다른 줄과 같게 */
-a.itemToggle {
-  color: inherit;
-  text-decoration: none;
 }
