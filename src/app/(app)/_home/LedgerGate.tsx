@@ -39,7 +39,6 @@ export function HomeSkeleton() {
           <Skeleton height={8} radius="full" />
           <Skeleton width="70%" height={18} />
         </Card>
-        <Skeleton className={styles.oCta} height={52} radius="md" />
         <div className={cx(styles.section, styles.oFav)}>
           <Skeleton width={96} height={18} />
           <div className="chips">

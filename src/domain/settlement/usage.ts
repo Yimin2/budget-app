@@ -94,3 +94,29 @@ export function eventMonthUsage(data: LedgerData, s: Settlement, today: ISODate)
     unpaidPeople,
   };
 }
+
+/** 홈 항목별 생활비의 '이벤트' 한 줄 (2026-11): 이번 달 이벤트통장에서 쓴 돈 / 이번 달 적립액 */
+export interface EventMonthBudget {
+  accountId: Id;
+  /** 이번 달 오늘까지 쓴 이벤트통장 지출 (여행 포함, 쓴 날 기준) */
+  spent: Won;
+  /** 이번 달 매달 배분으로 이벤트통장에 들어오는 돈 (= 한도). 배분이 없으면 0 */
+  limit: Won;
+}
+
+/** 이번 달 이벤트통장 쓴 돈과 적립액. 이벤트통장이 없으면 null */
+export function eventMonthBudget(data: LedgerData, s: Settlement, today: ISODate): EventMonthBudget | null {
+  const acc = s.eventAccountId;
+  if (!acc) return null;
+  const usage = eventMonthUsage(data, s, today);
+  const month = monthOf(today);
+  const rules = data.rules.filter((r) => !r.deleted && r.toAccountId === acc && r.fromAccountId !== acc);
+  const remainders = rules.some(isComputedRule) ? projectRemainders(data, today, 1) : new Map<string, Won>();
+  let limit = 0;
+  for (const r of rules) {
+    if (ruleOccurrenceDate(data, r, month) === null) continue;
+    const recorded = data.transfers.find((t) => t.id === autoTransferId(r.id, month) && !t.deleted);
+    limit += recorded ? recorded.amount : ruleAmountFor(r, month, remainders, data);
+  }
+  return { accountId: acc, spent: usage.spent + usage.tripSpent, limit };
+}
