@@ -314,7 +314,8 @@ export interface LedgerApi {
   addAccount(
     input: Pick<Account, 'name' | 'role' | 'openingBalance'> & Partial<Pick<Account, 'ownerName' | 'ownerEmail'>>,
   ): Promise<Account>;
-  addTransfer(input: Pick<Transfer, 'date' | 'kind' | 'fromAccountId' | 'toAccountId' | 'amount' | 'memo'>): Promise<void>;
+  /** id 를 주면 그 id 로 (이미 있으면 다시 적지 않아요) */
+  addTransfer(input: Pick<Transfer, 'date' | 'kind' | 'fromAccountId' | 'toAccountId' | 'amount' | 'memo'> & { id?: Id }): Promise<void>;
   deleteTransfer(id: Id): Promise<void>;
   /** '오늘 보낼 돈': 배분 이체를 보냈다고(또는 자동이체를 바꿨다고) 표시 · 되돌리기 */
   markSent(ids: Id[], sent: boolean): Promise<void>;

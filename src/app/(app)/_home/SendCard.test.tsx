@@ -38,4 +38,29 @@ describe('오늘 보낼 돈 카드', () => {
     });
     await waitFor(() => expect(h.probe.ledger!.data!.transfers.find((t) => t.id === first.transfer.id)?.sentAt).toBeTruthy());
   });
+
+  it('월급통장에 남은 돈은 [저수지로 보내기]로 보낼 줄을 만들어요', async () => {
+    const h = makeHarness({ couple: true });
+    await act(async () => {
+      render(<SendCard />, { wrapper: h.Wrapper });
+    });
+    await waitFor(() => expect(h.probe.ledger?.status).toBe('ready'));
+    const salary = h.probe.ledger!.data!.accounts.find((a) => a.name === '월급통장')!;
+    await act(async () => {
+      await h.probe.ledger!.addTransfer({ date: '2026-11-20', kind: 'income', fromAccountId: null, toAccountId: salary.id, amount: 2_950_000, memo: '월급' });
+    });
+    // 배분 뒤에 더 들어온 돈 (보너스) → 월급통장에 남아요
+    await act(async () => {
+      await h.probe.ledger!.addTransfer({ date: '2026-11-20', kind: 'income', fromAccountId: null, toAccountId: salary.id, amount: 50_000, memo: '보너스' });
+    });
+    const left = sendList(h.probe.ledger!.data!, h.probe.ledger!.today).sources[0]!.leftover;
+    expect(left).toBeGreaterThan(0);
+    const button = await screen.findByTestId('send-leftover-reservoir');
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    await waitFor(() => expect(screen.queryByTestId('send-leftover')).toBeNull());
+    const after = sendList(h.probe.ledger!.data!, h.probe.ledger!.today);
+    expect(after.sources[0]!.items.some((i) => i.rule === null && i.transfer.amount === left && i.pending)).toBe(true);
+  });
 });

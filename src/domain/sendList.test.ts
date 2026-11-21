@@ -1,6 +1,6 @@
 import { account, emptyLedger, rule, transfer } from './_fixtures';
 import { autoTransferId } from './ids';
-import { hasSendWork, salaryAccounts, sendList } from './sendList';
+import { hasSendWork, leftoverTransferId, salaryAccounts, sendList } from './sendList';
 import type { LedgerData } from './types';
 
 const salary = account('income', { id: 'salary', name: '월급통장', bank: '카카오뱅크', accountNumber: '3333-01' });
@@ -47,7 +47,7 @@ describe('오늘 보낼 돈', () => {
   it('자동이체 금액이 지난달과 다르면 바꿔 달라고 하고, 보냈어요 · 바꿨어요를 누르면 끝나요', () => {
     const base = [income('2026-10-21', 800_000), auto(rRes, '2026-10', 300_000), income('2026-11-21', 850_000), auto(rRes, '2026-11', 350_000)];
     const l = sendList(ledger({ transfers: [...base, auto(rEv, '2026-11', 500_000)] }), '2026-11-21');
-    const r = l.sources[0]!.items.find((i) => i.rule.id === 'r-res')!;
+    const r = l.sources[0]!.items.find((i) => i.rule?.id === 'r-res')!;
     expect(r.changedFrom).toBe(300_000);
     expect(r.pending).toBe(true);
     expect(l.pendingCount).toBe(2);
@@ -66,6 +66,21 @@ describe('오늘 보낼 돈', () => {
     expect(l.pendingCount).toBe(0);
     expect(l.sources[0]!.leftover).toBe(100_000);
     expect(hasSendWork(l)).toBe(true);
+  });
+
+  it('남은 돈을 저수지로 보내는 줄도 보낼 돈에 들어가고, 덜 보낸 돈은 없어져요', () => {
+    const d = ledger({
+      transfers: [
+        income('2026-11-21', 900_000), auto(rEv, '2026-11', 500_000, { sentAt: 'x' }), auto(rRes, '2026-11', 300_000),
+        transfer({ id: leftoverTransferId(salary.id, '2026-11-21'), fromAccountId: salary.id, toAccountId: res.id, date: '2026-11-21', amount: 100_000 }),
+      ],
+    });
+    const l = sendList(d, '2026-11-21');
+    const extra = l.sources[0]!.items.find((i) => i.rule === null)!;
+    expect(extra).toMatchObject({ pending: true, autoDebit: false, changedFrom: null });
+    expect(extra.to?.id).toBe('res');
+    expect(l.sources[0]!.leftover).toBe(0);
+    expect(l.pendingCount).toBe(1);
   });
 
   it('미래 날짜 · 지난달 · 지운 이체는 빼요', () => {
