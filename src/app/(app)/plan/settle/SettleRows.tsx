@@ -68,16 +68,9 @@ export function MonthBlock({
   return (
     <li className={styles.month} data-month={m.month}>
       <div className={styles.monthHead}>
-        <h3 className={styles.monthTitle}>
-          {label}
-          <span className={styles.monthSum}>
-            {' '}
-            · 합계 {formatMan(m.total)} · {m.pendingCount > 0 ? `줄 돈 ${formatMan(m.pendingTotal)}` : '다 정리됨'}
-          </span>
-        </h3>
-        {pendingIds.length > 0 ? (
-          <label className={styles.monthAll}>
-            모두 고르기
+        <div className={styles.monthLead}>
+          {/* 달 전체 고르기는 줄마다 있는 체크와 같은 왼쪽 줄에 */}
+          {pendingIds.length > 0 ? (
             <TriCheckbox
               className={styles.check}
               checked={all}
@@ -85,8 +78,16 @@ export function MonthBlock({
               onChange={() => setMany(pendingIds, !all)}
               label={`${label} 모두 고르기`}
             />
-          </label>
-        ) : (
+          ) : null}
+          <h3 className={styles.monthTitle}>
+            {label}
+            <span className={styles.monthSum}>
+              {' '}
+              · 합계 {formatMan(m.total)} · {m.pendingCount > 0 ? `줄 돈 ${formatMan(m.pendingTotal)}` : '다 정리됨'}
+            </span>
+          </h3>
+        </div>
+        {pendingIds.length > 0 ? null : (
           <ExpandButton open={open} onToggle={onToggle} controls={listId} openLabel="펼치기" closeLabel="접기" label={label} />
         )}
       </div>
