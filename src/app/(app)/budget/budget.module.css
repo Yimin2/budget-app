@@ -401,3 +401,26 @@
 .readOnly :global(.lrow .chev) {
   display: none;
 }
+
+/* 수입 계획 바꾸기 권장 (실제 월급 평균이 계획과 다를 때) */
+.planHint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--info-subtle, var(--surface-subtle));
+  font-size: 14px;
+  line-height: 22px;
+}
+.planHint p {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+}
+.planHint p > svg {
+  flex: none;
+  margin-top: 3px;
+}

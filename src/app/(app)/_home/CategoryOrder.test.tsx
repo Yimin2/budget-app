@@ -50,7 +50,7 @@ describe('카테고리 순서를 모든 화면이 따라요', () => {
     const etc = ledger().living!.items.findIndex((i) => i.unbudgeted);
     if (etc >= 0) expect(etc).toBe(after.length - 1);
     // 홈 항목별 생활비 카드도 같은 순서
-    expect(names(within(items).getByRole('list'), ':scope > li [class*="itemText"]')).toEqual(after);
+    expect(names(within(items).getByRole('list'), ':scope > li [class*="itemText"]').filter((n) => n !== '이벤트')).toEqual(after);
     // 사도 돼? 어디에 쓸까요 칩: 생활비 항목 순서 그대로 (식비가 생활비 칩 중 맨 뒤)
     const chips = names(screen.getByRole('group', { name: '어디에 쓸까요' }), 'button');
     expect(chips.slice(0, budgeted.length)).toEqual(budgeted);

@@ -44,10 +44,11 @@ const expand = (id: string) => {
 };
 
 describe('통계 화면', () => {
-  it('제목은 통계, 맨 위 [내역 · 통계] 바꾸기는 없어요', async () => {
+  it('내역의 통계 탭: 제목은 내역, 위쪽 탭에서 통계가 골라져 있어요', async () => {
     await open();
-    expect(screen.getByRole('heading', { level: 1, name: '통계' })).toBeTruthy();
-    expect(screen.queryByRole('radiogroup', { name: '내역 · 통계' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: '내역' })).toBeTruthy();
+    const tabs = screen.getByRole('radiogroup', { name: '내역 종류' });
+    expect(within(tabs).getByRole('radio', { name: '통계' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('달 바꾸기: 이번 달에서는 ▶ 이 꺼지고, ◀ 로 지난 달 · [이번 달]로 돌아와요', async () => {

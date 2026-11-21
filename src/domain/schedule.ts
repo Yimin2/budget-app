@@ -164,7 +164,7 @@ export function useDayPlan(
  * U = 0 이면 null (한 달 한도만처럼 봐요)
  */
 export function weeklyPlan(
-  remaining: Won, spentToday: Won, today: ISODate, perWeek: number, usedDates: ReadonlySet<ISODate>,
+  remaining: Won, spentToday: Won, today: ISODate, perWeek: number, usedDates: ReadonlySet<ISODate>, weekSpent: Won = 0,
 ): (LivingWeekly & { dailyBudget: Won; todayAvailable: Won }) | null {
   const month = monthOf(today);
   const monday = mondayOf(today);
@@ -176,18 +176,24 @@ export function weeklyPlan(
   let future = 0;
   for (let m = addDays(monday, 7); monthOf(m) === month; m = addDays(m, 7)) future += weekQuota(perWeek, m, month);
   const usedThisWeek = usedOther + (usedToday ? 1 : 0);
+  // 이번 주 쓸 돈 (2026-11): 이번 주 쓴 돈을 되돌린 남은 돈을 이번 주 몫 + 앞으로의 몫으로 나눠 이번 주 몫만큼.
+  // 횟수를 다 썼어도 이번 주에 남은 돈을 알 수 있어요 (음수 = 이번 주 몫을 넘었어요)
+  const weekBase = remaining + weekSpent;
+  const weekUses = quota + future;
+  const weekBudget = weekBase > 0 && weekUses > 0 ? floorTo100(weekBase / weekUses) * quota : 0;
+  const week = { weekBudget, weekLeft: weekBudget - weekSpent };
 
   if (usedToday) {
     const leftThisWeek = Math.max(0, quota - usedThisWeek);
     const usesLeft = 1 + leftThisWeek + future;
     const start = remaining + spentToday;
     const perUse = start > 0 ? floorTo100(start / usesLeft) : 0;
-    return { perWeek, usedThisWeek, usedToday, leftThisWeek, usesLeft, perUse, dailyBudget: perUse, todayAvailable: perUse - spentToday };
+    return { perWeek, usedThisWeek, usedToday, leftThisWeek, usesLeft, perUse, ...week, dailyBudget: perUse, todayAvailable: perUse - spentToday };
   }
   const leftThisWeek = Math.max(0, quota - usedOther);
   const usesLeft = leftThisWeek + future;
   if (usesLeft === 0) return null;
   const perUse = remaining > 0 ? floorTo100(remaining / usesLeft) : 0;
   const todayAvailable = leftThisWeek > 0 ? perUse : 0;
-  return { perWeek, usedThisWeek, usedToday, leftThisWeek, usesLeft, perUse, dailyBudget: todayAvailable, todayAvailable };
+  return { perWeek, usedThisWeek, usedToday, leftThisWeek, usesLeft, perUse, ...week, dailyBudget: todayAvailable, todayAvailable };
 }

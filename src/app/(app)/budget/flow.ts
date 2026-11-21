@@ -40,8 +40,12 @@ export interface PaydayFlow {
   sourceId: Id;
   sourceName: string;
   day: number;
-  /** 그날 들어오는 계획 수입 */
+  /** 그날 들어오는 수입 (월급을 기록했으면 실제 금액, 아니면 계획) */
   income: Won;
+  /** 그날 계획 수입 */
+  planned: Won;
+  /** income 이 실제 기록한 월급인지 */
+  actual: boolean;
   earners: string[];
   /** 앞 월급날에서 남아 넘어온 돈 */
   carried: Won;
@@ -87,6 +91,8 @@ export function paydayFlows(data: LedgerData, month: YearMonth): PaydayFlow[] {
         sourceName: src.name,
         day: p.day,
         income: p.income,
+        planned: p.planned,
+        actual: p.actual,
         earners: p.earners,
         carried: p.carried,
         bars,

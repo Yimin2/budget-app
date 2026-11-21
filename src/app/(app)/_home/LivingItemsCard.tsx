@@ -1,14 +1,14 @@
 'use client';
 
+import Link from 'next/link';
 import { useId, useMemo, useState } from 'react';
 import {
   formatMan, formatNumber, formatShortDate, formatWon, livingDayNote, livingItemExpenses, livingItemKey, scheduleLabel,
 } from '@/domain';
-import type { Expense, LivingItem, LivingStatus } from '@/domain';
+import type { EventMonthBudget, Expense, LivingItem, LivingStatus } from '@/domain';
 import { useLedger } from '@/state';
 import { Badge, Button, Card, Icon, ListRow, Money, ProgressBar, cx, isIconName } from '@/ui';
 import { ExpenseDialog } from '../history/_expenses/ExpenseDialog';
-import { hasMonthSpent, monthSpent } from './monthSpent';
 import { expenseTitle, livingHistoryHref } from './selectors';
 import styles from './home.module.css';
 import { DailyLine } from './TodayCard';
@@ -23,8 +23,9 @@ function itemTone(i: LivingItem): 'primary' | 'warning' | 'danger' {
 /**
  * 항목별 생활비: 항목을 누르면 창 없이 그 아래로 이번 달 그 항목 지출(새것부터)이 펼쳐져요. 여러 항목을 함께 펼칠 수 있고, 다시 누르면 접혀요.
  * 지출을 누르면 내역과 같은 고치기 창. 머리 링크는 이 사람 생활비 통장의 이번 달 내역 (예산 바꾸기는 예산 탭에서)
+ * 맨 아래 '이벤트' 한 줄: 이번 달 이벤트통장에서 쓴 돈 / 이번 달 적립액 (두 사람이 함께 써요). 누르면 이벤트 화면
  */
-export function LivingItemsCard({ living, owner = null }: { living: LivingStatus; owner?: string | null }) {
+export function LivingItemsCard({ living, owner = null, event = null }: { living: LivingStatus; owner?: string | null; event?: EventMonthBudget | null }) {
   const { today, data } = useLedger();
   const heading = useCardTitle(owner ? `항목별 생활비 · ${owner}` : '항목별 생활비');
   const uid = useId().replace(/:/g, '');
@@ -127,6 +128,7 @@ export function LivingItemsCard({ living, owner = null }: { living: LivingStatus
             </li>
           );
         })}
+        {event ? <EventItemRow event={event} /> : null}
       </ul>
       {editing ? (
         <ExpenseDialog
@@ -136,6 +138,52 @@ export function LivingItemsCard({ living, owner = null }: { living: LivingStatus
         />
       ) : null}
     </Card>
+  );
+}
+
+/** 항목별 생활비의 '이벤트' 줄: 생활비 항목과 같은 모양, 누르면 이벤트 화면 */
+function EventItemRow({ event }: { event: EventMonthBudget }) {
+  const remaining = event.limit - event.spent;
+  const tone = remaining < 0 ? 'danger' : event.limit > 0 && event.spent / event.limit >= 0.8 ? 'warning' : 'primary';
+  return (
+    <li className={styles.item} data-testid="living-event">
+      <Link href="/plan" className={styles.itemToggle} aria-label={`이벤트 이번 달 ${formatWon(event.spent)} 썼어요. 이벤트 화면 보기`}>
+        <span className={styles.itemHead}>
+          <span className={styles.itemName}>
+            <Icon name="calendar" size={20} />
+            <span className={styles.itemText}>이벤트</span>
+            <Badge size="sm" tone="neutral" dot={false}>
+              함께
+            </Badge>
+          </span>
+          <span className={styles.itemLeft}>
+            {remaining < 0 ? (
+              <span className={styles.bad}>{formatWon(-remaining)} 넘음</span>
+            ) : (
+              <>
+                <span className={styles.itemCap}>남은 돈</span> <Money amount={remaining} className={styles.amountCell} />
+              </>
+            )}
+            <Icon name="chevron-right" size={20} className={styles.itemChevron} />
+          </span>
+        </span>
+        <ProgressBar
+          value={event.spent}
+          max={Math.max(event.limit, 1)}
+          label="이벤트 사용"
+          valueText={`${formatWon(event.limit)} 중 ${formatWon(event.spent)} 썼어요`}
+          tone={tone}
+          track="subtle"
+          decorative
+        />
+        <span className={styles.itemMeta}>
+          <span>
+            {formatNumber(event.spent)} / {formatWon(event.limit)}
+          </span>
+          <span>{event.tripSpent > 0 ? `여행 ${formatMan(event.tripSpent)} 따로` : '이번 달 적립 한도'}</span>
+        </span>
+      </Link>
+    </li>
   );
 }
 
@@ -199,76 +247,6 @@ function LivingItemPanel({
 }
 
 /* ───────── 이번 달 쓴 돈 (고정비 · 기타 · 용돈 · 이벤트통장) ───────── */
-
-/** 보이는 사람(사람 선택을 따라가요, 선택이 없으면 모두 합쳐)의 고정비 · 기타(예산 없음) · 용돈과 이벤트통장. 보일 줄이 없으면 카드도 없어요 */
-export function MonthSpentCard({
-  statuses,
-  livingAccountId,
-  owner,
-}: {
-  statuses: LivingStatus[];
-  livingAccountId: string | null;
-  owner: string | null;
-}) {
-  const ledger = useLedger();
-  const heading = useCardTitle(owner ? `이번 달 쓴 돈 · ${owner}` : '이번 달 쓴 돈');
-  const summary = monthSpent(ledger.data!, ledger.today, {
-    statuses,
-    livingAccountId,
-    balances: ledger.balances,
-    eventProjection: ledger.eventProjection,
-  });
-  if (!hasMonthSpent(summary)) return null;
-  const { fixed, etc, allowance, event } = summary;
-  return (
-    <Card as="section" {...heading} className={cx(styles.cardGap, styles.oSpent)}>
-      <ul className={cx('list', styles.listTop)}>
-        {fixed ? (
-          <li>
-            <ListRow
-              icon="receipt"
-              href={fixed.href}
-              title="고정비"
-              subtitle={`${formatMan(fixed.paid)} / ${formatMan(fixed.total)} · ${
-                fixed.remainingCount > 0 ? `남은 결제 ${fixed.remainingCount}건` : '남은 결제 없어요'
-              }`}
-            />
-          </li>
-        ) : null}
-        {etc ? (
-          <li>
-            <ListRow
-              icon="dots"
-              href={etc.href}
-              title="기타 (예산 없음)"
-              subtitle={`${formatWon(etc.amount)} · ${etc.count}건`}
-            />
-          </li>
-        ) : null}
-        {allowance ? (
-          <li>
-            <ListRow
-              icon="wallet"
-              href={allowance.href}
-              title="용돈"
-              subtitle={`${formatMan(allowance.spent)} 썼어요 · 남은 돈 ${formatMan(allowance.balance)}`}
-            />
-          </li>
-        ) : null}
-        {event ? (
-          <li>
-            <ListRow
-              icon="calendar"
-              href={event.href}
-              title="이벤트통장"
-              subtitle={`${formatMan(event.spent)} 썼어요 · 적립 ${formatMan(event.contribution)} · 잔액 ${formatMan(event.balance)}`}
-            />
-          </li>
-        ) : null}
-      </ul>
-    </Card>
-  );
-}
 
 export function LivingSetupCard() {
   const titleId = useId();

@@ -1,8 +1,9 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { formatMan, monthOf } from "@/domain";
-import { Card } from "@/ui";
+import { useState, type CSSProperties } from "react";
+import { activeIncomePlans, formatMan, formatMonthKo, incomePlanSuggestion, monthOf, type IncomePlanSuggestion } from "@/domain";
+import { useLedger } from "@/state";
+import { Button, Card, Icon, useToast } from "@/ui";
 import type { ReadyLedger } from "../_components/RequireLedger";
 import { paydayFlows, type FlowKind, type PaydayFlow } from "./flow";
 import styles from "./budget.module.css";
@@ -38,6 +39,16 @@ export function MoneyFlow({ ledger, readOnly = false }: { ledger: ReadyLedger; r
   const month = monthOf(ledger.today);
   const flows = paydayFlows(ledger.data, month);
   const multiSource = new Set(flows.map((f) => f.sourceId)).size > 1;
+  // 최근 실제 월급 평균이 계획과 다르면 계획 바꾸기를 권해요 (이번 달 보기에서만)
+  const suggestions = readOnly
+    ? []
+    : flows.flatMap((f) =>
+        activeIncomePlans(ledger.data, month, f.sourceId)
+          .filter((p) => Math.min(Math.max(1, p.dayOfMonth), 31) === f.day)
+          .map((p) => incomePlanSuggestion(ledger.data, p, ledger.today))
+          .filter((x): x is IncomePlanSuggestion => x !== null)
+          .map((x) => ({ key: `${f.sourceId}-${f.day}`, s: x })),
+      );
 
   return (
     <div className="stack gap-4">
@@ -54,6 +65,7 @@ export function MoneyFlow({ ledger, readOnly = false }: { ledger: ReadyLedger; r
               key={`${f.sourceId}-${f.day}`}
               flow={f}
               showSource={multiSource}
+              suggestions={suggestions.filter((x) => x.key === `${f.sourceId}-${f.day}`).map((x) => x.s)}
             />
           ))}
         </div>
@@ -83,15 +95,21 @@ export function MoneyFlow({ ledger, readOnly = false }: { ledger: ReadyLedger; r
 function FlowCard({
   flow: f,
   showSource,
+  suggestions = [],
 }: {
   flow: PaydayFlow;
   showSource: boolean;
+  suggestions?: IncomePlanSuggestion[];
 }) {
   const title = `${f.day}일 월급날`;
   const headId = `bd-flow-${f.sourceId}-${f.day}`;
+  const who = f.earners.length > 0 ? ` (${f.earners.join(" · ")})` : "";
+  // 이번 달 월급을 기록했으면 실제 들어온 돈으로, 계획과 다르면 계획도 함께 (2026-11)
   const inText =
     f.income > 0
-      ? `${f.sourceName}에 ${formatMan(f.income)} 들어와요${f.earners.length > 0 ? ` (${f.earners.join(" · ")})` : ""}`
+      ? f.actual
+        ? `${f.sourceName}에 ${formatMan(f.income)} 들어왔어요${who}${f.planned !== f.income ? ` · 계획 ${formatMan(f.planned)}` : ""}`
+        : `${f.sourceName}에 ${formatMan(f.income)} 들어와요${who}`
       : `${f.sourceName}에서 보내요`;
   return (
     <Card
@@ -111,6 +129,9 @@ function FlowCard({
             앞 월급날에서 넘어온 돈 {formatMan(f.carried)}
           </p>
         ) : null}
+        {suggestions.map((s) => (
+          <PlanSuggestion key={s.plan.id} s={s} />
+        ))}
       </div>
 
       {/* 그림 (화면 읽기 프로그램은 아래 표를 읽어요) */}
@@ -167,5 +188,43 @@ function FlowCard({
         </p>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * 수입 계획 바꾸기 권장 (2026-11): '최근 3달 실제 월급 평균 295만 · 계획 297만 [계획을 295만으로]'.
+ * 누르면 그 수입 계획 금액을 평균으로 바꿔요 (이미 기록한 월급은 그대로)
+ */
+function PlanSuggestion({ s }: { s: IncomePlanSuggestion }) {
+  const ledger = useLedger();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const name = s.plan.personName.trim();
+  const year = Number(ledger.today.slice(0, 4));
+  const span = s.months.length >= 2 ? `${formatMonthKo(s.months[s.months.length - 1]!, year)}~${formatMonthKo(s.months[0]!, year)}` : "";
+  async function apply() {
+    setBusy(true);
+    try {
+      await ledger.saveIncomePlan({ ...s.plan, amount: s.average });
+      toast.success(`${name ? `${name} ` : ""}수입 계획을 ${formatMan(s.average)}으로 바꿨어요`);
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "수입 계획을 바꾸지 못했어요");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className={styles.planHint} data-testid="income-suggestion">
+      <p>
+        <Icon name="info" size={16} />
+        <span>
+          {name ? `${name} ` : ""}최근 {s.months.length}달 실제 월급 평균은 <strong>{formatMan(s.average)}</strong>이에요
+          {span ? ` (${span})` : ""}. 적어 둔 계획은 {formatMan(s.plan.amount)}이에요.
+        </span>
+      </p>
+      <Button variant="outline" loading={busy} onClick={() => void apply()}>
+        계획을 {formatMan(s.average)}으로 바꾸기
+      </Button>
+    </div>
   );
 }

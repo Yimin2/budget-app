@@ -1,20 +1,21 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ledgerPeople, formatDateKo, hasLivingBudget } from '@/domain';
+import { ledgerPeople, eventMonthBudget, formatDateKo, hasLivingBudget } from '@/domain';
 import { useLedger, useSession } from '@/state';
-import { AvatarGroup, Banner, Button, PageHeader, useMediaQuery, WIDE_QUERY } from '@/ui';
-import { ClaimsCard, LedgerSwitcher, SettlementCard } from '../_components';
+import { AvatarGroup, PageHeader } from '@/ui';
+import { LedgerSwitcher } from '../_components';
 import { HomeSkeleton, useLedgerFallback } from './LedgerGate';
-import { shortageBannerText } from './selectors';
 import styles from './home.module.css';
 import { MeChooser, TodayCard } from './TodayCard';
-import { LivingItemsCard, MonthSpentCard, LivingSetupCard } from './LivingItemsCard';
+import { LivingItemsCard, LivingSetupCard } from './LivingItemsCard';
 import { QuickSuggestions } from './QuickSuggestions';
 import { SendCard } from './SendCard';
-import { EventAccountCard, RecentExpenses } from './HomeCards';
 
-/** 홈 '/' — 오늘 써도 되는 돈 · 사도 돼? · 자주 쓰는 지출 · 생활비 항목 · 돌려받을 돈 · 부족 알림 · 이벤트통장 · 최근 지출 (통장 잔액은 내역) */
+/**
+ * 홈 '/' (2026-11 덜어내기): 오늘 보낼 돈 · 오늘 써도 되는 돈 · 자주 쓰는 지출 · 항목별 생활비(+ 이벤트 한 줄)만.
+ * 사도 돼? 는 + 버튼, 정산 · 모자라는 달 · 일정은 이벤트 탭, 최근 지출은 내역 탭에서 봐요
+ */
 export function HomeView() {
   const ledger = useLedger();
   const session = useSession();
@@ -54,11 +55,6 @@ export function HomeView() {
 
 function HomeBody() {
   const ledger = useLedger();
-  const data = ledger.data!;
-  const banner = shortageBannerText(ledger.eventProjection, ledger.today);
-  // 1280px 이상(두 칸)은 이번 달 쓴 돈 · 최근 지출이 오른쪽 칸 이벤트통장 아래(두 칸 길이를 맞춰요).
-  // 그보다 좁으면(한 줄 · 태블릿) 이번 달 쓴 돈은 항목별 생활비 바로 아래, 최근 지출은 이벤트통장 뒤. 읽는 순서 = 보이는 순서
-  const wide = useMediaQuery(WIDE_QUERY);
   // 사람별 생활비 (PLAN 4-14): 기본은 나, 다른 사람으로 바꿔 볼 수 있어요
   const [viewId, setViewId] = useState<string | null>(null);
   const views = ledger.livingViews;
@@ -68,53 +64,35 @@ function HomeBody() {
   const selected = multi && targetId ? (views.find((v) => v.accountId === targetId) ?? views[0]!) : null;
   const living = selected ? selected.status : ledger.living;
   const person = selected ? { view: selected, isMe: selected.accountId === ledger.myLivingAccountId } : null;
-  const spentCard = (
-    <MonthSpentCard
-      statuses={selected ? [selected.status] : multi ? views.map((v) => v.status) : ledger.living ? [ledger.living] : []}
-      livingAccountId={selected?.accountId ?? null}
-      owner={selected?.name ?? null}
-    />
+  // 항목별 생활비 맨 아래 '이벤트' 줄: 이번 달 이벤트통장 쓴 돈 / 적립액
+  const event = useMemo(
+    () => (ledger.data && ledger.settlement ? eventMonthBudget(ledger.data, ledger.settlement, ledger.today) : null),
+    [ledger.data, ledger.settlement, ledger.today],
   );
 
   return (
-    <>
-      <div className={styles.col}>
-        {/* 월급을 기록해 배분이 생기면 은행에서 보낼 일 (다 보내면 사라져요) */}
-        <SendCard className={styles.oSend} />
-        {ledger.meChoices.length > 0 ? <MeChooser names={ledger.meChoices} /> : null}
-        {living && hasLivingBudget(living) ? (
-          <TodayCard
-            living={living}
-            person={person}
-            views={multi ? views : []}
-            myAccountId={ledger.myLivingAccountId}
-            household={multi ? ledger.living : null}
-            onPick={setViewId}
-          />
-        ) : (
-          <LivingSetupCard />
-        )}
-        <Button href="/check" size="lg" block icon="cart" className={styles.oCta}>
-          사도 돼? 확인하기
-        </Button>
-        <QuickSuggestions />
-        {/* 모두 합친 화면(나를 고르기 전)에서는 항목이 사람마다 겹쳐 보여서 빼요 */}
-        {living && living.items.length > 0 && (!multi || selected) ? <LivingItemsCard key={selected?.accountId ?? ''} living={living} owner={selected?.name ?? null} /> : null}
-        {wide ? null : spentCard}
-      </div>
-      <div className={styles.col}>
-        {banner ? (
-          <Banner tone="warning" title={banner.title} action={{ label: '대처하기', href: '/plan#fix' }} className={styles.oBanner}>
-            {banner.description}
-          </Banner>
-        ) : null}
-        {/* 이번 달 정산 한 줄 (이번 달 이벤트통장 쓴 돈 + 예정, 줄 돈이 없으면 '… 이번 달 정산할 돈은 없어요 · 다음 정산 …', 청구가 없으면 숨김). 이벤트통장이 없을 때만 사람별 목록 */}
-        {ledger.settlement ? <SettlementCard home className={styles.oClaims} /> : <ClaimsCard className={styles.oClaims} />}
-        <EventAccountCard />
-        {wide ? spentCard : null}
-        <RecentExpenses />
-      </div>
-    </>
+    <div className={styles.col}>
+      {/* 월급을 기록해 배분이 생기면 은행에서 보낼 일 (다 보내면 사라져요) */}
+      <SendCard className={styles.oSend} />
+      {ledger.meChoices.length > 0 ? <MeChooser names={ledger.meChoices} /> : null}
+      {living && hasLivingBudget(living) ? (
+        <TodayCard
+          living={living}
+          person={person}
+          views={multi ? views : []}
+          myAccountId={ledger.myLivingAccountId}
+          household={multi ? ledger.living : null}
+          onPick={setViewId}
+        />
+      ) : (
+        <LivingSetupCard />
+      )}
+      <QuickSuggestions />
+      {/* 모두 합친 화면(나를 고르기 전)에서는 항목이 사람마다 겹쳐 보여서 빼요 */}
+      {living && living.items.length > 0 && (!multi || selected) ? (
+        <LivingItemsCard key={selected?.accountId ?? ''} living={living} owner={selected?.name ?? null} event={event} />
+      ) : null}
+    </div>
   );
 }
 

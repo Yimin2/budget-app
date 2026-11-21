@@ -498,6 +498,10 @@ export interface LivingWeekly {
   usesLeft: number;
   /** 한 번에 쓸 돈 (100원 내림, 0 아래면 0) */
   perUse: Won;
+  /** 이번 주 쓸 돈 (이번 주 쓴 돈 포함, 이번 주 몫 횟수만큼) */
+  weekBudget: Won;
+  /** 이번 주 남은 돈 = weekBudget − 이번 주 쓴 돈 (횟수를 다 써도 보여요, 음수 = 넘음) */
+  weekLeft: Won;
 }
 
 export interface LivingStatus {
