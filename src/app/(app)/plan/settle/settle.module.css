@@ -655,3 +655,10 @@
 .moreMonths {
   align-self: center;
 }
+
+/* 지급 막대: 통장별로 어디서 나가는지 */
+.barSources {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
