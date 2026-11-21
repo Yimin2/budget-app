@@ -129,13 +129,13 @@ export interface Settlement {
   reserved: Won;
   /** reserved 중 여행 남은 예산 */
   reservedTrips: Won;
-  /** 지난달부터 못 준 이벤트통장 청구 중 먼저 돌려줄 합 (available 안에서 오래된 순 first-fit) */
+  /** 밀린 이벤트통장 청구(돌려줄 날이 된 것) 중 먼저 돌려줄 합 (available 안에서 오래된 순 first-fit, 이번 달 일정보다 먼저) */
   oldPay: Won;
-  /** 이번 달 청구에 쓸 수 있는 돈 = max(0, available − oldPay − reserved) */
+  /** 밀린 청구를 주고 이번 달 일정을 남긴 뒤 더 쓸 수 있는 돈 = max(0, available − oldPay − reserved) */
   freshLimit: Won;
   /** 지급할 수 있는 돈 = oldPay + freshLimit */
   payable: Won;
-  /** 지난달 청구를 먼저 돌려주면 이번 달 일정에 모자라는 돈 (없으면 null) */
+  /** 밀린 청구를 먼저 돌려주면 이번 달 일정에 모자라는 돈 (없으면 null) */
   plannedShort: { month: YearMonth; amount: Won } | null;
   /** 이번 달 지급 (사람별) — 이벤트통장 몫(한도 안) + 고정지출통장 몫 */
   pay: PersonClaims[];
@@ -273,14 +273,10 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
     else if (src === 'event') eventDue.push(c);
     else otherDue.push(c);
   }
-  // 지난달부터 못 준 청구를 먼저 (이번 달 일정보다도 먼저), 이번 달 청구는 이번 달 일정을 뺀 남은 돈 안에서
-  const limits = eventLimits(available, reserved, eventDue.filter((c) => c.due < monthStart));
-  const oldAlloc = limits.oldAlloc;
-  const freshAlloc = allocateClaims(
-    eventDue.filter((c) => c.due >= monthStart),
-    limits.freshLimit,
-  );
-  const alloc = { paid: [...oldAlloc.paid, ...freshAlloc.paid], carried: [...oldAlloc.carried, ...freshAlloc.carried] };
+  // 밀린 청구(돌려줄 날이 정산 기준일까지 된 것)를 오래된 순으로 먼저 줘요 — 이번 달 일정 · 여행 · 할부보다도 먼저 (2026-11).
+  // 일정에 쓸 돈이 모자라게 되면 plannedShort 로 알려요
+  const limits = eventLimits(available, reserved, eventDue);
+  const alloc = { paid: limits.oldAlloc.paid, carried: limits.oldAlloc.carried };
   const oldPay = limits.oldPaid;
   const freshLimit = limits.freshLimit;
   const payable = oldPay + freshLimit;
@@ -412,13 +408,12 @@ export function checkSettlementSelection(data: LedgerData, s: Settlement, select
   const claims = all.filter((c) => ids.has(c.expense.id) && !seen.has(c.expense.id) && seen.add(c.expense.id)).sort(oldestFirst);
   const event = claims.filter((c) => claimSource(data, c.accountId) === 'event');
   const eventTotal = sumOf(event);
-  const old = allocateClaims(
-    event.filter((c) => isCarriedOverClaim(s, c)),
-    s.available,
-  );
+  // 밀린 청구(돌려줄 날이 정산 기준일까지 된 것)는 일정보다 먼저, 아직 날이 안 된 청구는 일정을 남긴 돈에서
+  const overdue = (c: PendingClaim) => c.due <= s.asOf;
+  const old = allocateClaims(event.filter(overdue), s.available);
   const earmark = Math.max(sumOf(old.paid), s.oldPay);
   const fresh = allocateClaims(
-    event.filter((c) => !isCarriedOverClaim(s, c)),
+    event.filter((c) => !overdue(c)),
     Math.max(0, s.available - earmark - s.reserved),
   );
   const overClaims = [...old.carried, ...fresh.carried].sort(oldestFirst);

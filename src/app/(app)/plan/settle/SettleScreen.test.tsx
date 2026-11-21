@@ -74,7 +74,7 @@ describe('정산 화면', () => {
     expect(payable.textContent).toContain('고른 것 1건30만');
     expect(payable.textContent).toContain('남는 돈45만');
     expect(payable.textContent).toContain('이번 달 일정 몫 (빼 둠)');
-    expect(screen.getByTestId('settle-explain').textContent).toMatch(/줄 수 있는 돈은 75만이에요\.$/);
+    expect(screen.getByTestId('settle-explain').textContent).toMatch(/밀린 돈 30만을 일정보다 먼저 돌려줘요. .*줄 수 있는 돈은 45만이에요.$/);
     const people = screen.getByRole('list', { name: '사람별 줄 돈' });
     expect(within(people).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['민지30만', '준호2.4만']);
     // 폰에서 접힌 한 줄
@@ -239,7 +239,7 @@ describe('정산 화면', () => {
     expect(old.closest('li')!.textContent).toContain('지난달부터');
     expect(within(list).getByRole('heading', { name: /^10월/ }).textContent).toMatch(/줄 돈 7만$/);
     expect(box(list, '제주 항공권 300,000원 고르기').closest('li')!.textContent).not.toContain('지난달부터');
-    expect(screen.getByTestId('settle-explain').textContent).toContain('지난달에 못 준 돈 7만을 먼저 돌려줘요.');
+    expect(screen.getByTestId('settle-explain').textContent).toContain('밀린 돈 37만을 일정보다 먼저 돌려줘요.');
     const people = screen.getByRole('list', { name: '사람별 줄 돈' });
     expect(within(people).getAllByRole('listitem')[0]!.textContent).toBe('민지37만 (못 준 돈 7만 · 10월)');
   });

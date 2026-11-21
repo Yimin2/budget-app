@@ -254,7 +254,7 @@ function SettleContent({ ledger, s }: { ledger: ReadyLedger; s: Settlement }) {
             </div>
           ) : null}
           <p className={styles.note}>
-            처음엔 지난달에 못 준 것부터, 그다음 오래된 것부터 줄 수 있는 돈 안에서 골라 뒀어요. 이름을 누르면 자세히 볼 수 있어요
+            이벤트통장 잔액 안에서 밀린 돈부터 오래된 순으로 미리 골라 뒀어요(이번 달 일정보다 먼저). 이름을 누르면 자세히 볼 수 있어요
           </p>
 
           {shown.length === 0 ? (

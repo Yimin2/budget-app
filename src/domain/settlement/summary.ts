@@ -37,7 +37,7 @@ export function settleExplanation(s: Settlement): string {
   } else {
     parts.push(short ? `지갑(이벤트통장)이 ${amount0} 모자라요.` : `지갑(이벤트통장)에 ${amount0} 있어요.`);
   }
-  if (s.oldPay > 0) parts.push(`지난달에 못 준 돈 ${formatMan(s.oldPay)}을 먼저 돌려줘요.`);
+  if (s.oldPay > 0) parts.push(`밀린 돈 ${formatMan(s.oldPay)}을 일정보다 먼저 돌려줘요.`);
   const month = Number(monthOf(s.asOf).slice(5));
   if (s.plannedShort) {
     parts.push(`이 돈을 먼저 돌려주면 ${Number(s.plannedShort.month.slice(5))}월 일정에 ${formatMan(s.plannedShort.amount)}이 모자라요.`);
