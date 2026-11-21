@@ -10,7 +10,7 @@ async function startDemo(page: Page) {
 const SCREENS: { path: string; heading: string }[] = [
   { path: '/history', heading: '내역' },
   { path: '/history?tab=accounts', heading: '내역' },
-  { path: '/history/stats', heading: '통계' },
+  { path: '/history/stats', heading: '내역' },
   { path: '/plan', heading: '이벤트' },
   { path: '/plan/trips', heading: '여행' },
   { path: '/plan/usual', heading: '한 번뿐이었던 큰 지출 빼기' },

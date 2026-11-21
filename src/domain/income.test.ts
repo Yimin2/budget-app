@@ -4,7 +4,7 @@ import { accountBalance } from './balances';
 import { projectEventAccount } from './events';
 import { autoTransferId } from './ids';
 import {
-  conflictingRemainderRule, duplicateAutoIncome, incomeRecordId, incomeRecorded, paydayPlans, plannedIncome, projectRemainders, remainderAmount,
+  conflictingRemainderRule, duplicateAutoIncome, incomePlanSuggestion, incomeRecordId, incomeRecorded, paydayPlans, plannedIncome, projectRemainders, recordedIncomeAmount, remainderAmount,
 } from './income';
 import { pendingAutoRecords } from './recurring';
 import type { AllocationRule, IncomePlan, LedgerData } from './types';
@@ -279,5 +279,34 @@ describe('월급이 들어온 날 배분하기', () => {
   it('수입이 없으면 예전처럼 정해 둔 날에 배분해요', () => {
     const recs = pendingAutoRecords(household(), '2026-11-21', 'a@x', NOW);
     expect(recs.transfers.find((t) => t.id === autoTransferId('r21-a', '2026-11'))?.date).toBe('2026-11-21');
+  });
+});
+
+describe('실제 들어온 월급 · 수입 계획 바꾸기 권장', () => {
+  const pay = (date: string, amount: number) => transfer({ id: `pay-${date}`, date, kind: 'income', toAccountId: salary.id, amount });
+  const garam = (d: LedgerData) => d.incomePlans.find((p) => p.id === 'garam')!;
+
+  it('그달 월급을 기록했으면 월급날 미리보기는 실제 금액(295만), 계획(297만)은 따로', () => {
+    const d = household({ transfers: [pay('2026-11-20', 2_950_000)] });
+    expect(recordedIncomeAmount(d, garam(d), '2026-11')).toBe(2_950_000);
+    const p21 = paydayPlans(d, '2026-11', salary.id).find((p) => p.day === 21)!;
+    expect(p21).toMatchObject({ income: 2_950_000, planned: 2_970_000, actual: true });
+    // 25일은 아직 기록 전이라 계획 그대로
+    expect(paydayPlans(d, '2026-11', salary.id).find((p) => p.day === 25)).toMatchObject({ income: 3_000_000, actual: false });
+  });
+
+  it('한 달만 다르면 권장하지 않고, 최근 기록된 달 2~3개 중 2개 이상 다르면 평균(1,000원 반올림)으로 권장해요', () => {
+    const early = (d: LedgerData) => ({
+      ...d,
+      accounts: d.accounts.map((a) => ({ ...a, openingDate: '2026-08-01' })),
+      incomePlans: d.incomePlans.map((p) => ({ ...p, startMonth: '2026-08' })),
+    });
+    const one = early(household({ transfers: [pay('2026-11-20', 2_950_000), pay('2026-10-21', 2_970_000)] }));
+    expect(incomePlanSuggestion(one, garam(one), '2026-11-21')).toBeNull();
+    const two = early(household({ transfers: [pay('2026-11-20', 2_950_000), pay('2026-10-21', 2_951_000), pay('2026-09-21', 2_970_000)] }));
+    expect(incomePlanSuggestion(two, garam(two), '2026-11-21')).toMatchObject({ average: 2_957_000, months: ['2026-11', '2026-10', '2026-09'] });
+    // 평균이 계획과 같으면 없음
+    const same = early(household({ transfers: [pay('2026-11-20', 2_960_000), pay('2026-10-21', 2_980_000)] }));
+    expect(incomePlanSuggestion(same, garam(same), '2026-11-21')).toBeNull();
   });
 });

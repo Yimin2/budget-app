@@ -180,7 +180,7 @@ function EventItemRow({ event }: { event: EventMonthBudget }) {
           <span>
             {formatNumber(event.spent)} / {formatWon(event.limit)}
           </span>
-          <span>이번 달 적립 한도</span>
+          <span>{event.tripSpent > 0 ? `여행 ${formatMan(event.tripSpent)} 따로` : '이번 달 적립 한도'}</span>
         </span>
       </Link>
     </li>

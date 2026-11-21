@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { SegmentedControl } from '@/ui';
 import { AccountsScreen } from './_accounts/AccountsScreen';
 import { ExpensesScreen } from './_expenses/ExpensesScreen';
@@ -24,26 +24,34 @@ export function historyHref(tab: HistoryTab): string {
   return tab === 'expenses' ? '/history' : `/history?tab=${tab}`;
 }
 
+/** 통계 화면 주소 (내역의 네 번째 탭, 2026-11 하단 메뉴에서 옮김) */
+export const STATS_TAB_HREF = '/history/stats';
+
+/** 내역 위쪽 탭: 지출 · 이체 · 통장 잔액 · 통계. 통계는 /history/stats 로 가요 */
+export function HistorySwitcher({ value }: { value: HistoryTab | 'stats' }) {
+  const router = useRouter();
+  const options: { value: HistoryTab | 'stats'; label: string }[] = [...TABS, { value: 'stats', label: '통계' }];
+  return (
+    <SegmentedControl
+      ariaLabel="내역 종류"
+      block
+      options={options}
+      value={value}
+      onChange={(t) => (t === 'stats' ? router.push(STATS_TAB_HREF) : router.replace(historyHref(t), { scroll: false }))}
+    />
+  );
+}
+
 /**
- * '/history' 내역: 지출 · 이체 · 통장 잔액을 한 화면에서 탭으로 바꿔 봐요. 통계(/history/stats)는 하단 메뉴 · 사이드바의 통계 칸으로 가요.
+ * '/history' 내역: 지출 · 이체 · 통장 잔액 · 통계를 위쪽 탭으로 바꿔 봐요 (통계는 /history/stats).
  * ?tab=transfers · ?tab=accounts (&id=<통장 id> 면 통장 하나), 지출은 ?month= · ?account= · ?category= · ?new=1
  */
 export function HistoryScreen() {
   const params = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname() ?? '/history';
   const tab = parseHistoryTab(params?.get('tab'));
   const accountId = params?.get('id') || null;
 
-  const switcher = (
-    <SegmentedControl
-      ariaLabel="내역 종류"
-      block
-      options={TABS}
-      value={tab}
-      onChange={(t) => router.replace(t === 'expenses' ? pathname : `${pathname}?tab=${t}`, { scroll: false })}
-    />
-  );
+  const switcher = <HistorySwitcher value={tab} />;
 
   if (tab === 'accounts') return <AccountsScreen switcher={accountId ? undefined : switcher} />;
   if (tab === 'transfers') return <TransfersScreen switcher={switcher} />;

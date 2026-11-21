@@ -35,18 +35,20 @@ import { ExpandButton } from '../../_components/ExpandButton';
 import { PageSkeleton } from '../../_components/PageSkeleton';
 import { RequireLedger, type ReadyLedger } from '../../_components/RequireLedger';
 import styles from './stats.module.css';
+import { HistorySwitcher } from '../HistoryScreen';
 
 const man = (n: Won) => formatManShort(n);
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 const monthKo = (m: YearMonth) => formatMonthKo(m, 0);
 
-/** '/history/stats' 통계: 맨 위 ◀ 달 ▶ + 네 묶음 (처음부터 펼쳐 둠 (사용자 결정), [접기]로 요약만 — 창 없음) */
+/** '/history/stats' 통계 (내역의 통계 탭): 맨 위 ◀ 달 ▶ + 네 묶음 (처음부터 펼쳐 둠 (사용자 결정), [접기]로 요약만 — 창 없음) */
 export function StatsScreen() {
   const params = useSearchParams();
   const initial = params?.get('month') ?? null;
   return (
     <>
-      <PageHeader title="통계" subtitle="달마다 예산과 쓴 돈, 어디에 썼는지, 1년 흐름을 봐요" />
+      <PageHeader title="내역" subtitle="통계: 달마다 예산과 쓴 돈, 어디에 썼는지, 1년 흐름을 봐요" />
+      <HistorySwitcher value="stats" />
       <RequireLedger skeleton={<PageSkeleton withHeader={false} cards={4} label="통계를 불러오는 중이에요" />}>
         {(ledger) => <StatsView ledger={ledger} initialMonth={initial} />}
       </RequireLedger>

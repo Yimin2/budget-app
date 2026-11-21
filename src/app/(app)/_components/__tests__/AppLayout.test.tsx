@@ -34,7 +34,7 @@ describe('앱 틀 (app)/layout', () => {
     expect(screen.queryByText('홈 내용')).toBeNull();
   });
 
-  it('체험 모드: 메뉴 5개(홈 · 내역 · 통계 · 이벤트 · 예산) + 오른쪽 아래 + 기록 · 내 정보 버튼 → 설정 · 가계부 전환', async () => {
+  it('체험 모드: 메뉴 4개(홈 · 내역 · 이벤트 · 예산) + 오른쪽 아래 + 기록 · 내 정보 버튼 → 설정 · 가계부 전환', async () => {
     nav.pathname = '/settings';
     const h = renderApp(
       <AppLayout>
@@ -46,10 +46,10 @@ describe('앱 틀 (app)/layout', () => {
     nav.router.replace.mockClear();
     expect(screen.getByText('설정 내용')).toBeTruthy();
     const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
-    // 사이드바(태블릿 · 데스크톱)와 하단 메뉴(모바일) 모두 홈 · 내역 · 통계 · 이벤트 · 예산
-    expect(within(side).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/history/stats', '/plan', '/budget']);
-    expect(within(dock).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/history/stats', '/plan', '/budget']);
-    expect(within(dock).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '내역', '통계', '이벤트', '예산']);
+    // 사이드바(태블릿 · 데스크톱)와 하단 메뉴(모바일) 모두 홈 · 내역 · 이벤트 · 예산 (통계는 내역의 탭)
+    expect(within(side).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/plan', '/budget']);
+    expect(within(dock).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/', '/history', '/plan', '/budget']);
+    expect(within(dock).getAllByRole('link').map((a) => a.textContent)).toEqual(['홈', '내역', '이벤트', '예산']);
     // + 기록은 하단 메뉴 밖, 오른쪽 아래 떠 있는 버튼
     expect(within(dock).queryByRole('button')).toBeNull();
     expect((document.querySelector('.fab') as HTMLElement).getAttribute('aria-label')).toBe('기록');
@@ -81,7 +81,7 @@ describe('앱 틀 (app)/layout', () => {
     expect(nav.router.push).toHaveBeenCalledWith('/start/new');
   });
 
-  it('통계(/history/stats): 사이드바 · 하단 메뉴 모두 통계만 켜져요', async () => {
+  it('통계(/history/stats)는 내역의 탭이라 사이드바 · 하단 메뉴 모두 내역이 켜져요', async () => {
     nav.pathname = '/history/stats';
     const h = renderApp(
       <AppLayout>
@@ -90,10 +90,8 @@ describe('앱 틀 (app)/layout', () => {
     );
     await startDemo(h);
     const [side, dock] = screen.getAllByRole('navigation', { name: '주 메뉴' }) as [HTMLElement, HTMLElement];
-    expect(within(side).getByRole('link', { current: 'page' }).getAttribute('href')).toBe('/history/stats');
-    expect(within(side).getByRole('link', { name: '내역' }).getAttribute('aria-current')).toBeNull();
-    expect(within(dock).getAllByRole('link', { current: 'page' }).map((a) => a.textContent)).toEqual(['통계']);
-    expect(within(dock).getByRole('link', { name: '내역' }).getAttribute('aria-current')).toBeNull();
+    expect(within(side).getByRole('link', { current: 'page' }).getAttribute('href')).toBe('/history');
+    expect(within(dock).getAllByRole('link', { current: 'page' }).map((a) => a.textContent)).toEqual(['내역']);
   });
 
   it('정산(/plan/settle): 아래 고정 막대를 가리지 않게 오른쪽 아래 + 는 숨겨요 (사이드바 + 기록은 그대로)', async () => {

@@ -42,21 +42,18 @@ describe('내역 화면', () => {
     await open();
     expect(screen.getByRole('heading', { level: 1, name: '내역' })).toBeTruthy();
     const tabs = screen.getByRole('radiogroup', { name: '내역 종류' });
-    expect(within(tabs).getAllByRole('radio').map((r) => r.textContent)).toEqual(['지출', '이체', '통장 잔액']);
+    expect(within(tabs).getAllByRole('radio').map((r) => r.textContent)).toEqual(['지출', '이체', '통장 잔액', '통계']);
     expect(within(tabs).getByRole('radio', { name: '지출' }).getAttribute('aria-checked')).toBe('true');
     expect(await screen.findByRole('region', { name: '2026년 11월 지출 목록' })).toBeTruthy();
     fireEvent.click(within(tabs).getByRole('radio', { name: '통장 잔액' }));
     expect(nav.router.replace).toHaveBeenCalledWith('/history?tab=accounts', { scroll: false });
   });
 
-  it('맨 위에 [내역 · 통계] 바꾸기는 없어요 (통계는 하단 메뉴 · 사이드바의 통계 칸)', async () => {
+  it('통계는 내역의 네 번째 탭이에요 (누르면 /history/stats)', async () => {
     await open();
-    expect(screen.queryByRole('radiogroup', { name: '내역 · 통계' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '통계' })).toBeNull();
-    cleanup();
-    await open('tab=transfers');
-    expect(screen.queryByRole('radiogroup', { name: '내역 · 통계' })).toBeNull();
-    expect(screen.getByRole('radiogroup', { name: '내역 종류' })).toBeTruthy();
+    const tabs = screen.getByRole('radiogroup', { name: '내역 종류' });
+    fireEvent.click(within(tabs).getByRole('radio', { name: '통계' }));
+    expect(nav.router.push).toHaveBeenCalledWith('/history/stats');
   });
 
   it('이체 탭: 수입 · 이체 기록을 달마다 보여 주고 눌러서 자세히 봐요', async () => {

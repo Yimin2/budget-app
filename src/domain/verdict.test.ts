@@ -242,7 +242,7 @@ describe('judgeLiving — 쓰는 날 · 주 N회 (PLAN 4-4)', () => {
     categoryId: 'dine', name: '외식', icon: 'utensils', spread: 'daily', base: 160_000, monthBudget: 160_000, carryIn: 0,
     spent: 20_000, spentToday: 0, remaining: 140_000, dailyBudget: 20_000, todayAvailable: 20_000, unbudgeted: false,
     schedule: { days: null, skipHolidays: false, perWeek: 2 },
-    weekly: { perWeek: 2, usedThisWeek: 0, usedToday: false, leftThisWeek: 2, usesLeft: 7, perUse: 20_000, ...w },
+    weekly: { perWeek: 2, usedThisWeek: 0, usedToday: false, leftThisWeek: 2, usesLeft: 7, perUse: 20_000, weekBudget: 40_000, weekLeft: 40_000, ...w },
     ...p,
   });
 

@@ -805,3 +805,9 @@
   padding: 0;
   margin-bottom: var(--space-2);
 }
+
+/* 항목별 생활비의 '이벤트' 줄은 링크라 밑줄 · 링크 색 없이 다른 줄과 같게 */
+a.itemToggle {
+  color: inherit;
+  text-decoration: none;
+}

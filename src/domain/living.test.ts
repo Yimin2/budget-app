@@ -292,9 +292,9 @@ describe('쓰는 날 (평일 · 공휴일 빼기 · 주 N회)', () => {
     const s = computeLiving(ledger(), '2026-11-10');
     const dine = findLivingItem(s, 'dine')!;
     expect(dine.remaining).toBe(140_000);
-    expect(dine.weekly).toEqual({ perWeek: 2, usedThisWeek: 0, usedToday: false, leftThisWeek: 2, usesLeft: 7, perUse: 20_000 });
+    expect(dine.weekly).toEqual({ perWeek: 2, usedThisWeek: 0, usedToday: false, leftThisWeek: 2, usesLeft: 7, perUse: 20_000, weekBudget: 40_000, weekLeft: 40_000 });
     expect(dine.todayAvailable).toBe(20_000);
-    expect(livingDayNote(dine, '2026-11-10')).toBe('이번 주 남은 2회 · 한 번에 20,000원');
+    expect(livingDayNote(dine, '2026-11-10')).toBe('이번 주 남은 돈 40,000원 · 2회 남음');
   });
 
   it('주 2회를 이번 주에 다 쓰면 오늘 0원, 같은 날 두 번 쓴 건 한 번으로 세요', () => {
@@ -309,7 +309,23 @@ describe('쓰는 날 (평일 · 공휴일 빼기 · 주 N회)', () => {
     const dine = findLivingItem(s, 'dine')!;
     expect(dine.weekly).toMatchObject({ usedThisWeek: 2, leftThisWeek: 0, usesLeft: 5, perUse: 20_000 });
     expect(dine.todayAvailable).toBe(0);
-    expect(livingDayNote(dine, '2026-11-12')).toBe('이번 주는 다 썼어요');
+    expect(dine.weekly).toMatchObject({ weekBudget: 40_000, weekLeft: 0 });
+    expect(livingDayNote(dine, '2026-11-12')).toBe('이번 주 남은 돈 0원 · 횟수는 다 썼어요');
+  });
+
+  it('주 N회 횟수를 다 썼어도 이번 주에 남은 돈을 보여 주고, 넘으면 넘은 돈을 알려 줘요', () => {
+    const at = (amounts: number[]) =>
+      findLivingItem(
+        computeLiving(ledger(amounts.map((amount, i) => expense({ date: ['2026-11-09', '2026-11-11'][i]!, amount, accountId: fixedAcc.id, categoryId: 'dine' }))), '2026-11-12'),
+        'dine',
+      )!;
+    // 두 번에 25,000원만 썼어요 → 이번 주 몫 40,000원 중 15,000원 남음
+    const light = at([10_000, 15_000]);
+    expect(light.weekly).toMatchObject({ leftThisWeek: 0, weekBudget: 40_000, weekLeft: 15_000 });
+    expect(livingDayNote(light, '2026-11-12')).toBe('이번 주 남은 돈 15,000원 · 횟수는 다 썼어요');
+    // 두 번에 60,000원 → 이번 주 몫을 넘었어요
+    const heavy = at([30_000, 30_000]);
+    expect(livingDayNote(heavy, '2026-11-12')).toMatch(/^이번 주 .+원 넘었어요$/);
   });
 
   it('미리 보기 글: 쓰는 날 · 주 N회 · 매일', () => {

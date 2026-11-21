@@ -95,6 +95,60 @@ export function incomeRecorded(data: LedgerData, plan: IncomePlan, month: YearMo
 }
 
 /**
+ * 그달 이 계획 날짜 몫으로 실제 들어온 월급 합 (2026-11). 기록이 없으면 null.
+ * 같은 통장에 직접 기록한 수입 중 이 계획 날짜에 가장 가까운 것 (같은 날짜 계획이 여럿이면 그 날짜 몫 전체), 예전 자동 기록(income:)이면 그 금액
+ */
+export function recordedIncomeAmount(data: LedgerData, plan: IncomePlan, month: YearMonth): Won | null {
+  const auto = data.transfers.find((t) => t.id === incomeRecordId(plan.id, month) && !t.deleted);
+  if (auto) return auto.amount;
+  const date = incomePlanOccurrenceDate(data, plan, month);
+  if (date === null) return null;
+  const planDates = activeIncomePlans(data, month, plan.accountId)
+    .map((p) => incomePlanOccurrenceDate(data, p, month))
+    .filter((d): d is ISODate => d !== null);
+  let sum = 0;
+  let found = false;
+  for (const t of data.transfers) {
+    if (t.deleted || t.status !== 'done' || t.kind !== 'income' || t.toAccountId !== plan.accountId || t.id.startsWith('income:')) continue;
+    if (monthOf(t.date) !== month || nearest(t.date, planDates) !== date) continue;
+    sum += t.amount;
+    found = true;
+  }
+  return found ? sum : null;
+}
+
+/** 수입 계획 금액 바꾸기 권장 (2026-11): 최근 실제 월급 평균이 계획과 다르면. 한 달만 다른 건 무시해요 */
+export interface IncomePlanSuggestion {
+  plan: IncomePlan;
+  /** 최근 실제 월급 평균 (1,000원 단위 반올림) */
+  average: Won;
+  /** 평균에 쓴 달 (최근 것부터, 2~3개) */
+  months: YearMonth[];
+}
+
+/**
+ * 최근(이번 달부터 6개월 안) 월급이 기록된 달 최대 3개의 평균이 계획과 다르면 권장해요.
+ * 기록된 달이 2개 이상이고 그중 2개 이상이 계획과 달라야 해요 (한 달만 다른 건 무시). 같은 통장 · 같은 날짜 계획이 여럿이면 나눌 수 없어 권장하지 않아요
+ */
+export function incomePlanSuggestion(data: LedgerData, plan: IncomePlan, today: ISODate): IncomePlanSuggestion | null {
+  if (plan.deleted) return null;
+  const thisMonth = monthOf(today);
+  const shared = activeIncomePlans(data, thisMonth, plan.accountId).some((p) => p.id !== plan.id && p.dayOfMonth === plan.dayOfMonth);
+  if (shared) return null;
+  const got: { month: YearMonth; amount: Won }[] = [];
+  for (let k = 0; k < 6 && got.length < 3; k++) {
+    const month = addMonths(thisMonth, -k);
+    if (!isValidMonth(plan.startMonth) || !isMonthActive(month, plan.startMonth, plan.endMonth)) continue;
+    const amount = recordedIncomeAmount(data, plan, month);
+    if (amount !== null) got.push({ month, amount });
+  }
+  if (got.length < 2 || got.filter((g) => g.amount !== plan.amount).length < 2) return null;
+  const average = Math.round(got.reduce((s, g) => s + g.amount, 0) / got.length / 1000) * 1000;
+  if (average === plan.amount) return null;
+  return { plan, average, months: got.map((g) => g.month) };
+}
+
+/**
  * 예전에 자동으로 만든 월급 기록 중 직접 기록한 월급과 겹치는 것 (지울 것, deleted=true 로 돌려줘요).
  * 같은 통장 · 같은 달에 그 계획 날짜에 가장 가까운 직접 기록 수입이 있으면 겹친 거예요. 다시 해도 같아요
  */
@@ -360,8 +414,12 @@ export interface PaydayLine {
 
 export interface PaydayPlan {
   day: number;
-  /** 그날 들어오는 계획 수입 */
+  /** 그날 들어오는 수입: 그달 월급을 기록했으면 실제 들어온 돈, 아니면 계획 수입 (2026-11) */
   income: Won;
+  /** 그날 계획 수입 (수입 계획 금액 합) */
+  planned: Won;
+  /** income 이 실제 기록한 월급인지 */
+  actual: boolean;
   /** 그날 들어오는 사람 (계획 이름) */
   earners: string[];
   /** 앞 월급날에서 남아 넘어온 돈 (나머지 규칙이 없을 때) */
@@ -387,15 +445,24 @@ export function paydayPlans(data: LedgerData, month: YearMonth, sourceAccountId:
   const get = (day: number) => {
     let p = days.get(day);
     if (!p) {
-      p = { day, income: 0, earners: [], carried: 0, fixed: [], auto: [], remainder: null, left: 0, short: 0 };
+      p = { day, income: 0, planned: 0, actual: false, earners: [], carried: 0, fixed: [], auto: [], remainder: null, left: 0, short: 0 };
       days.set(day, p);
     }
     return p;
   };
+  // 같은 월급날 계획은 실제 기록이 있으면 그 날짜 몫 실제 금액을 한 번만 (같은 날짜 계획이 여럿이어도 두 번 세지 않게)
+  const actualByDay = new Map<number, Won>();
   for (const plan of activeIncomePlans(data, month, sourceAccountId)) {
     const p = get(dayOf(plan.dayOfMonth));
-    p.income += plan.amount;
+    p.planned += plan.amount;
     if (plan.personName.trim()) p.earners.push(plan.personName.trim());
+    const got = recordedIncomeAmount(data, plan, month);
+    if (got !== null) actualByDay.set(p.day, got);
+  }
+  for (const p of days.values()) {
+    const got = actualByDay.get(p.day);
+    p.actual = got !== undefined;
+    p.income = got ?? p.planned;
   }
   const rules = data.rules
     .filter((r) => !r.deleted && r.fromAccountId === sourceAccountId && isValidMonth(r.startMonth) && isMonthActive(month, r.startMonth, r.endMonth))
