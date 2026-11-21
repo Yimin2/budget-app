@@ -115,7 +115,17 @@ export function claimDueOf(data: LedgerData, e: Expense): ISODate {
   return nextSettleDate(data, isValidDate(e.date) ? e.date : monthOf(e.date) + '-01');
 }
 
-/** 아직 돌려주지 않은 청구 (지운 지출 · 돌려준 청구 제외), 정산일 → 날짜 순 */
+/**
+ * 개인 돈으로 낸 지출을 돌려줄 통장 (2026-11, 사용자 결정): 어느 통장 · 어느 항목에 기록했든 모두 이벤트통장에서 돌려줘요.
+ * (보통 생활비는 이미 받은 돈으로 써서 개인 돈 표시를 안 하지만, 표시했다면 예외라 이벤트통장에서 줘요. 저수지는 모으는 통장이라 거기서 주지 않아요)
+ * 이벤트통장이 없으면 그 지출의 통장
+ */
+export function claimPayAccountId(data: LedgerData, expenseAccountId: Id): Id {
+  const event = data.accounts.find((a) => !a.deleted && a.role === 'event');
+  return event?.id ?? expenseAccountId;
+}
+
+/** 아직 돌려주지 않은 청구 (지운 지출 · 돌려준 청구 제외), 정산일 → 날짜 순. accountId = 돌려줄 통장(이벤트통장) */
 export function pendingClaims(data: LedgerData, today: ISODate): PendingClaim[] {
   const settled = new Set(
     data.transfers.filter((t) => !t.deleted && t.status === 'done' && t.id.startsWith('claim:')).map((t) => t.id),
@@ -129,7 +139,7 @@ export function pendingClaims(data: LedgerData, today: ISODate): PendingClaim[] 
       expense: e,
       payer: payerOf(e),
       amount: e.amount,
-      accountId: e.accountId,
+      accountId: claimPayAccountId(data, e.accountId),
       claimAccountId: e.claimAccountId ?? null,
       due,
       dueNow: due <= today,

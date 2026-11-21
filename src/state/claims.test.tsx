@@ -101,9 +101,9 @@ describe('청구 — 기록 · 돌려주기', () => {
     expect(L().balances['demo-acc-fixed']).toBe(fixedBefore);
     expect(L().claims!.total).toBe(354_000);
 
-    // 이벤트통장은 잔액(750,000: 제주 여행 숙소 예약금 150,000 뺌) − 다른 청구(300,000)가 넉넉하면 오늘
-    expect(L().previewClaimDue('demo-acc-event', 450_000)).toBe('2026-11-20');
-    expect(L().previewClaimDue('demo-acc-event', 450_001)).toBe('2026-12-01');
+    // 이벤트통장은 잔액(750,000: 제주 여행 숙소 예약금 150,000 뺌) − 다른 청구(354,000: 생활비 청구도 이벤트통장에서 돌려줘요)가 넉넉하면 오늘
+    expect(L().previewClaimDue('demo-acc-event', 396_000)).toBe('2026-11-20');
+    expect(L().previewClaimDue('demo-acc-event', 396_001)).toBe('2026-12-01');
 
     // 청구할 수 없는 통장은 거절
     await expect(
@@ -122,8 +122,9 @@ describe('청구 — 기록 · 돌려주기', () => {
     const saved = await stored(r);
     const rows = saved.transfers.filter((t) => t.id === claimTransferId(created.id));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ fromAccountId: 'demo-acc-fixed', toAccountId: 'demo-acc-income-junho', amount: 30_000, status: 'done' });
-    expect(L().balances['demo-acc-fixed']).toBe(fixedBefore - 30_000);
+    // 생활비 통장에 기록했어도 돌려주는 돈은 이벤트통장에서 나가요 (2026-11)
+    expect(rows[0]).toMatchObject({ fromAccountId: 'demo-acc-event', toAccountId: 'demo-acc-income-junho', amount: 30_000, status: 'done' });
+    expect(L().balances['demo-acc-fixed']).toBe(fixedBefore);
     expect(L().claims!.total).toBe(324_000);
 
     // 되돌리기 → 다시 돌려받을 돈, 다시 돌려주면 같은 행을 되살려요
@@ -200,10 +201,11 @@ describe('청구 — 기록 · 돌려주기', () => {
     const L = () => r.result.current.ledger;
     let x!: Awaited<ReturnType<ReturnType<typeof L>['addExpense']>>;
     await act(async () => {
-      x = await L().addExpense({ date: '2026-11-20', amount: 450_000, accountId: 'demo-acc-event', categoryId: null });
+      x = await L().addExpense({ date: '2026-11-20', amount: 420_000, accountId: 'demo-acc-event', categoryId: null });
     });
     // 이 지출이 잔액에서 빠진 채로 세면 다음 월급날이 되지만, 청구가 되면 잔액을 줄이지 않으므로 오늘
-    expect(L().previewClaimDue('demo-acc-event', 450_000, x.id)).toBe('2026-11-20');
+    // (이벤트통장 750,000 − 다른 청구 324,000(준호 생활비 2.4만도 이벤트통장에서 돌려줘요) = 426,000 안)
+    expect(L().previewClaimDue('demo-acc-event', 420_000, x.id)).toBe('2026-11-20');
     await act(async () => {
       await L().updateExpense({ ...x, paidBy: '민지' });
     });

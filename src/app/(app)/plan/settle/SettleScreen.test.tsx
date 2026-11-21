@@ -244,38 +244,6 @@ describe('정산 화면', () => {
     expect(within(people).getAllByRole('listitem')[0]!.textContent).toBe('민지37만 (못 준 돈 7만 · 10월)');
   });
 
-  it('저수지 돈으로 낸 이벤트 청구는 "저수지에서 빌려 지급" 메모와 함께 줄 돈, 지급하면 "저수지에서 빌려 줌"이 돼요', async () => {
-    const { h, list, bar } = await renderScreen();
-    const before = { ...L(h).balances };
-    await act(async () => {
-      await L(h).addExpense({ date: '2026-10-02', amount: 120_000, accountId: 'demo-acc-reservoir', categoryId: eventCat(h), memo: '나무 돌잔치', paidBy: '민지' });
-    });
-    const tree = await waitFor(() => box(list, '나무 돌잔치 120,000원 고르기'));
-    await waitFor(() => expect(tree.checked).toBe(true));
-    expect(tree.closest('li')!.textContent).toContain('저수지에서 빌려 지급');
-    expect(bar.textContent).toContain('저수지에서 빌려 지급 1건 120,000원 포함');
-
-    fireEvent.click(box(list, '제주 항공권 300,000원 고르기'));
-    await act(async () => {
-      fireEvent.click(payBtn(bar));
-    });
-    await screen.findByText(/고른 1건 120,000원을 지급했다고 기록했어요/);
-    const id = L(h).data!.expenses.find((e) => e.memo === '나무 돌잔치')!.id;
-    expect(L(h).data!.expenses.find((e) => e.id === id)!.accountId).toBe('demo-acc-event');
-    expect(L(h).settlement!.loan.balance).toBe(120_000);
-    expect(L(h).balances['demo-acc-reservoir']).toBe(before['demo-acc-reservoir']! - 120_000);
-    fireEvent.click(chip('전체 기록'));
-    fireEvent.click(within(list).getByRole('button', { name: '10월 펼치기' }));
-    const row = within(list).getByRole('button', { name: '나무 돌잔치 자세히 보기' }).closest('li')!;
-    expect(row.textContent).toContain('저수지에서 빌려 줌');
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
-    });
-    await waitFor(() => expect(L(h).settlement!.loan.balance).toBe(0));
-    expect(L(h).data!.expenses.find((e) => e.id === id)!.accountId).toBe('demo-acc-reservoir');
-  });
-
   it('이름을 누르면 지출 창(자세히 · 고치기)', async () => {
     const { list } = await renderScreen();
     fireEvent.click(within(list).getByRole('button', { name: '제주 항공권 자세히 보기' }));

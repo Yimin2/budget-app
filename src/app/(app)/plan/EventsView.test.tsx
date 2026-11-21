@@ -49,7 +49,8 @@ describe('EventsView — 체험 가계부', () => {
     expect(screen.getByTestId('balance-chart')).toBeTruthy();
     // 예전 상태 카드의 숫자 칸은 없어요
     expect(screen.queryByTestId('status-usable')).toBeNull();
-    expect(h.probe.ledger!.eventProjection!.shortages).toHaveLength(1);
+    // 처음 모자라는 달은 2027년 4월 (준호가 개인 돈으로 낸 2.4만도 이벤트통장에서 돌려줘요)
+    expect(h.probe.ledger!.eventProjection!.shortages[0]!.month).toBe('2027-04');
   });
 
   it('[대처하기]를 누르면 추천 타협안 창이 열려요', async () => {
