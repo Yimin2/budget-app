@@ -50,8 +50,10 @@ export function useAccountActions(ctx: InstallmentActionsCtx) {
       if (!(input.amount > 0)) throw new Error('금액을 입력해 주세요');
       if (input.kind === 'transfer' && input.fromAccountId === input.toAccountId)
         throw new Error('보내는 통장과 받는 통장이 같아요');
+      // 정해진 id(두 폰에서 같은 일을 눌러도 한 건)는 이미 있으면 그대로
+      if (input.id && requireData().data.transfers.some((t) => t.id === input.id && !t.deleted)) return;
       const row: Transfer = {
-        id: newId(),
+        id: input.id ?? newId(),
         date: input.date,
         kind: input.kind,
         fromAccountId: input.fromAccountId,
@@ -66,7 +68,7 @@ export function useAccountActions(ctx: InstallmentActionsCtx) {
       // 월급(수입)을 기록하면 그 월급날 배분을 바로 만들어요 (정해 둔 날을 기다리지 않고 들어온 날에)
       if (row.kind === 'income') await syncAutoNow();
     },
-    [insertRows, stamp, syncAutoNow],
+    [insertRows, stamp, syncAutoNow, requireData],
   );
 
   const deleteTransfer = useCallback(

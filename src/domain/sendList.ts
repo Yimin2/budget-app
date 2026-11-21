@@ -5,16 +5,24 @@
  *
  * - 자동이체 배분(rule.autoDebit)은 은행이 알아서 보내서 따로 보낼 게 없어요. 다만 지난달과 금액이 다르면
  *   '자동이체를 ○ → ○로 바꿔 주세요'를 보여 주고, [바꿨어요]로 닫아요 (같은 sentAt)
- * - 덜 보낸 돈: 이번 달 배분이 다 기록된 뒤에도 월급통장에 돈이 남아 있으면 알려요
+ * - 덜 보낸 돈: 이번 달 배분이 다 기록된 뒤에도 월급통장에 돈이 남아 있으면 알려요.
+ *   [저수지로 보내기]를 누르면 월급통장 → 저수지 이체(id leftover:<통장id>:<날짜>)를 적고, 그 줄도 보낼 돈에 함께 보여요
  */
 import { accountBalance } from './balances';
 import { addMonths, monthOf } from './dates';
 import { autoTransferId } from './ids';
 import type { Account, AllocationRule, Id, ISODate, LedgerData, Transfer, Won } from './types';
 
+/** 월급통장에 남은 돈을 저수지로 보내는 이체 id (하루에 한 번, 두 폰에서 눌러도 한 건) */
+export function leftoverTransferId(accountId: Id, date: ISODate): Id {
+  return `${LEFTOVER_PREFIX}${accountId}:${date}`;
+}
+const LEFTOVER_PREFIX = 'leftover:';
+
 export interface SendItem {
   transfer: Transfer;
-  rule: AllocationRule;
+  /** 배분 규칙 (남은 돈을 저수지로 보내는 줄이면 null) */
+  rule: AllocationRule | null;
   to: Account | null;
   /** 보냈어요 · 바꿨어요를 눌렀는지 */
   sent: boolean;
@@ -54,12 +62,12 @@ export function sendList(data: LedgerData, today: ISODate): SendList {
   for (const account of salaryAccounts(data)) {
     const items: SendItem[] = [];
     for (const t of data.transfers) {
-      if (t.deleted || t.status !== 'done' || t.kind !== 'transfer' || !t.ruleId || t.fromAccountId !== account.id) continue;
+      if (t.deleted || t.status !== 'done' || t.kind !== 'transfer' || t.fromAccountId !== account.id) continue;
       if (monthOf(t.date) !== month || t.date > today || t.amount <= 0) continue;
-      const rule = rules.get(t.ruleId);
-      if (!rule) continue;
-      const autoDebit = rule.autoDebit === true;
-      const last = byId.get(autoTransferId(rule.id, prev));
+      const rule = t.ruleId ? (rules.get(t.ruleId) ?? null) : null;
+      if (!rule && !t.id.startsWith(LEFTOVER_PREFIX)) continue;
+      const autoDebit = rule?.autoDebit === true;
+      const last = rule ? byId.get(autoTransferId(rule.id, prev)) : undefined;
       const changedFrom = autoDebit && last && !last.deleted && last.amount !== t.amount ? last.amount : null;
       const sent = !!t.sentAt;
       const pending = !sent && (!autoDebit || changedFrom !== null);

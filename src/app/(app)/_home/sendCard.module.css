@@ -120,6 +120,7 @@
 }
 .leftover {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--space-1);
   margin: 0;
@@ -133,6 +134,13 @@
 .leftover > svg {
   flex: none;
   margin-top: 3px;
+}
+.leftover > span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.leftoverButton {
+  margin-left: auto;
 }
 .all {
   align-self: flex-end;

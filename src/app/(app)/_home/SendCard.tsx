@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { formatNumber, formatWon, hasSendWork, monthOf, sendList, type SendItem } from '@/domain';
+import { formatNumber, formatWon, hasSendWork, leftoverTransferId, monthOf, sendList, type Account, type SendItem } from '@/domain';
 import { useLedger } from '@/state';
 import { Badge, Button, Card, Icon, useToast, cx } from '@/ui';
 import { errorMessage } from './selectors';
@@ -46,6 +46,24 @@ export function SendCard({ className }: { className?: string }) {
       toast.success(done, sent ? { action: { label: '되돌리기', onClick: () => void ledger.markSent(ids, false) } } : undefined);
     } catch (e) {
       toast.error(errorMessage(e, '표시하지 못했어요'));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const reservoir = ledger.accountByRole('reservoir');
+
+  async function sendLeftover(from: Account, amount: number) {
+    if (!reservoir) return;
+    setBusy(`leftover:${from.id}`);
+    try {
+      await ledger.addTransfer({
+        id: leftoverTransferId(from.id, ledger.today), date: ledger.today, kind: 'transfer',
+        fromAccountId: from.id, toAccountId: reservoir.id, amount, memo: `${from.name} 남은 돈`,
+      });
+      toast.success(`${reservoir.name}로 ${formatWon(amount)}을 보낼 줄을 만들었어요. 은행에서 보낸 뒤 [보냈어요]를 눌러 주세요`);
+    } catch (e) {
+      toast.error(errorMessage(e, '기록하지 못했어요'));
     } finally {
       setBusy(null);
     }
@@ -136,7 +154,23 @@ export function SendCard({ className }: { className?: string }) {
           {s.leftover > 0 ? (
             <p className={styles.leftover} data-testid="send-leftover">
               <Icon name="info" size={16} />
-              {s.account.name}에 {formatWon(s.leftover)}이 남아 있어요. 덜 보낸 돈이 있는지 확인해 주세요.
+              <span>
+                {s.account.name}에 {formatWon(s.leftover)}이 남아 있어요.
+                {reservoir ? ` 덜 보낸 돈이 없으면 ${reservoir.name}로 보내요.` : ' 덜 보낸 돈이 있는지 확인해 주세요.'}
+              </span>
+              {reservoir ? (
+                <Button
+                  variant="outline"
+                  icon="piggy-bank"
+                  className={styles.leftoverButton}
+                  loading={busy === `leftover:${s.account.id}`}
+                  disabled={busy !== null && busy !== `leftover:${s.account.id}`}
+                  onClick={() => void sendLeftover(s.account, s.leftover)}
+                  data-testid="send-leftover-reservoir"
+                >
+                  {reservoir.name}로 보내기
+                </Button>
+              ) : null}
             </p>
           ) : null}
         </div>
