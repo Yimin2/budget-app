@@ -819,9 +819,22 @@ a.itemPlanned {
   color: var(--text-muted);
   text-decoration: none;
 }
-.itemPlanned + * {
-  border-top: 0;
+.itemPlanned .amountCell {
+  color: var(--text-muted);
+  font-weight: 400;
 }
-.itemPanel > .itemExpenses + .itemExpenses {
-  border-top: 1px dashed var(--border);
+/* 예정 목록은 연한 바탕으로 쓴 돈과 구분해요 */
+.itemPlannedList {
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+/* 펼친 목록 소제목: '이번 달 예정 · 10만' / '쓴 돈 · 48.2만' */
+.itemPanelLabel {
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
 }

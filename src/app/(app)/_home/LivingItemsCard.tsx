@@ -226,8 +226,9 @@ function EventItemRow({ event, open, onToggle, onEdit, uid }: { event: EventMont
       </button>
       {open && data ? (
         <div id={panelId} className={styles.itemPanel} role="group" aria-label="이번 달 이벤트통장 지출">
+          {planned.length > 0 ? <p className={styles.itemPanelLabel}>이번 달 예정 · {formatMan(plannedTotal)}</p> : null}
           {planned.length > 0 ? (
-            <ul className={styles.itemExpenses} aria-label="이번 달 예정 일정">
+            <ul className={cx(styles.itemExpenses, styles.itemPlannedList)} aria-label="이번 달 예정 일정">
               {planned.map((e) => (
                 <li key={`${e.id}:${e.date}`}>
                   <Link
@@ -248,6 +249,7 @@ function EventItemRow({ event, open, onToggle, onEdit, uid }: { event: EventMont
               ))}
             </ul>
           ) : null}
+          {planned.length > 0 && rows.length > 0 ? <p className={styles.itemPanelLabel}>쓴 돈 · {formatMan(event.spent + event.tripSpent)}</p> : null}
           {rows.length === 0 ? (
             planned.length === 0 ? <p className={styles.emptyLine}>이번 달 이벤트통장 지출이 없어요.</p> : null
           ) : (
