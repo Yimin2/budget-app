@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   checkSettlementSelection, defaultSettlementSelection, filterSettleList, formatMan, formatShortDate, formatWon, groupByPerson,
-  ledgerPeople, pendingOnly, planSettlement, selectionLimitText, settleList, settleRoster, shortfallText,
+  claimSource, ledgerPeople, pendingOnly, planSettlement, selectionLimitText, settleList, settleRoster, shortfallText,
 } from '@/domain';
 import type { Expense, Id, Settlement } from '@/domain';
 import { useLedger } from '@/state';
@@ -236,6 +236,17 @@ function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s
   const payReasonId = useId();
   const shortText = shortfallText(s);
   const pickedPeople = peopleManText(groupByPerson(plan.claims));
+  // 고른 돈이 어느 통장에서 나가는지 (이벤트통장 몫은 잔액 안에서만, 생활비 · 저수지 몫은 그 통장에서)
+  const bySource = (() => {
+    const map = new Map<string, number>();
+    const add = (k: string, v: number) => map.set(k, (map.get(k) ?? 0) + v);
+    for (const c of plan.claims) {
+      const src = claimSource(data, c.accountId);
+      add(src === 'event' ? '이벤트통장' : src === 'reservoir' ? '저수지' : (data.accounts.find((a) => a.id === c.accountId)?.name ?? '다른 통장'), c.amount);
+    }
+    return [...map.entries()];
+  })();
+  const eventBalance = s.eventAccountId ? (ledger.balances[s.eventAccountId] ?? 0) : 0;
 
   return (
     <>
@@ -357,6 +368,13 @@ function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s
                   </strong>
                   {pickedPeople ? <span className={styles.barPeople}> · {pickedPeople}</span> : null}
                 </span>
+                {bySource.length > 0 ? (
+                  <span className={styles.barSources} data-testid="settle-sources">
+                    {bySource
+                      .map(([name, v]) => (name === '이벤트통장' ? `이벤트통장 ${formatMan(v)} (잔액 ${formatMan(eventBalance)} 안)` : `${name} ${formatMan(v)}`))
+                      .join(' · ')}
+                  </span>
+                ) : null}
                 {limitText ? <span className={styles.overText}>{limitText}</span> : null}
                 {payReason ? (
                   <span id={payReasonId} className={styles.overText}>

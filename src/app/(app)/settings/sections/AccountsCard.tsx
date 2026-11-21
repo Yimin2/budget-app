@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatDateKo } from '@/domain';
+import { formatDateKo, formatWon } from '@/domain';
 import type { Account, AccountRole } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON, Badge, Button, Card, ConfirmDialog, DateInput, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
@@ -278,7 +278,14 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                 onChange={(e) => setDraft({ ...draft, accountNumber: e.target.value })}
               />
             </Field>
-            <Field label="시작 잔액">
+            <Field
+              label="시작 잔액"
+              hint={
+                draft.id
+                  ? `기준일에 통장에 있던 돈이에요. 지금 잔액은 ${formatWon(ledger.balances[draft.id] ?? 0)}이에요 (시작 잔액 + 기준일부터의 기록).`
+                  : '기준일에 통장에 있던 돈이에요.'
+              }
+            >
               <MoneyInput value={draft.openingBalance} onChange={(v) => setDraft({ ...draft, openingBalance: v })} allowNegative />
             </Field>
             <Field label="기준일" hint="이날의 잔액이에요. 이날부터의 기록만 잔액에 더해져요.">
