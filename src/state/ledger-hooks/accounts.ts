@@ -37,6 +37,8 @@ export function useAccountActions(ctx: InstallmentActionsCtx) {
         ownerName: input.ownerName?.trim() || null,
         ownerEmail: input.ownerEmail?.trim() || null,
         deleted: false,
+        // 각자 생활비 · 용돈은 잔액을 관리하지 않는 '보낼 곳' (2026-11)
+        ...(input.role === 'fixed' || input.role === 'allowance' ? { payee: true } : {}),
       };
       await insertRows('accounts', [row], '통장을 추가하지 못했어요');
       await syncAutoNow();

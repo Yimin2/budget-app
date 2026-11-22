@@ -4,7 +4,7 @@ import {
   mergeMembers, type MemberSelf, type SharingList, 
   monthOf, pendingAllowanceIncome, pendingAutoRecords,
   projectEventAccount, pendingSnapshot, toISODate,
-  autoMonthEnds, duplicateAutoIncome,
+  accountsToPayee, autoMonthEnds, duplicateAutoIncome,
 } from '@/domain';
 import type { ISODate, LedgerData } from '@/domain/types';
 import { isConflict } from '@/storage/sheets';
@@ -279,6 +279,25 @@ export function useLedgerCore() {
   );
 
   /**
+   * 통장은 월급 · 이벤트 · 저수지만 관리해요 (2026-11): 각자 생활비 · 용돈 통장은 '보낼 곳'으로 표시해요 (다시 해도 같음).
+   * 지우는 기록은 없어요 — 그 사람 생활비 기록을 묶는 이름표로 계속 쓰고, 잔액만 안 보여요
+   */
+  const migratePayees = useCallback(
+    async (repo: LedgerRepository, loaded: LedgerData): Promise<LedgerData> => {
+      const changed = accountsToPayee(loaded);
+      if (changed.length === 0) return loaded;
+      try {
+        await repo.upsertMany('accounts', changed);
+      } catch {
+        return loaded;
+      }
+      const byId = new Map(changed.map((a) => [a.id, a]));
+      return { ...loaded, accounts: loaded.accounts.map((a) => byId.get(a.id) ?? a) };
+    },
+    [],
+  );
+
+  /**
    * 월급은 직접 기록해요 (PLAN 4-13, 2026-11): 예전에 수입 계획이 자동으로 만든 월급 기록(income:…) 중
    * 직접 기록한 월급과 겹치는 것만 지워요 (지운 표시, 다시 해도 같음). 겹친 게 있으면 한 번 알려요
    */
@@ -393,7 +412,8 @@ export function useLedgerCore() {
       const moved = await migrateAllowances(repo, members);
       const repaired = await repairAllowanceRules(repo, moved, todayRef.current);
       const kinds = await migrateRuleKinds(repo, repaired, todayRef.current);
-      const deduped = await removeDuplicateIncome(repo, kinds);
+      const payees = await migratePayees(repo, kinds);
+      const deduped = await removeDuplicateIncome(repo, payees);
       const fresh = await recordOverspentMonths(repo, deduped);
       const synced = await syncAutoRecords(repo, fresh, todayRef.current);
       if (token !== loadToken.current || repo !== repoRef.current) return;
@@ -423,7 +443,7 @@ export function useLedgerCore() {
     } finally {
       setLoadingCount((n) => n - 1);
     }
-  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, removeDuplicateIncome, recordOverspentMonths, syncAutoRecords, withPendingWrites, saveForecastSnapshot]);
+  }, [deps, nowIso, saveCache, setDataBoth, syncMembers, migrateAllowances, repairAllowanceRules, migrateRuleKinds, migratePayees, removeDuplicateIncome, recordOverspentMonths, syncAutoRecords, withPendingWrites, saveForecastSnapshot]);
   const loadAllRef = useRef(loadAll);
   useEffect(() => {
     loadAllRef.current = loadAll;

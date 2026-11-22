@@ -482,6 +482,8 @@ export const SCHEMAS: { [T in TableName]: TableSchema } = {
       c('deleted', '삭제됨', bool, ['삭제']),
       // 은행 · 계좌번호 ('오늘 보낼 돈'). 나중에 더한 열이라 빈 칸 = 없음
       c('bank', '은행', optText), c('accountNumber', '계좌번호', optText, ['계좌']),
+      // 보낼 곳 (잔액 관리 안 함, 2026-11). 나중에 더한 열이라 빈 칸 = 통장
+      c('payee', '보낼곳', yesFlag),
     ],
   },
   rules: {

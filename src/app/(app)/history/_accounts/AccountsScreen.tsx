@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
-import { formatWon, monthOf, remainderViews } from '@/domain';
+import { formatWon, monthOf, remainderViews, isPayeeAccount } from '@/domain';
 import type { Account, Id, Won } from '@/domain/types';
 import { useLedger } from '@/state';
 import { Badge, Button, Card, EmptyState, Icon, Money, PageHeader, Skeleton, StatTile, cx } from '@/ui';
@@ -59,7 +59,8 @@ function Overview({ switcher }: { switcher?: ReactNode }) {
 
 function OverviewBody({ ledger }: { ledger: ReadyLedger }) {
   const { data, today, balances } = ledger;
-  const accounts = ledger.activeAccounts;
+  // 통장 잔액은 관리하는 통장만 (각자 생활비 · 용돈 '보낼 곳'은 잔액을 안 봐요, 2026-11)
+  const accounts = ledger.activeAccounts.filter((a) => !isPayeeAccount(a));
   const flows = useMemo(() => monthFlows(data, today), [data, today]);
   const totals = useMemo(() => monthTotals(data, today), [data, today]);
   const flow = useMemo(() => flowSummary(data, monthOf(today)), [data, today]);

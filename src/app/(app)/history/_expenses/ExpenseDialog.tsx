@@ -386,7 +386,7 @@ export function ExpenseDialog({ expense, initial, onClose, onDone, returnFocus, 
 
         <div className={styles.formGrid}>
           <Field
-            label="통장"
+            label="통장 · 어디서 나갔나요"
             error={errors.account}
             required
             hint={autoAccount ? (selectedCategory ? `${selectedCategory.name} 카테고리에 맞춰 골랐어요` : '생활비 통장으로 골라 뒀어요') : undefined}

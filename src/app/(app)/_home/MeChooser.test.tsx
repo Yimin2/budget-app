@@ -131,8 +131,10 @@ describe("'나' 찾기", () => {
   it('구글 이름이 주인 이름과 맞으면 열 때 주인 이메일을 한 번에 써 두고 한 번 알려요. 다시 열면 쓰지 않아요', async () => {
     const s = await setup(imported('나다'));
     await waitFor(() => expect(box.ledger!.myLivingAccountId).toBe('demo-acc-living-junho'));
-    expect(s.accountWrites).toHaveLength(1);
-    expect(s.accountWrites[0]!.sort()).toEqual(
+    // 열 때 쓰기: 생활비 · 용돈 통장을 '보낼 곳'으로 한 번 + 주인 이메일 잇기 한 번
+    const ownerWrite = s.accountWrites.find((w) => w.includes('demo-acc-income'))!;
+    expect(s.accountWrites).toHaveLength(2);
+    expect([...ownerWrite].sort()).toEqual(
       ['demo-acc-allowance-junho', 'demo-acc-allowance-minji', 'demo-acc-income', 'demo-acc-living-junho', 'demo-acc-living-minji'].sort(),
     );
     expect(box.ledger!.notice).toBe('통장 주인을 멤버와 이었어요');
@@ -144,7 +146,8 @@ describe("'나' 찾기", () => {
     await act(async () => {
       await box.ledger!.reload();
     });
-    expect(s.accountWrites).toHaveLength(1);
+    // 다시 열면 더 쓰지 않아요
+    expect(s.accountWrites).toHaveLength(2);
     expect(box.ledger!.notice).toBeNull();
   });
 
