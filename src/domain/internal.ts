@@ -53,3 +53,46 @@ export function managedAccounts(data: LedgerData): Account[] {
 export function accountsToPayee(data: LedgerData): Account[] {
   return data.accounts.filter((a) => !a.deleted && !a.payee && (a.role === 'fixed' || a.role === 'allowance')).map((a) => ({ ...a, payee: true }));
 }
+
+/**
+ * 월급통장은 하나만 (2026-11): 각자 월급은 자기 통장에 들어오고, 거기서 함께 쓰는 월급통장 하나로 보내요.
+ * 수입통장이 둘 이상이면 월급통장 하나(이름에 '월급' → 나가는 배분이 많은 것 → 수입 계획이 많은 것 → 순서)만 남기고
+ * 나머지는 보낼 곳처럼 관리 목록에서 빼요(각자 통장). 그 통장에서 나가던 배분 · 그 통장으로 받던 수입 계획,
+ * 그 통장에 기록한 월급 · 그 통장에서 나간 배분 이체도 월급통장으로 옮겨요 (월급은 월급통장에 들어와서 나가요).
+ * 다시 해도 같음 (옮길 게 없으면 빈 목록)
+ */
+export function incomeAccountsToMerge(data: LedgerData): {
+  hubId: Id | null;
+  accounts: Account[];
+  rules: LedgerData['rules'];
+  incomePlans: NonNullable<LedgerData['incomePlans']>;
+  transfers: LedgerData['transfers'];
+} {
+  const empty = { hubId: null, accounts: [], rules: [], incomePlans: [], transfers: [] };
+  const incomes = data.accounts.filter((a) => !a.deleted && a.role === 'income');
+  const managed = incomes.filter((a) => !a.payee);
+  if (managed.length < 2) return { ...empty, hubId: managed[0]?.id ?? null };
+  const ruleCount = (id: Id) => data.rules.filter((r) => !r.deleted && r.fromAccountId === id).length;
+  const planCount = (id: Id) => (data.incomePlans ?? []).filter((p) => !p.deleted && p.accountId === id).length;
+  const hub = [...managed].sort(
+    (a, b) =>
+      Number(b.name.includes('월급')) - Number(a.name.includes('월급')) ||
+      ruleCount(b.id) - ruleCount(a.id) ||
+      planCount(b.id) - planCount(a.id) ||
+      a.order - b.order,
+  )[0]!;
+  const others = new Set(managed.filter((a) => a.id !== hub.id).map((a) => a.id));
+  return {
+    hubId: hub.id,
+    accounts: managed.filter((a) => others.has(a.id)).map((a) => ({ ...a, payee: true })),
+    rules: data.rules.filter((r) => !r.deleted && others.has(r.fromAccountId)).map((r) => ({ ...r, fromAccountId: hub.id })),
+    incomePlans: (data.incomePlans ?? []).filter((p) => !p.deleted && others.has(p.accountId)).map((p) => ({ ...p, accountId: hub.id })),
+    transfers: data.transfers.flatMap((t) => {
+      if (t.deleted) return [];
+      const to = t.kind === 'income' && t.toAccountId && others.has(t.toAccountId);
+      const from = t.ruleId !== null && t.fromAccountId && others.has(t.fromAccountId);
+      if (!to && !from) return [];
+      return [{ ...t, ...(to ? { toAccountId: hub.id } : {}), ...(from ? { fromAccountId: hub.id } : {}) }];
+    }),
+  };
+}

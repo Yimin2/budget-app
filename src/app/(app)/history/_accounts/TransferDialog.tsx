@@ -35,7 +35,8 @@ export function TransferDialog({ mode: initialMode, accountId, onClose, kindSwit
   const ledger = useLedger();
   const toast = useToast();
   const formId = `transfer-${useId().replace(/:/g, '')}`;
-  const accounts = ledger.activeAccounts;
+  // 각자 월급 받는 통장(월급통장으로 보내는 쪽)은 기록하지 않아요 — 월급은 월급통장에 (2026-11)
+  const accounts = ledger.activeAccounts.filter((a) => !(a.payee && a.role === 'income'));
   const preset = accountId && accounts.some((a) => a.id === accountId) ? accountId : null;
   const incomeAccounts = ledger.incomeAccounts;
   // 수입은 배분 규칙이 나가는 월급통장으로 먼저 (없으면 첫 수입통장)

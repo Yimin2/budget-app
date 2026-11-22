@@ -79,7 +79,7 @@ describe('예산 — 월급날 돈 흐름 (8-3)', () => {
     expect(screen.queryByRole('heading', { level: 2, name: '매달 배분' })).toBeNull();
     expect(screen.queryByRole('heading', { level: 2, name: '수입 계획' })).toBeNull();
     const target = document.getElementById('st-rules')!;
-    expect(target.getAttribute('aria-label')).toBe('생활비(민지) 들어오는 돈');
+    expect(target.getAttribute('aria-label')).toBe('민지 생활비 들어오는 돈');
     await waitFor(() => expect(document.activeElement).toBe(target));
   });
 });
@@ -92,8 +92,8 @@ describe('예산 — 통장별 들어오는 돈 · 나가는 돈 (8-3)', () => {
     const tabs = screen.getByRole('radiogroup', { name: '누구 통장' });
     expect(within(tabs).getAllByRole('radio').map((r) => r.textContent)).toEqual(['민지', '준호', '함께']);
     expect(screen.getAllByTestId('account-card').map((c) => within(c).getByRole('heading', { level: 3 }).textContent)).toEqual([
-      '생활비(민지)',
-      '용돈(민지)',
+      '민지 생활비',
+      '민지 용돈',
     ]);
 
     const data = current(h).ledger.data!;
@@ -137,7 +137,7 @@ describe('예산 — 통장별 들어오는 돈 · 나가는 돈 (8-3)', () => {
   it('나가는 돈 줄은 접힌 요약 → 펼치면 그 통장 항목만, 접으면 다시 숨겨요 · 항목은 한 곳에만 보여요', async () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
-    const btn = within(accountCard('생활비(민지)')).getByRole('button', { name: '생활비(민지) 고정비 펼치기' });
+    const btn = within(accountCard('생활비(민지)')).getByRole('button', { name: '민지 생활비 고정비 펼치기' });
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('button', { name: /^통신비/ })).toBeNull();
     const body = openOut('생활비(민지)', '고정비');
@@ -146,7 +146,7 @@ describe('예산 — 통장별 들어오는 돈 · 나가는 돈 (8-3)', () => {
     expect(within(body).getByRole('button', { name: /^통신비/ })).toBeTruthy();
     // 준호의 월세는 민지 카드에 없어요
     expect(within(body).queryByRole('button', { name: /^월세/ })).toBeNull();
-    fireEvent.click(within(accountCard('생활비(민지)')).getByRole('button', { name: '생활비(민지) 고정비 접기' }));
+    fireEvent.click(within(accountCard('생활비(민지)')).getByRole('button', { name: '민지 생활비 고정비 접기' }));
     expect(screen.queryByRole('button', { name: /^통신비/ })).toBeNull();
 
     // TV 할부는 준호 생활비 통장에만
@@ -205,7 +205,7 @@ describe('예산 — 통장별 들어오는 돈 · 나가는 돈 (8-3)', () => {
     const h = renderApp(<BudgetPage />, { couple: true });
     await startDemo(h);
     await waitFor(() =>
-      expect(within(accountCard('생활비(민지)')).getByRole('button', { name: '생활비(민지) 고정비 접기' }).getAttribute('aria-expanded')).toBe('true'),
+      expect(within(accountCard('생활비(민지)')).getByRole('button', { name: '민지 생활비 고정비 접기' }).getAttribute('aria-expanded')).toBe('true'),
     );
     expect(document.getElementById('st-fixed')).toBeTruthy();
   });

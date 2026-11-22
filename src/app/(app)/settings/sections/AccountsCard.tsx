@@ -6,7 +6,7 @@ import type { Account, AccountRole } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON, Badge, Button, Card, ConfirmDialog, DateInput, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
 import { PersonPicker, peopleOptions } from '../../_components/PersonPicker';
-import { ROLE_OPTIONS, ROLE_TEXT, ownerText } from '../helpers';
+import { ROLE_OPTIONS, ROLE_TEXT, ownerText, payeePersonLabel } from '../helpers';
 import { incomeAccountName, isEmail } from '@/app/start/new/wizard';
 import { useRunner } from '../useRunner';
 import { groupAccounts, meKeyOf } from '../../_components/accountGroups';
@@ -38,7 +38,9 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
   // 사람별로 묶어 보여요: 나 → 다른 사람 → 함께
   // 통장은 잔액을 관리하는 것만 (월급 · 이벤트 · 저수지 등), 각자 생활비 · 용돈은 '보낼 곳'으로 따로 (2026-11)
   const managed = accounts.filter((a) => !isPayeeAccount(a));
-  const payees = accounts.filter(isPayeeAccount);
+  // 보낼 곳(각자 생활비 · 용돈)과 각자 월급 받는 통장(월급통장으로 보내는 쪽)은 따로 보여요 (2026-11)
+  const payees = accounts.filter((a) => isPayeeAccount(a) && a.role !== 'income');
+  const sources = accounts.filter((a) => isPayeeAccount(a) && a.role === 'income');
   const groups = groupAccounts(ledger.data, managed, { meKey: meKeyOf(ledger.data, session.user?.email, ledger.myLivingAccountId) });
 
   function openNew(role: AccountRole = 'other') {
@@ -196,46 +198,40 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
           </section>
         ))
       )}
-      {payees.length > 0 ? (
-        <section className="stack gap-2" aria-labelledby="st-payees-title">
-          <h3 id="st-payees-title" className="st-group-title">
-            보낼 곳 · {payees.length}
-          </h3>
-          <p className="st-desc">월급에서 돈을 보내기만 하는 곳이에요 (각자 생활비 · 용돈). 잔액은 관리하지 않고, 이름 · 은행 · 계좌번호만 적어요.</p>
-          <ul className="list" aria-label="보낼 곳">
-            {payees.map((a) => (
-              <li key={a.id}>
-                <ListRow
-                  icon={ACCOUNT_ROLE_ICON[a.role]}
-                  title={a.name}
-                  subtitle={
-                    <span className="st-sub">
-                      {/* 주인은 이메일 대신 이름만, 통장 이름에 이미 있으면 빼요 */}
-                      {a.ownerName && !a.name.includes(a.ownerName) ? (
-                        <Badge size="sm" tone="info" dot={false}>
-                          {a.ownerName}
-                        </Badge>
-                      ) : null}
-                      <span>{[a.bank, a.accountNumber].filter(Boolean).join(' ') || '계좌번호를 넣어 주세요'}</span>
-                    </span>
-                  }
-                  onClick={() => openEdit(a)}
-                  className="st-acc-row"
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {[
+        { key: 'payees', list: payees, title: '보낼 곳', desc: '월급에서 돈을 보내기만 하는 곳이에요 (각자 생활비 · 용돈). 잔액은 관리하지 않고, 이름 · 은행 · 계좌번호만 적어요.' },
+        { key: 'sources', list: sources, title: '각자 월급 받는 통장', desc: '각자 월급이 들어오는 통장이에요. 여기서 월급통장 하나로 보내요. 잔액은 관리하지 않아요.' },
+      ].map((g) =>
+        g.list.length > 0 ? (
+          <section key={g.key} className="stack gap-2" aria-labelledby={`st-${g.key}-title`}>
+            <h3 id={`st-${g.key}-title`} className="st-group-title">
+              {g.title} · {g.list.length}
+            </h3>
+            <p className="st-desc">{g.desc}</p>
+            <ul className="list" aria-label={g.title}>
+              {g.list.map((a) => (
+                <li key={a.id}>
+                  <ListRow
+                    icon={ACCOUNT_ROLE_ICON[a.role]}
+                    title={payeePersonLabel(a) ?? a.name}
+                    subtitle={
+                      <span className="st-sub">
+                        <span>{[a.bank, a.accountNumber].filter(Boolean).join(' ') || '계좌번호를 넣어 주세요'}</span>
+                      </span>
+                    }
+                    onClick={() => openEdit(a)}
+                    className="st-acc-row"
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null,
+      )}
       <div className="st-foot">
         <Button variant="outline" icon="plus" onClick={() => openNew()}>
           통장 추가
         </Button>
-        {isShared ? (
-          <Button variant="ghost" icon="user" onClick={() => openNew('income')}>
-            다른 사람 수입통장 추가
-          </Button>
-        ) : null}
       </div>
 
       <Dialog

@@ -62,10 +62,11 @@ describe('설정 · 멤버 · 공유', () => {
     const accountOf = (id: string) => current(h).ledger.data!.accounts.find((a) => a.id === id)!;
     const junhoIncome = current(h).ledger.data!.accounts.find((a) => a.ownerEmail === 'junho@demo')!.id;
 
-    // 멤버 줄마다 수입통장이 보여요 (체험: 민지 · 준호)
+    // 월급통장은 하나만 (2026-11): 준호 예전 수입통장은 각자 통장이 되어 고를 수 없어요
     const rowOf = (email: string) => screen.getByText(email).closest('li') as HTMLElement;
     const junhoSelect = within(rowOf('junho@demo')).getByRole('combobox', { name: '수입통장' }) as HTMLSelectElement;
-    expect(junhoSelect.value).toBe(junhoIncome);
+    expect(junhoSelect.value).toBe('');
+    expect(accountOf(junhoIncome).payee).toBe(true);
 
     // 초대하면서 수입통장을 고르면 그 통장 주인이 돼요
     fireEvent.change(screen.getByLabelText(/^이메일/), { target: { value: 'sora@example.com' } });

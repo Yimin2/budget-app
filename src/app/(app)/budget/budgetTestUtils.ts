@@ -18,14 +18,19 @@ export function openIncoming(account: string, row: RegExp, index = 0): HTMLEleme
   return document.getElementById(btn.getAttribute('aria-controls')!)!;
 }
 
+/** 보낼 곳은 사람 이름으로 보여요: '생활비(민지)' → '민지 생활비' (2026-11) */
+export function shownName(name: string): string {
+  return name.replace(/^(생활비|용돈)\((.+)\)$/, '$2 $1');
+}
+
 /** 통장 카드 (h3 제목 = 통장 이름) */
 export function accountCard(name: string): HTMLElement {
-  return screen.getByRole('heading', { level: 3, name }).closest('article') as HTMLElement;
+  return screen.getByRole('heading', { level: 3, name: shownName(name) }).closest('article') as HTMLElement;
 }
 
 /** 통장 카드의 나가는 돈 한 줄(고정비 · 할부 · 생활비 예산)을 펼치고 펼친 칸을 돌려줘요 */
 export function openOut(account: string, label: '고정비' | '할부' | '생활비 예산'): HTMLElement {
-  const btn = within(accountCard(account)).getByRole('button', { name: new RegExp(`^${account.replace(/[()]/g, '\\$&')} ${label} (펼치기|접기)$`) });
+  const btn = within(accountCard(account)).getByRole('button', { name: new RegExp(`^${shownName(account).replace(/[()]/g, '\\$&')} ${label} (펼치기|접기)$`) });
   if (btn.getAttribute('aria-expanded') !== 'true') fireEvent.click(btn);
   return document.getElementById(btn.getAttribute('aria-controls')!)!;
 }

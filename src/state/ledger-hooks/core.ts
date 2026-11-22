@@ -4,7 +4,7 @@ import {
   mergeMembers, type MemberSelf, type SharingList, 
   monthOf, pendingAllowanceIncome, pendingAutoRecords,
   projectEventAccount, pendingSnapshot, toISODate,
-  accountsToPayee, autoMonthEnds, duplicateAutoIncome,
+  accountsToPayee, incomeAccountsToMerge, autoMonthEnds, duplicateAutoIncome,
 } from '@/domain';
 import type { ISODate, LedgerData } from '@/domain/types';
 import { isConflict } from '@/storage/sheets';
@@ -284,15 +284,29 @@ export function useLedgerCore() {
    */
   const migratePayees = useCallback(
     async (repo: LedgerRepository, loaded: LedgerData): Promise<LedgerData> => {
-      const changed = accountsToPayee(loaded);
+      // 월급통장은 하나만: 다른 수입통장은 각자 통장으로 빼고 배분 · 수입 계획을 월급통장으로 옮겨요 (2026-11)
+      const merge = incomeAccountsToMerge(loaded);
+      const changed = [...accountsToPayee(loaded), ...merge.accounts];
       if (changed.length === 0) return loaded;
       try {
+        if (merge.rules.length > 0) await repo.upsertMany('rules', merge.rules);
+        if (merge.incomePlans.length > 0) await repo.upsertMany('incomePlans', merge.incomePlans);
+        if (merge.transfers.length > 0) await repo.upsertMany('transfers', merge.transfers);
         await repo.upsertMany('accounts', changed);
       } catch {
         return loaded;
       }
       const byId = new Map(changed.map((a) => [a.id, a]));
-      return { ...loaded, accounts: loaded.accounts.map((a) => byId.get(a.id) ?? a) };
+      const ruleById = new Map(merge.rules.map((r) => [r.id, r]));
+      const planById = new Map(merge.incomePlans.map((p) => [p.id, p]));
+      const transferById = new Map(merge.transfers.map((t) => [t.id, t]));
+      return {
+        ...loaded,
+        accounts: loaded.accounts.map((a) => byId.get(a.id) ?? a),
+        rules: loaded.rules.map((r) => ruleById.get(r.id) ?? r),
+        transfers: loaded.transfers.map((t) => transferById.get(t.id) ?? t),
+        ...(loaded.incomePlans ? { incomePlans: loaded.incomePlans.map((p) => planById.get(p.id) ?? p) } : {}),
+      };
     },
     [],
   );

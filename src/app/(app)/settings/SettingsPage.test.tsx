@@ -52,11 +52,10 @@ describe('설정 화면', () => {
     }
     // 설정 화면의 예산 카드는 예산 화면에만 있어요
 
-    // 사람별 수입통장마다 보내는 배분 합 = 그 사람 수입 → 경고 없음
+    // 월급통장은 하나만 (2026-11): 두 사람 월급 500만이 들어와 모두 배분으로 나가요 → 경고 없음
     pickOwner('민지');
-    expect(within(accountCard('민지 수입통장')).getByTestId('income-sent').textContent).toBe('매달 배분으로 보내는 돈 300만');
-    pickOwner('준호');
-    expect(within(accountCard('준호 수입통장')).getByTestId('income-sent').textContent).toBe('매달 배분으로 보내는 돈 200만');
+    expect(within(accountCard('민지 수입통장')).getByTestId('income-sent').textContent).toBe('매달 배분으로 보내는 돈 500만');
+    expect(screen.queryByRole('heading', { level: 3, name: '준호 수입통장' })).toBeNull();
     expect(screen.queryByText(/수입보다/)).toBeNull();
     expect(screen.getByRole('radiogroup', { name: '화면 테마' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '로그아웃' })).toBeTruthy();
@@ -109,41 +108,27 @@ describe('설정 화면', () => {
     expect(current(h).ledger.data!.categories.find((c) => c.id === 'demo-cat-cafe')?.icon).toBe('sparkles');
   });
 
-  it('한 사람 수입통장만 넘치면 그 통장 이름으로 경고해요', async () => {
+  it('월급통장에서 보내는 돈이 수입보다 많으면 그 통장 이름으로 경고해요', async () => {
     const h = renderApp(<Pages />);
     await startDemo(h);
     pickOwner('함께');
-    const editor = openIncoming('고정지출통장', /^\d+일 · 준호 수입통장에서/);
-    fireEvent.change(within(editor).getByLabelText('금액'), { target: { value: '1000000' } });
+    const editor = openIncoming('저수지통장', /수입통장에서/);
+    fireEvent.change(within(editor).getByLabelText('금액'), { target: { value: '800000' } });
     fireEvent.click(within(editor).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(document.getElementById(editor.id)).toBeNull());
-    pickOwner('준호');
-    expect(await within(accountCard('준호 수입통장')).findByText('준호 수입통장에서 보내는 돈이 수입보다 200,000원 많아요')).toBeTruthy();
     pickOwner('민지');
-    expect(within(accountCard('민지 수입통장')).queryByText(/수입보다/)).toBeNull();
+    expect(await within(accountCard('민지 수입통장')).findByText('민지 수입통장에서 보내는 돈이 수입보다 200,000원 많아요')).toBeTruthy();
     expect(current(h).ledger.data).not.toBeNull();
   });
 
-  it('다른 사람 수입통장 추가: 주인 이름으로 통장 이름을 지어요', async () => {
+  it('월급통장은 하나만: 다른 사람 수입통장 추가 단추가 없고, 각자 월급 받는 통장은 따로 보여요', async () => {
     const h = renderApp(<Pages />);
     await startDemo(h);
-    fireEvent.click(within(card('통장')).getByRole('button', { name: '다른 사람 수입통장 추가' }));
-    const dialog = screen.getByRole('dialog', { name: '수입통장 추가' });
-    // 함께 쓰는 사람이 아니면 '직접 입력'으로 이름과 이메일을 적어요
-    const owner = within(dialog).getByRole('combobox', { name: /^주인/ }) as HTMLSelectElement;
-    expect([...owner.options].map((o) => o.text)).toEqual(['함께 쓰는 통장 (주인 없음)', '민지 · minji@demo', '준호 · junho@demo', '직접 입력']);
-    fireEvent.change(owner, { target: { value: '__manual__' } });
-    const manual = within(dialog).getByRole('group', { name: '주인 직접 입력' });
-    fireEvent.change(within(manual).getByLabelText(/이름/), { target: { value: '서연' } });
-    fireEvent.change(within(manual).getByLabelText(/이메일/), { target: { value: 'nope' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    expect(within(dialog).getByText('이메일 주소를 확인해 주세요')).toBeTruthy();
-    fireEvent.change(within(manual).getByLabelText(/이메일/), { target: { value: 'seo@x.com' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    const added = current(h).ledger.data!.accounts.find((a) => a.name === '서연 수입통장');
-    expect(added).toMatchObject({ role: 'income', ownerName: '서연', ownerEmail: 'seo@x.com' });
-    expect(current(h).ledger.incomeAccounts).toHaveLength(3);
+    const accounts = card('통장');
+    expect(within(accounts).queryByRole('button', { name: '다른 사람 수입통장 추가' })).toBeNull();
+    const sources = within(accounts).getByRole('list', { name: '각자 월급 받는 통장' });
+    expect(within(sources).getByText('준호 월급 통장')).toBeTruthy();
+    expect(current(h).ledger.incomeAccounts.map((a) => a.name)).toEqual(['민지 수입통장']);
   });
 
   it('통장 주인: 함께 쓰는 사람을 고르면 이름과 이메일이 함께 채워져요', async () => {
