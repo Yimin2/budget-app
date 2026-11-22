@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventsView } from './EventsView';
-import { chooseScheduleAdd, headerAddButton, makeHarness } from './testHarness';
+import { chooseScheduleAdd, headerAddButton, makeHarness, openAllScheduleMonths } from './testHarness';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -122,6 +122,7 @@ describe('매년 일정 한 번에 등록', () => {
     // 등록됨 줄과 다가오는 일정 목록에 음력 기준과 이 회차 양력이 보여요
     await waitFor(() => expect(within(card).getByText(/매년 음력 11\/15/)).toBeTruthy());
     const upcoming = screen.getByRole('region', { name: '다가오는 일정' });
+    openAllScheduleMonths();
     expect(within(upcoming).getByText(/음력 11\/15 \(올해 12\/23\)/)).toBeTruthy();
   });
 
@@ -162,6 +163,7 @@ describe('매년 일정 한 번에 등록', () => {
       await h.probe.ledger!.addEvent({ date: '2026-12-23', name: '외할머니 생신', amount: 100_000, repeat: 'yearly', lunar: '11-15' });
     });
     const upcoming = screen.getByRole('region', { name: '다가오는 일정' });
+    openAllScheduleMonths();
     expect(within(upcoming).getByText(/음력 11\/15 \(올해 12\/23\)/)).toBeTruthy();
     fireEvent.click(within(upcoming).getByRole('button', { name: /외할머니 생신/ }));
     const dialog = await screen.findByRole('dialog', { name: '일정 고치기' });

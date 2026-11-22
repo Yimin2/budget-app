@@ -109,6 +109,7 @@ export function EventsBody({
             data={data}
             today={today}
             accountId={projection.accountId!}
+            projection={projection}
             notice={<StatusCard compact view={view} today={today} compromise={compromise} repayMonths={repayMonths} onRepayMonths={chooseMonths} />}
           />
           <div className={styles.lower}>

@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventsView } from './EventsView';
-import { chooseScheduleAdd, headerAddButton, makeHarness } from './testHarness';
+import { chooseScheduleAdd, headerAddButton, makeHarness, openAllScheduleMonths } from './testHarness';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
@@ -16,6 +16,7 @@ async function renderEvents() {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
   await screen.findByTestId('events-status');
+  openAllScheduleMonths();
   return h;
 }
 
@@ -47,6 +48,10 @@ describe('EventsView — 체험 가계부', () => {
     expect(status.textContent).toMatch(/^2027년 4월에 .+만 모자라요/);
     expect(within(status).getByRole('button', { name: '대처하기' })).toBeTruthy();
     expect(screen.getByTestId('balance-chart')).toBeTruthy();
+    // 달 말 잔액: [◀ 이전]으로 더 지난 달, [최근 ▶]은 처음엔 막혀 있어요 (기본은 지난 3개월)
+    const chart = screen.getByTestId('balance-chart');
+    expect((within(chart).getByRole('button', { name: '최근으로' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(chart).getByRole('button', { name: '이전 달 더 보기' })).toBeTruthy();
     // 예전 상태 카드의 숫자 칸은 없어요
     expect(screen.queryByTestId('status-usable')).toBeNull();
     // 처음 모자라는 달은 2027년 4월 (준호가 개인 돈으로 낸 2.4만도 이벤트통장에서 돌려줘요)
@@ -115,8 +120,6 @@ describe('EventsView — 체험 가계부', () => {
         expect(within(upcoming).getByRole('button', { name: /^2027년 1월 · 1건 400,000원 · 달 말 / })).toBeTruthy();
     expect(within(jan).getByRole('button', { name: /명절 부모님 용돈/ }).textContent).toContain('40만400,000원');
     // 가까운 6개월(1월 · 2월 · 4월)은 펼쳐 두고, 8월 결혼기념일(매년)은 그 달 줄을 눌러 펼쳐요
-    expect(within(upcoming).queryByRole('list', { name: '2027년 8월' })).toBeNull();
-    fireEvent.click(within(upcoming).getByRole('button', { name: /^2027년 8월 · / }));
     expect(within(upcoming).getByRole('list', { name: '2027년 8월' })).toBeTruthy();
     expect(within(upcoming).getByText('매년')).toBeTruthy();
     // 지난 일정은 없어요
@@ -147,6 +150,7 @@ describe('EventsView — 체험 가계부', () => {
       repeat: 'yearly',
       categoryId: 'demo-cat-occasion',
     });
+    openAllScheduleMonths();
     const dec = within(screen.getByRole('region', { name: '다가오는 일정' })).getByRole('list', { name: '12월' });
     expect(within(dec).getByText('지호 돌잔치')).toBeTruthy();
   });
@@ -259,7 +263,10 @@ describe('EventsView — 체험 가계부', () => {
     await screen.findByText('‘오사카’ 여행을 추가했어요');
     const added = h.probe.ledger!.trips.find((t) => t.trip.name === '오사카')!;
     expect(added.budget).toBe(400_000);
-    expect(await within(screen.getByRole('region', { name: /^연간 일정 · / })).findByRole('link', { name: /오사카/ })).toBeTruthy();
+    await waitFor(() => {
+      openAllScheduleMonths();
+      expect(within(screen.getByRole('region', { name: /^연간 일정 · / })).getByRole('link', { name: /오사카/ })).toBeTruthy();
+    });
     // 미리 낸 돈이 없으면 그 문구와 [펼치기]가 없어요
     const osaka = within(screen.getByRole('region', { name: /^연간 일정 · / })).getByRole('link', { name: /오사카/ });
     expect(osaka.textContent).not.toContain('미리 낸 돈');

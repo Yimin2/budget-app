@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlannedEvent, TripStatus } from '@/domain';
 import { EventsView } from './EventsView';
 import { scheduleGroups } from './ScheduleCard';
-import { chooseScheduleAdd, headerAddButton, makeHarness } from './testHarness';
+import { chooseScheduleAdd, headerAddButton, makeHarness, openAllScheduleMonths } from './testHarness';
 import type { EventSections } from './selectors';
 
 vi.mock('next/navigation', () => ({
@@ -55,10 +55,11 @@ describe('scheduleGroups', () => {
   });
 });
 
-async function renderCard() {
+async function renderCard(opts: { open?: boolean } = {}) {
   const h = makeHarness();
   render(<EventsView />, { wrapper: h.Wrapper });
   const card = await screen.findByRole('region', { name: /^연간 일정 · / });
+  if (opts.open !== false) openAllScheduleMonths();
   return { h, card, add: headerAddButton() };
 }
 
@@ -85,16 +86,17 @@ describe('일정 카드', () => {
     expect(add.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('연간 일정: 이번 달부터 12개월을 달마다 한 줄로, 가까운 6개월은 펼쳐 두고 나머지는 눌러서 펼쳐요', async () => {
-    const { card } = await renderCard();
+  it('연간 일정: 이번 달부터 12개월을 달마다 한 줄로, 처음엔 이번 달만 펼쳐 두고 나머지는 눌러서 펼쳐요', async () => {
+    const { card } = await renderCard({ open: false });
     const upcoming = within(card).getByRole('region', { name: '다가오는 일정' });
     const year = within(upcoming).getByRole('list', { name: '앞으로 12개월' });
     // 일정 없는 달도 한 줄 (12개월 + 그 뒤 일정이 있는 달)
     expect(year.querySelectorAll(':scope > li').length).toBeGreaterThanOrEqual(12);
     expect(within(year).getAllByText('일정 없음').length).toBeGreaterThan(0);
-    // 가까운 6개월 안의 일정은 펼쳐져 있어요
-    expect(within(upcoming).getByRole('list', { name: '2027년 1월' })).toBeTruthy();
-    // 결혼기념일(6개월 뒤)은 한 줄 요약으로만 보이다가, 그 달을 누르면 일정 줄이 펼쳐져요
+    // 해가 바뀌는 곳에 '2027년' 머리
+    expect(year.textContent).toContain('2027년');
+    // 다른 달은 접혀 있어요: 결혼기념일은 한 줄 요약으로만 보이다가, 그 달을 누르면 일정 줄이 펼쳐져요
+    expect(within(upcoming).queryByRole('list', { name: '2027년 1월' })).toBeNull();
     expect(within(upcoming).queryByRole('button', { name: /결혼기념일/ })).toBeNull();
     const farRow = [...year.querySelectorAll(':scope > li')].find((li) => li.textContent?.includes('결혼기념일'))!;
     const far = farRow.querySelector('button')!;

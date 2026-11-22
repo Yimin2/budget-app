@@ -51,7 +51,7 @@ type RowProps = Pick<ScheduleCardProps, 'today' | 'categories' | 'spent' | 'disp
 const PAST_PAGE = 10;
 /** 처음 펼쳐 두는 다가오는 달 수 (일정 · 여행이 있는 달) */
 /** 연간 일정에서 처음부터 펼쳐 둘 가까운 달 수 (이번 달 포함) */
-export const SHOWN_MONTHS = 6;
+export const SHOWN_MONTHS = 1;
 
 /** '매년 반복되는 일 N건을 찾았어요' 안내를 이 기기에서 닫았는지 (못 읽으면 안 닫은 것으로) */
 function readHintDismissed(): boolean {
@@ -122,7 +122,7 @@ export function ScheduleCard(props: ScheduleCardProps) {
   const [hintHidden, setHintHidden] = useState(readHintDismissed);
   const panelRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(() => scheduleGroups(sections, trips, today), [sections, trips, today]);
-  // 연간 일정 (2026-11): 이번 달부터 12개월을 달마다 한 줄로. 누르면 그 달 일정이 펼쳐져요 (가까운 6개월은 처음부터)
+  // 연간 일정 (2026-11): 이번 달부터 12개월을 달마다 한 줄로. 누르면 그 달 일정이 펼쳐져요 (처음엔 이번 달만 펼쳐 둬요 — 짧게)
   const year = useMemo(() => {
     const out: { month: YearMonth; group: EntryGroup | null }[] = [];
     const byMonth = new Map(groups.map((g) => [g.month, g]));
@@ -201,15 +201,23 @@ export function ScheduleCard(props: ScheduleCardProps) {
           <div className={styles.listArea}>
             <section aria-label="다가오는 일정" className={styles.upcoming}>
               <ul id={`${ids}-groups`} className={styles.yearList} aria-label="앞으로 12개월">
-                {year.map(({ month, group: g }) => {
+                {year.map(({ month, group: g }, i) => {
                   const headId = `${ids}-${month}`;
                   const panelId = `${headId}-list`;
                   const isOpen = g !== null && openMonths.has(month);
                   const end = props.monthEnds?.get(month);
+                  const short = end !== undefined && end < 0;
                   const names = g ? g.entries.map((e) => (e.kind === 'event' ? e.event.name : e.trip.trip.name)) : [];
                   const summary = names.length === 0 ? '일정 없음' : names.length <= 2 ? names.join(' · ') : `${names.slice(0, 2).join(' · ')} 외 ${names.length - 2}건`;
+                  // 해가 바뀌는 곳에 '2027년' 머리 (달 이름은 '1월'처럼 짧게)
+                  const yearChanged = i === 0 || year[i - 1]!.month.slice(0, 4) !== month.slice(0, 4);
                   return (
-                    <li key={month} className={cx(styles.yearRow, !g && styles.yearEmpty, end !== undefined && end < 0 && styles.yearShort)}>
+                    <li key={month} className={cx(styles.yearRow, !g && styles.yearEmpty, short && styles.yearShort)}>
+                      {yearChanged ? (
+                        <p className={styles.yearDivider} aria-hidden>
+                          {month.slice(0, 4)}년
+                        </p>
+                      ) : null}
                       <button
                         type="button"
                         id={headId}
@@ -221,23 +229,25 @@ export function ScheduleCard(props: ScheduleCardProps) {
                         // 이름은 줄마다 따로 읽어요: 달 · 건수 · 합계 · 달 말 잔액만
                         aria-label={`${monthLabel(month, today)}${month === thisMonth ? ' 이번 달' : ''} · ${g ? `${g.entries.length}건 ${formatWon(g.total)}` : '일정 없음'}${end !== undefined ? ` · 달 말 ${formatWon(end)}` : ''}`}
                       >
-                        <span className={styles.yearMonth}>
-                          {monthLabel(month, today)}
+                        <span className={cx(styles.yearMonth, month === thisMonth && styles.yearMonthThis)}>
+                          <strong>{Number(month.slice(5))}월</strong>
                           {month === thisMonth ? <span className={styles.yearThis}>이번 달</span> : null}
                         </span>
-                        <span className={styles.yearNames}>{summary}</span>
-                        <span className={styles.yearAmounts}>
-                          <span className={styles.yearTotal}>{g ? formatManShort(g.total) : ''}</span>
+                        <span className={styles.yearMain}>
+                          <span className={styles.yearNames}>{summary}</span>
                           {end !== undefined ? (
                             <span className={styles.yearEnd} data-testid={`month-end-${month}`}>
-                              달 말 <strong>{formatManShort(end)}</strong>
+                              {short ? <Icon name="alert-triangle" size={12} /> : null}
+                              달 말 {formatManShort(end)}
+                              {short ? ' · 모자라요' : ''}
                             </span>
                           ) : null}
                         </span>
+                        <span className={styles.yearTotal}>{g ? formatManShort(g.total) : ''}</span>
                         {g ? <Icon name="chevron-down" size={16} className={cx(styles.yearChevron, isOpen && styles.yearChevronOpen)} /> : <span aria-hidden />}
                       </button>
                       {isOpen && g ? (
-                        <ul id={panelId} className={styles.rows} aria-label={monthLabel(month, today)}>
+                        <ul id={panelId} className={cx(styles.rows, styles.yearRows)} aria-label={monthLabel(month, today)}>
                           {g.entries.map((e) =>
                             e.kind === 'event' ? (
                               <EventRow key={e.event.id} event={e.event} variant="upcoming" {...props} />

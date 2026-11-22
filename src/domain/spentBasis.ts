@@ -104,7 +104,9 @@ function projectedInflow(m: ProjectionMonth): Won {
  * 이벤트 화면의 달 말 잔액 (쓴 날 기준): 지난 3개월 + 이번 달 + 앞으로 달.
  * 예측이 없거나 이벤트통장이 없으면 null
  */
-export function spentBasisView(data: LedgerData, projection: EventProjection | null, today: ISODate): SpentBasisView | null {
+/** opts.pastMonths: 보여 줄 지난 달 수 (기본 3, 차트에서 [◀ 이전]으로 늘려요) */
+export function spentBasisView(data: LedgerData, projection: EventProjection | null, today: ISODate, opts: { pastMonths?: number } = {}): SpentBasisView | null {
+  const pastCount = Math.max(0, opts.pastMonths ?? SPENT_BASIS_PAST_MONTHS);
   const accountId = projection?.accountId;
   if (!projection || !accountId || projection.months.length === 0) return null;
   const spans = claimSpans(data, accountId);
@@ -112,9 +114,9 @@ export function spentBasisView(data: LedgerData, projection: EventProjection | n
   const months: SpentBasisMonth[] = [];
 
   // 지난 달: 통장 시작일 전 달은 쓴 돈만 (잔액을 모름)
-  const pasts = pastMonthEnds(data, accountId, today, SPENT_BASIS_PAST_MONTHS);
+  const pasts = pastMonthEnds(data, accountId, today, pastCount);
   const known = new Set(pasts.map((p) => p.month));
-  for (const month of monthRange(addMonths(thisMonth, -SPENT_BASIS_PAST_MONTHS), addMonths(thisMonth, -1))) {
+  for (const month of pastCount > 0 ? monthRange(addMonths(thisMonth, -pastCount), addMonths(thisMonth, -1)) : []) {
     if (known.has(month)) continue;
     const spent = monthSpentItems(data, accountId, month, { reservoirClaims: false }).total;
     if (spent <= 0) continue; // 기록도 없는 달은 빼요
