@@ -145,7 +145,17 @@ export function AccountPicker({ value, onChange, accounts, placeholder = '통장
     }
   }
 
-  const triggerText = selected ? accountShortLabel(data, selected) : accounts.length === 0 ? '통장이 없어요' : placeholder;
+  const selectedOwner = selected ? accountOwner(data, selected) : null;
+  const mine = !!selected?.payee && !!selectedOwner && !!meKey && selectedOwner.key === meKey;
+  const triggerText = selected
+    ? mine
+      ? selected.role === 'allowance'
+        ? '내 용돈'
+        : '내 생활비'
+      : accountShortLabel(data, selected)
+    : accounts.length === 0
+      ? '통장이 없어요'
+      : placeholder;
 
   return (
     <div ref={rootRef} className={cx('acp', open && 'open')}>
@@ -193,7 +203,8 @@ export function AccountPicker({ value, onChange, accounts, placeholder = '통장
               ) : null}
               {g.accounts.map((a) => {
                 const owner = accountOwner(data, a);
-                const name = baseAccountName(a.name, owner?.name ?? null);
+                // 내 보낼 곳(내 생활비 · 용돈)은 짧게 '내 생활비' · '내 용돈' (2026-11)
+                const name = a.payee && owner && meKey && owner.key === meKey ? (a.role === 'allowance' ? '내 용돈' : '내 생활비') : baseAccountName(a.name, owner?.name ?? null);
                 const balance = ledger.balances[a.id] ?? 0;
                 const isSel = a.id === value;
                 return (
