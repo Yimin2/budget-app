@@ -123,7 +123,7 @@ export interface Settlement {
   incomingOn: ISODate | null;
   /** 이벤트통장이 모자란 돈 = max(0, −recorded) */
   shortfall: Won;
-  /** 쓸 수 있는 돈 = max(0, balance) (잔액이 음수면 들어올 돈이 먼저 메운다) */
+  /** 쓸 수 있는 돈 = max(0, min(정산일 잔액, 오늘 실제 잔액)) — 아직 안 들어온 적립은 세지 않아요 (2026-11) */
   available: Won;
   /** 이번 달 아직 안 쓴 일정 · 여행 · 할부 */
   reserved: Won;
@@ -257,7 +257,9 @@ export function computeSettlement(data: LedgerData, today: ISODate, projection?:
   const recorded = eventAcc ? accountBalance(data, eventAcc.id, asOf) : 0;
   const incoming = balance - recorded;
   const incomingOn = eventAcc && incoming !== 0 ? scheduledDate(data, eventAcc.id, today, asOf) : null;
-  const available = Math.max(0, balance);
+  // 줄 수 있는 돈은 지금 통장에 실제로 있는 돈까지만 (2026-11, 사용자 결정). 아직 안 들어온 적립은 '들어오면 더 줄 수 있어요'로 안내만
+  const nowBalance = eventAcc ? accountBalance(data, eventAcc.id, today) : 0;
+  const available = Math.max(0, Math.min(balance, nowBalance));
   const monthStart = dateInMonth(monthOf(today), 1);
 
   const pending = pendingClaims(data, today);

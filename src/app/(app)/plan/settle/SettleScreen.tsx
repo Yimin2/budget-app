@@ -148,7 +148,8 @@ function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s
   // 이벤트 화면: 최근 달부터, 이번 달은 기록이 없어도(예정만 있어도) 보여 줘요
   const embeddedMonths = embedded
     ? (() => {
-        const newest = [...listed].reverse();
+        // 달도 달 안의 기록도 최근 것부터 (이벤트 화면은 내역처럼 최근이 위에)
+        const newest = [...listed].reverse().map((m) => ({ ...m, rows: [...m.rows].reverse() }));
         if (planned.length > 0 && !newest.some((m) => m.month === thisMonth)) {
           newest.unshift({ month: thisMonth, total: 0, pendingTotal: 0, pendingCount: 0, rows: [] });
         }

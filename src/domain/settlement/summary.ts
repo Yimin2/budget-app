@@ -29,14 +29,8 @@ export function settleExplanation(s: Settlement): string {
   const parts: string[] = [];
   const short = s.recorded < 0;
   const amount0 = formatMan(Math.abs(s.recorded));
-  if (s.incoming !== 0) {
-    const when = s.incomingOn ? `${Number(s.incomingOn.slice(8))}일에` : `${Number(s.asOf.slice(8))}일까지`;
-    const flow = s.incoming > 0 ? `${formatMan(s.incoming)} 들어와요` : `${formatMan(-s.incoming)} 나가요`;
-    const wallet = short ? `지갑(이벤트통장)이 ${amount0} 모자라고` : `지갑(이벤트통장)에 ${amount0} 있고`;
-    parts.push(`${wallet}, ${when} ${flow}.`);
-  } else {
-    parts.push(short ? `지갑(이벤트통장)이 ${amount0} 모자라요.` : `지갑(이벤트통장)에 ${amount0} 있어요.`);
-  }
+  // 줄 수 있는 돈은 지금 통장에 있는 돈까지만 (2026-11). 아직 안 들어온 돈은 끝에 '들어오면 더 줄 수 있어요'로만
+  parts.push(short ? `지갑(이벤트통장)이 ${amount0} 모자라요.` : `지갑(이벤트통장)에 ${amount0} 있어요.`);
   if (s.oldPay > 0) parts.push(`밀린 돈 ${formatMan(s.oldPay)}을 일정보다 먼저 돌려줘요.`);
   const month = Number(monthOf(s.asOf).slice(5));
   if (s.plannedShort) {
@@ -49,6 +43,10 @@ export function settleExplanation(s: Settlement): string {
         ? `이번 달 일정 ${formatMan(s.reserved)}을 빼면 ${what} ${formatMan(amount)}이에요.`
         : `${month}월에 남은 일정이 없어 ${what} ${formatMan(amount)}이에요.`,
     );
+  }
+  if (s.incoming > 0) {
+    const when = s.incomingOn ? `${Number(s.incomingOn.slice(8))}일에` : `${Number(s.asOf.slice(8))}일까지`;
+    parts.push(`${when} ${formatMan(s.incoming)}이 들어오면 더 줄 수 있어요.`);
   }
   return parts.join(' ');
 }

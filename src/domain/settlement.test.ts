@@ -36,12 +36,21 @@ function claim(id: string, p: Partial<Expense> & Pick<Expense, 'amount' | 'date'
 }
 
 /** 가람 · 나래 두 사람, 이벤트통장 매달 21일 50만 적립 */
-function ledger(p: Partial<LedgerData> = {}): LedgerData {
+/** 이번 달 적립 50만이 이미 들어온 기록 (줄 수 있는 돈은 지금 실제 잔액으로만 세요, 2026-11) */
+const contributed = () =>
+  transfer({ id: autoTransferId('r-event', '2026-11'), date: '2026-11-05', amount: 500_000, fromAccountId: 'inc-a', toAccountId: 'event', ruleId: 'r-event' });
+
+/** opts.contributed: 이번 달 적립이 이미 들어왔는지 (기본 들어옴). 적립 · 들어올 돈 셈을 볼 때만 false */
+function ledger(p: Partial<LedgerData> = {}, opts: { contributed?: boolean } = {}): LedgerData {
+  const mine = p.transfers ?? [];
+  const already = mine.some((t) => t.id === autoTransferId('r-event', '2026-11'));
+  const base = opts.contributed === false || already ? [] : [contributed()];
   return emptyLedger({
     accounts: [incomeA, incomeB, fixedAcc, eventAcc, reservoirAcc],
     rules: [contribution],
     categories: [giftCat, foodCat],
     ...p,
+    transfers: [...base, ...mine],
   });
 }
 
@@ -107,7 +116,7 @@ describe('지급할 수 있는 돈', () => {
   });
 
   it('적립일 전 날짜면 그날 적립은 아직 없어요', () => {
-    expect(balanceWithScheduled(ledger(), 'event', TODAY, '2026-11-20')).toBe(100_000);
+    expect(balanceWithScheduled(ledger({}, { contributed: false }), 'event', TODAY, '2026-11-20')).toBe(100_000);
   });
 
   it('이미 쓴 일정(썼어요)은 남은 일정에서 빠져요', () => {
@@ -188,10 +197,10 @@ describe('이번 달 정산', () => {
     // 다시 눌러도(같은 키를 덮어써도) 하나만
     const ids2 = settleRows(once, ids([garam]));
     expect(ids2).toEqual([]);
-    // 가람이 낸 돈(−20만)이 돌아와요. 남은 건 넘어가는 12만
-    expect(accountBalance(d, 'inc-a', TODAY)).toBe(-320_000);
-    expect(accountBalance(once, 'inc-a', TODAY)).toBe(-120_000);
-    expect(accountBalance(once, 'event', TODAY)).toBe(100_000 - 200_000);
+    // 가람이 낸 돈(−20만)이 돌아와요. 남은 건 넘어가는 12만 (가람 수입통장은 이번 달 적립 50만도 보냈어요)
+    expect(accountBalance(d, 'inc-a', TODAY)).toBe(-320_000 - 500_000);
+    expect(accountBalance(once, 'inc-a', TODAY)).toBe(-120_000 - 500_000);
+    expect(accountBalance(once, 'event', TODAY)).toBe(600_000 - 200_000);
     // 지급한 만큼 지급할 수 있는 돈이 줄고(남은 밀린 청구 35만), 넘어가는 돈은 그대로
     expect(after.payable).toBe(350_000);
     expect(after.carry.map((g) => g.amount)).toEqual([120_000]);
@@ -302,7 +311,7 @@ describe('저수지에서 빌린 돈 · 갚기', () => {
 
   it('바꾸기: 지출을 이벤트통장으로 옮기고 loan:<지출id> 이체 → 잔액은 그대로, 갚을 돈 +금액, 평소 쓰는 돈 기록에 들어가요', () => {
     const gift = expense({ id: 'gift', date: '2026-07-01', amount: 300_000, accountId: 'res', categoryId: 'cat-gift' });
-    const d = ledger({ expenses: [gift] });
+    const d = ledger({ expenses: [gift] }, { contributed: false });
     const converted: LedgerData = {
       ...d,
       expenses: [{ ...gift, accountId: 'event' }],
@@ -426,25 +435,29 @@ describe('정산 화면 · 한 줄 요약 (settleRoster · settlementSummary · 
 describe('이벤트통장이 모자라거나 줄 수 있는 돈보다 많이 고를 때', () => {
   /** 이벤트통장 시작 잔액만 바꾼 정산 예시 (21일 50만 적립 · 28일 일정 10만) */
   function withOpening(opening: number, expenses: Expense[]): LedgerData {
-    return ledger({
-      accounts: [incomeA, incomeB, fixedAcc, { ...eventAcc, openingBalance: opening }, reservoirAcc],
-      events: [event({ id: 'ev-nov', date: '2026-11-28', amount: 100_000, accountId: 'event', name: '돌잔치' })],
-      expenses,
-    });
+    // 21일 적립은 아직 안 들어왔어요 (줄 수 있는 돈은 실제 잔액까지만)
+    return ledger(
+      {
+        accounts: [incomeA, incomeB, fixedAcc, { ...eventAcc, openingBalance: opening }, reservoirAcc],
+        events: [event({ id: 'ev-nov', date: '2026-11-28', amount: 100_000, accountId: 'event', name: '돌잔치' })],
+        expenses,
+      },
+      { contributed: false },
+    );
   }
 
-  it('잔액이 음수면 들어올 돈이 먼저 메우고, 지급할 수 있는 돈이 0 이면 [지급했어요]는 막고 빌려 지급만 돼요', () => {
+  it('잔액이 음수면 줄 수 있는 돈은 0 (아직 안 들어온 적립은 세지 않아요), [지급했어요]는 막고 빌려 지급만 돼요', () => {
     const d = withOpening(-450_000, [claim('n1', { amount: 60_000, date: '2026-11-01', claimDue: '2026-11-05' })]);
     const s = computeSettlement(d, TODAY);
     expect(s.recorded).toBe(-450_000);
     expect(s.incoming).toBe(500_000);
     expect(s.incomingOn).toBe('2026-11-21');
-    expect(s.available).toBe(50_000);
+    expect(s.available).toBe(0);
     expect(s.payable).toBe(0);
     expect(s.shortfall).toBe(450_000);
     expect(shortfallText(s)).toBe('이벤트통장이 450,000원 모자라요');
     expect(settleExplanation(s)).toBe(
-      '지갑(이벤트통장)이 45만 모자라고, 21일에 50만 들어와요. 이번 달 일정 10만을 빼면 줄 수 있는 돈은 0원이에요.',
+      '지갑(이벤트통장)이 45만 모자라요. 이번 달 일정 10만을 빼면 줄 수 있는 돈은 0원이에요. 21일에 50만이 들어오면 더 줄 수 있어요.',
     );
     expect(ids(s.pay)).toEqual([]);
     expect(ids(s.carry)).toEqual(['n1']);
@@ -456,13 +469,13 @@ describe('이벤트통장이 모자라거나 줄 수 있는 돈보다 많이 고
   });
 
   it('일부만 들어가면 들어가는 것만 [지급했어요], 나머지는 저수지에서 빌려서만 줄 수 있어요', () => {
-    const d = withOpening(-300_000, [
+    const d = withOpening(200_000, [
       claim('a', { amount: 100_000, date: '2026-11-01', claimDue: '2026-11-05' }),
       claim('b', { amount: 250_000, date: '2026-11-02', claimDue: '2026-11-05' }),
     ]);
     const s = computeSettlement(d, TODAY);
     expect(s.payable).toBe(100_000);
-    expect(s.shortfall).toBe(300_000);
+    expect(s.shortfall).toBe(0);
     const check = checkSettlementSelection(d, s, ['a', 'b']);
     expect(check).toMatchObject({ within: ['a'], over: ['b'], excess: 250_000, withinEventTotal: 100_000, fits: false });
     expect(selectionLimitText(s, check, true)).toBe('이벤트통장에서 줄 수 있는 돈은 10만이에요 · 나머지 25만은 저수지에서 빌려 줄 수 있어요');
@@ -471,12 +484,12 @@ describe('이벤트통장이 모자라거나 줄 수 있는 돈보다 많이 고
     expect(settleRefusal(d, s, ['a', 'b'])).toBe('이벤트통장에서 줄 수 있는 돈은 100,000원이에요. 넘는 250,000원은 저수지에서 빌려 지급해 주세요');
     // 쉬운 설명
     expect(settleExplanation(s)).toBe(
-      '지갑(이벤트통장)이 30만 모자라고, 21일에 50만 들어와요. 밀린 돈 10만을 일정보다 먼저 돌려줘요. 이번 달 일정 10만을 빼면 더 줄 수 있는 돈은 0원이에요.',
+      '지갑(이벤트통장)에 20만 있어요. 밀린 돈 10만을 일정보다 먼저 돌려줘요. 이번 달 일정 10만을 빼면 더 줄 수 있는 돈은 0원이에요. 21일에 50만이 들어오면 더 줄 수 있어요.',
     );
     // 잔액이 음수가 아니면 모자란 돈 안내가 없어요
     const ok = computeSettlement(scenario(), TODAY);
     expect(shortfallText(ok)).toBeNull();
-    expect(settleExplanation(ok)).toBe('지갑(이벤트통장)에 10만 있고, 21일에 50만 들어와요. 밀린 돈 55만을 일정보다 먼저 돌려줘요. 이 돈을 먼저 돌려주면 11월 일정에 5만이 모자라요.');
+    expect(settleExplanation(ok)).toBe('지갑(이벤트통장)에 60만 있어요. 밀린 돈 55만을 일정보다 먼저 돌려줘요. 이 돈을 먼저 돌려주면 11월 일정에 5만이 모자라요.');
   });
 });
 
@@ -503,7 +516,7 @@ describe('밀린 청구를 일정보다 먼저', () => {
     // 일정은 막지 않고 모자라는 돈을 알려 줘요
     expect(s.plannedShort).toEqual({ month: '2026-11', amount: 100_000 });
     expect(settleExplanation(s)).toBe(
-      '지갑(이벤트통장)에 10만 있고, 21일에 50만 들어와요. 밀린 돈 60만을 일정보다 먼저 돌려줘요. 이 돈을 먼저 돌려주면 11월 일정에 10만이 모자라요.',
+      '지갑(이벤트통장)에 60만 있어요. 밀린 돈 60만을 일정보다 먼저 돌려줘요. 이 돈을 먼저 돌려주면 11월 일정에 10만이 모자라요.',
     );
     // '지난달부터' 표시
     const all = [...s.pay, ...s.carry].flatMap((g) => g.claims);
@@ -530,7 +543,7 @@ describe('밀린 청구를 일정보다 먼저', () => {
     expect(s.plannedShort).toBeNull();
     expect(ids(s.pay).sort()).toEqual(['n1', 'o1', 'o2']);
     expect(settleExplanation(s)).toBe(
-      '지갑(이벤트통장)에 30만 있고, 21일에 50만 들어와요. 밀린 돈 60만을 일정보다 먼저 돌려줘요. 이번 달 일정 10만을 빼면 더 줄 수 있는 돈은 10만이에요.',
+      '지갑(이벤트통장)에 80만 있어요. 밀린 돈 60만을 일정보다 먼저 돌려줘요. 이번 달 일정 10만을 빼면 더 줄 수 있는 돈은 10만이에요.',
     );
   });
 });
@@ -548,10 +561,14 @@ describe('이번 달 줄 돈 = 이번 달 돌려줄 전체 (지금 줄 수 있�
       rules: [rule({ id: 'r-ev', fromAccountId: 'inc-m', toAccountId: 'event', amount: 500_000, dayOfMonth: 21, startMonth: '2026-01' })],
       categories: [giftCat],
       expenses: [due('m1', '민구', 550_000, '2026-10-05'), due('g1', '기쁜', 130_000, '2026-10-20'), due('g2', '기쁜', 20_000, '2026-10-28')],
+      // 이번 달 적립 50만은 이미 들어왔어요 (줄 수 있는 돈은 실제 잔액까지만)
+      transfers: [transfer({ id: autoTransferId('r-ev', '2026-11'), date: '2026-11-05', amount: 500_000, fromAccountId: 'inc-m', toAccountId: 'event', ruleId: 'r-ev' })],
       ...p,
     });
 
-  it('정산일 적립은 그날 돌려줄 청구에 쓸 수 있어요 · 평소 쓰는 돈은 빼지 않아요', () => {
+  it('들어온 적립은 돌려줄 청구에 쓸 수 있고, 아직 안 들어온 적립은 세지 않아요 · 평소 쓰는 돈은 빼지 않아요', () => {
+    // 적립이 아직 안 들어왔으면 실제 잔액 0 → 줄 수 있는 돈 0
+    expect(computeSettlement(base({ transfers: [] }), TODAY).payable).toBe(0);
     const d = base();
     const s = computeSettlement(d, TODAY);
     // 지난 청구가 평소 쓰는 돈 기록이 되어 예측에는 평소 쓰는 돈이 있지만, 정산 한도에서는 빼지 않아요
