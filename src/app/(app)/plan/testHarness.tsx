@@ -84,3 +84,12 @@ export function chooseScheduleAdd(name: string | RegExp): HTMLElement {
   fireEvent.click(item);
   return item;
 }
+
+/** 연간 일정의 접힌 달을 모두 펼쳐요 (처음엔 이번 달만 펼쳐져 있어요). 다시 불러도 괜찮아요 */
+export function openAllScheduleMonths(): void {
+  const list = screen.queryByRole('list', { name: '앞으로 12개월' });
+  if (!list) return;
+  for (const b of within(list).queryAllByRole('button')) {
+    if (b.getAttribute('aria-expanded') === 'false') fireEvent.click(b);
+  }
+}

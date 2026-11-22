@@ -401,22 +401,33 @@
   color: var(--danger-text);
 }
 
-/* ───────── 연간 일정 (2026-11): 12개월을 달마다 한 줄로 ───────── */
+/* ───────── 연간 일정 (2026-11): 달마다 한 줄 · 해가 바뀌면 머리 · 빨간 바탕 없음 ───────── */
 .yearList {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.yearRow {
+.yearRow + .yearRow .yearHead {
   border-top: 1px solid var(--border);
+}
+.yearDivider {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+.yearRow:first-child .yearDivider {
+  margin-top: 0;
 }
 .yearHead {
   display: grid;
-  grid-template-columns: 6.5em minmax(0, 1fr) auto 16px;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto 16px;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   width: 100%;
-  min-height: 48px;
+  min-height: 52px;
   padding: var(--space-2) 0;
   border: 0;
   background: none;
@@ -433,55 +444,72 @@
   outline-offset: -2px;
   border-radius: var(--radius-sm);
 }
+/* 왼쪽 달 칸: 둥근 칸 안에 '11월' (이번 달은 파란 칸) */
 .yearMonth {
   display: flex;
   flex-direction: column;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 700;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
   font-variant-numeric: tabular-nums;
 }
-.yearThis {
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: 700;
+.yearMonth strong {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 800;
+}
+.yearMonthThis {
+  background: var(--primary-subtle);
   color: var(--primary);
+}
+.yearThis {
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+}
+.yearMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 .yearNames {
   min-width: 0;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.yearEmpty .yearNames,
+.yearEmpty .yearNames {
+  color: var(--text-muted);
+  font-weight: 400;
+}
 .yearEmpty .yearMonth {
   color: var(--text-muted);
-  font-weight: 500;
-}
-.yearAmounts {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-variant-numeric: tabular-nums;
-}
-.yearTotal {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 700;
 }
 .yearEnd {
-  font-size: 11.5px;
-  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* 모자라는 달: 바탕은 그대로, 달 말 잔액만 주황 글씨로 */
+.yearShort .yearEnd {
+  color: var(--warning-text);
+  font-weight: 700;
+}
+.yearTotal {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-.yearShort .yearEnd strong {
-  color: var(--danger-text);
-}
-.yearShort {
-  background: var(--danger-subtle, transparent);
 }
 .yearChevron {
   color: var(--text-muted);
@@ -489,6 +517,9 @@
 }
 .yearChevronOpen {
   transform: rotate(180deg);
+}
+.yearRows {
+  margin: 0 0 var(--space-2) calc(3.5rem + var(--space-3));
 }
 @media (hover: hover) {
   .yearHead:not(:disabled):hover .yearNames {

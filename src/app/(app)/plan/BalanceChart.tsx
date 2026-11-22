@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { eventMonthlyCosts, formatManShort, formatShortDate, formatWon, monthOf, pastMonthRows } from '@/domain';
-import type { Id, ISODate, LedgerData, MonthSpentRow, SpentBasisMonth, SpentBasisView, Won, YearMonth } from '@/domain';
+import { eventMonthlyCosts, formatManShort, formatShortDate, formatWon, monthOf, pastMonthRows, SPENT_BASIS_PAST_MONTHS, spentBasisView } from '@/domain';
+import type { EventProjection, Id, ISODate, LedgerData, MonthSpentRow, SpentBasisMonth, SpentBasisView, Won, YearMonth } from '@/domain';
 import { Badge, Button, Card, Dialog, Icon, cx } from '@/ui';
 import { CardHead, cardStyles } from './CardHead';
 import { aheadSpendSplit, claimBadges, monthLabel, type AheadItem, type ClaimBadge } from './selectors';
@@ -22,16 +22,35 @@ export interface BalanceChartProps {
   accountId: Id;
   /** 차트 위 한 줄 (모자라는 달 알림 · 대처하기) */
   notice?: ReactNode;
+  /** 넘겨 보기용 예측 (있으면 [◀ 이전]으로 더 지난 달을 볼 수 있어요) */
+  projection?: EventProjection | null;
 }
+
+/** [◀ 이전] 한 번에 더 보는 지난 달 수 */
+const PAGE = 3;
 
 /**
  * 이벤트 화면 '달 말 잔액' 카드 (PLAN 4-2, 쓴 날 기준): 지난 3개월(회색) + 이번 달부터 예측(파랑, 0 아래는 빨강).
  * 막대를 누르면 그달 상세가 시트로 올라와요 (휴대폰은 아래에서, 넓은 화면은 가운데 창)
  */
-export function BalanceChart({ view, data, today, accountId, notice }: BalanceChartProps) {
+export function BalanceChart({ view: baseView, data, today, accountId, notice, projection = null }: BalanceChartProps) {
   const titleId = useId();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const months = view.months;
+  // 넘겨 보기 (2026-11): 기본은 지난 3개월 + 앞으로. [◀ 이전]마다 지난 달을 3개씩 더 보고, 같은 칸 수를 유지하려고 먼 앞 달을 그만큼 빼요
+  const [back, setBack] = useState(0);
+  const wider = useMemo(
+    () => (back > 0 && projection ? spentBasisView(data, projection, today, { pastMonths: SPENT_BASIS_PAST_MONTHS + back }) : null),
+    [back, projection, data, today],
+  );
+  const view = wider ?? baseView;
+  const added = view.months.length - baseView.months.length;
+  const months = added > 0 ? view.months.slice(0, view.months.length - added) : view.months;
+  // 더 지난 달이 있는지 (기록이 없는 달은 막대가 없어요)
+  const olderView = useMemo(
+    () => (projection ? spentBasisView(data, projection, today, { pastMonths: SPENT_BASIS_PAST_MONTHS + back + PAGE }) : null),
+    [projection, data, today, back],
+  );
+  const canBack = !!olderView && olderView.months.length > view.months.length;
   const thisMonth = monthOf(today);
   // 시작일 전 달(쓴 돈만)은 쓴 돈 높이로
   const height = (m: SpentBasisMonth) => (m.spentOnly ? m.spent : m.end);
@@ -43,14 +62,26 @@ export function BalanceChart({ view, data, today, accountId, notice }: BalanceCh
 
   return (
     <Card as="section" className={cardStyles.card} aria-labelledby={titleId} data-testid="balance-chart">
-      <CardHead titleId={titleId} title="달 말 잔액" actions={<span className={styles.basis}>막대 위 = 그달 말 잔액(예상)</span>} />
+      <CardHead
+        titleId={titleId}
+        title="달 말 잔액"
+        actions={
+          <span className={styles.pager}>
+            <Button variant="ghost" iconOnly icon="chevron-left" aria-label="이전 달 더 보기" disabled={!canBack} onClick={() => { setOpenIndex(null); setBack((b) => b + PAGE); }} />
+            <Button variant="ghost" iconOnly icon="chevron-right" aria-label="최근으로" disabled={back === 0} onClick={() => { setOpenIndex(null); setBack((b) => Math.max(0, b - PAGE)); }} />
+          </span>
+        }
+      />
+      <p className={styles.basis}>막대 위 = 그달 말 잔액(예상){back > 0 ? ` · ${back + SPENT_BASIS_PAST_MONTHS}개월 전부터 보는 중` : ''}</p>
       {notice}
       <ul className={styles.chart} style={{ '--cols': months.length } as CSSProperties} aria-label="달마다 달 말 잔액">
         {months.map((m, i) => {
           const isThis = m.month === thisMonth;
           const short = !m.spentOnly && m.end < 0;
           const name = monthLabel(m.month, today);
-          const value = m.spentOnly ? `쓴 ${formatManShort(m.spent)}` : formatManShort(m.end);
+          // 좁은 칸이라 막대 위에는 반올림한 만 단위만 (정확한 금액은 눌러서)
+          const man = (v: number) => `${Math.round(v / 10_000)}만`;
+          const value = m.spentOnly ? `쓴 ${man(m.spent)}` : m.end === 0 ? '0' : man(m.end);
           return (
             <li key={m.month} style={{ display: 'flex', minWidth: 0 }}>
               <button
