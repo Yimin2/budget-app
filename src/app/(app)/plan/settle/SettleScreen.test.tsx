@@ -168,6 +168,11 @@ describe('정산 화면', () => {
     await act(async () => {
       fireEvent.click(payBtn(bar));
     });
+    // 지급 전에 확인 창에서 [지급했어요]
+    const confirmBtn = await screen.findByTestId('settle-confirm');
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
     await screen.findByText('고른 1건 300,000원을 지급했다고 기록했어요');
     expect(screen.queryByRole('button', { name: '이벤트로' })).toBeNull();
     expect(L(h).data!.transfers.filter((t) => t.id === claimTransferId('demo-claim-jeju') && !t.deleted)).toHaveLength(1);
@@ -198,6 +203,11 @@ describe('정산 화면', () => {
     await act(async () => {
       fireEvent.click(within(bar).getByRole('button', { name: '저수지에서 빌려 지급' }));
     });
+    // 지급 전에 확인 창에서 [지급했어요]
+    const confirmBtn = await screen.findByTestId('settle-confirm');
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
     await screen.findByText('고른 2건을 지급하고 넘는 900,000원은 저수지에서 빌렸다고 기록했어요');
     const id = L(h).data!.expenses.find((e) => e.memo === '바다 결혼 선물')!.id;
     expect(L(h).data!.transfers.some((t) => t.id === claimLoanTransferId(id) && !t.deleted)).toBe(true);
@@ -223,6 +233,11 @@ describe('정산 화면', () => {
     expect(bar.textContent).toContain('이벤트통장에서 줄 수 있는 돈이 없어서 지급할 수 없어요');
     await act(async () => {
       fireEvent.click(within(bar).getByRole('button', { name: '저수지에서 빌려 지급' }));
+    });
+    // 지급 전에 확인 창에서 [지급했어요]
+    const confirmBtn = await screen.findByTestId('settle-confirm');
+    await act(async () => {
+      fireEvent.click(confirmBtn);
     });
     await screen.findByText('고른 1건을 지급하고 넘는 300,000원은 저수지에서 빌렸다고 기록했어요');
     expect(L(h).data!.transfers.some((t) => t.id === claimLoanTransferId('demo-claim-jeju') && !t.deleted)).toBe(true);
