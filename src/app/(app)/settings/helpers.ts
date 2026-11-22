@@ -174,15 +174,28 @@ export function ownerText(account: Pick<Account, 'name' | 'ownerName' | 'ownerEm
   return who || mail || null;
 }
 
-/** 고르기 목록의 통장 이름: '월급통장 · 준호 (jun@…)' · '생활비(민지) · minji@…'. 주인이 없으면 이름만 */
-export function accountOptionLabel(account: Pick<Account, 'name' | 'ownerName' | 'ownerEmail' | 'deleted'>): string {
+/**
+ * 보낼 곳(각자 생활비 · 용돈)은 통장 이름 대신 사람 이름으로: '민지 생활비' · '준호 용돈' (2026-11).
+ * 보낼 곳이 아니거나 주인 이름이 없으면 null
+ */
+export function payeePersonLabel(account: Pick<Account, 'name' | 'ownerName' | 'role' | 'payee'>): string | null {
+  if (!account.payee) return null;
+  const who = account.ownerName?.trim();
+  if (!who) return null;
+  return `${who} ${account.role === 'allowance' ? '용돈' : account.role === 'income' ? '월급 통장' : '생활비'}`;
+}
+
+/** 고르기 목록의 통장 이름: '월급통장 · 준호 (jun@…)' · '민지 생활비'. 주인이 없으면 이름만 */
+export function accountOptionLabel(account: Pick<Account, 'name' | 'ownerName' | 'ownerEmail' | 'deleted'> & Partial<Pick<Account, 'role' | 'payee'>>): string {
+  const person = account.role ? payeePersonLabel({ ...account, role: account.role }) : null;
+  if (person) return account.deleted ? `${person} (지운 통장)` : person;
   const owner = ownerText(account, true);
   const base = owner ? `${account.name} · ${owner}` : account.name;
   return account.deleted ? `${base} (지운 통장)` : base;
 }
 
 /** 통장 목록을 고르기 선택지로 (사람별 통장은 주인을 붙여요) */
-export function accountOptions(accounts: Pick<Account, 'id' | 'name' | 'ownerName' | 'ownerEmail' | 'deleted'>[]): { value: string; label: string }[] {
+export function accountOptions(accounts: (Pick<Account, 'id' | 'name' | 'ownerName' | 'ownerEmail' | 'deleted'> & Partial<Pick<Account, 'role' | 'payee'>>)[]): { value: string; label: string }[] {
   return accounts.map((a) => ({ value: a.id, label: accountOptionLabel(a) }));
 }
 
@@ -196,7 +209,9 @@ export function visibleFixed(list: FixedExpense[], month: YearMonth): FixedExpen
 
 export function accountName(accounts: Account[], id: string | null): string {
   if (!id) return '';
-  return accounts.find((a) => a.id === id)?.name ?? '지운 통장';
+  const acc = accounts.find((a) => a.id === id);
+  if (!acc) return '지운 통장';
+  return payeePersonLabel(acc) ?? acc.name;
 }
 
 /** 통장 이름 + 주인 (사람별 통장): '월급통장 · 준호 (jun@…)'. 지운 통장은 '지운 통장' */
@@ -204,6 +219,8 @@ export function accountNameWithOwner(accounts: Account[], id: string | null): st
   if (!id) return '';
   const acc = accounts.find((a) => a.id === id);
   if (!acc) return '지운 통장';
+  const person = payeePersonLabel(acc);
+  if (person) return person;
   const owner = ownerText(acc, true);
   return owner ? `${acc.name} · ${owner}` : acc.name;
 }

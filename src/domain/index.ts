@@ -44,4 +44,4 @@ export * from './monthSpent';
 export * from './spentBasis';
 export * from './sendList';
 // 보낼 곳 (잔액 관리 안 하는 각자 생활비 · 용돈, 2026-11)
-export { accountsToPayee, isPayeeAccount, managedAccounts } from './internal';
+export { accountsToPayee, incomeAccountsToMerge, isPayeeAccount, managedAccounts } from './internal';

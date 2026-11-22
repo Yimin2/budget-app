@@ -26,7 +26,7 @@ export function useLedgerDerived(ctx: LedgerCoreCtx) {
     (role: Account['role']) => activeAccounts.find((a) => a.role === role) ?? null,
     [activeAccounts],
   );
-  const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income'), [activeAccounts]);
+  const incomeAccounts = useMemo(() => activeAccounts.filter((a) => a.role === 'income' && !a.payee), [activeAccounts]);
   const living = useMemo(() => (data ? computeLiving(data, today) : null), [data, today]);
   // 사람별 생활비 (PLAN 4-14): 생활비 통장마다, 로그인한 사람의 통장, '누가 썼나요?'에서 고를 사람
   const demo = session.mode === 'demo';

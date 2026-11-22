@@ -41,24 +41,22 @@ describe('통장 목록', () => {
     const total = Object.entries(balances).filter(([id]) => !payees.has(id)).reduce((s, [, v]) => s + v, 0);
     expect(within(summary).getByText(won(total))).toBeTruthy();
 
-    const list = screen.getByRole('heading', { name: '통장 5개' }).parentElement!;
+    // 월급통장은 하나만 (2026-11): 준호 수입통장은 각자 통장이 되어 목록에서 빠지고, 월급 · 배분은 민지 수입통장으로 옮겨요
+    const list = screen.getByRole('heading', { name: '통장 4개' }).parentElement!;
     const links = within(list).getAllByRole('link');
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(4);
     expect(links.some((l) => (l.textContent ?? '').includes('생활비'))).toBe(false);
-    expect(links[2]!.getAttribute('href')).toBe('/history?tab=accounts&id=demo-acc-event');
-    expect(links[2]!.textContent).toContain('이벤트통장');
+    expect(links.some((l) => (l.textContent ?? '').includes('준호 수입통장'))).toBe(false);
+    expect(links[1]!.getAttribute('href')).toBe('/history?tab=accounts&id=demo-acc-event');
+    expect(links[1]!.textContent).toContain('이벤트통장');
     // 시작 600,000 + 배분 300,000 − 제주 여행 숙소 예약금 150,000 (항공권은 민지 청구라 아직 안 빠짐)
-    expect(links[2]!.textContent).toContain('750,000원');
-    // 사람별 수입통장: 민지 300만 · 준호 200만 들어오고 그만큼 나감
+    expect(links[1]!.textContent).toContain('750,000원');
+    // 두 사람 월급 500만이 들어오고 그만큼 나감
     // (체험 예시에서 민지가 제주 항공권 30만원을 개인 돈으로 내서 그만큼 더 나갔고, 돌려받을 돈으로 보여요)
     expect(links[0]!.textContent).toContain('민지 수입통장');
-    expect(links[0]!.textContent).toContain('이번 달 들어온 돈3,000,000원');
-    expect(links[0]!.textContent).toContain('나간 돈3,300,000원');
+    expect(links[0]!.textContent).toContain('이번 달 들어온 돈5,000,000원');
+    expect(links[0]!.textContent).toContain('나간 돈5,300,000원');
     expect(links[0]!.textContent).toContain('돌려받을 돈 300,000원이 있어요');
-    expect(links[0]!.textContent).not.toContain('잔액이 마이너스예요');
-    expect(links[1]!.textContent).toContain('준호 수입통장');
-    // 준호는 1일에 낸 생활용품 8,000원을 돌려받아 그만큼 더 들어왔어요
-    expect(links[1]!.textContent).toContain('이번 달 들어온 돈2,008,000원');
 
     const flow = screen.getByRole('complementary', { name: '매달 배분' });
     expect(within(flow).getByRole('img').getAttribute('aria-label')).toBe(
@@ -66,12 +64,9 @@ describe('통장 목록', () => {
     );
     expect(within(flow).getByText('40%')).toBeTruthy(); // 고정지출 200만 / 수입 500만
     expect(within(flow).queryByText(/수입보다/)).toBeNull();
-    expect(within(flow).getByText('수입통장 2개')).toBeTruthy();
+    // 월급통장은 하나만 (2026-11): 두 사람 월급 · 배분이 한 통장에 모여요
     const sources = within(flow).getByRole('list', { name: '사람별 수입통장' });
-    expect(within(sources).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      '민지 수입통장배분 3,000,000원 · 수입 3,000,000원',
-      '준호 수입통장배분 2,000,000원 · 수입 2,000,000원',
-    ]);
+    expect(within(sources).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['민지 수입통장배분 5,000,000원 · 수입 5,000,000원']);
   });
 
   it('배분이 수입보다 많으면 경고해요', async () => {
@@ -159,12 +154,12 @@ describe('통장 상세', () => {
     const h = await open('id=demo-acc-event');
     fireEvent.click(await screen.findByRole('button', { name: '수입 기록' }));
     const dialog = await screen.findByRole('dialog', { name: '수입 기록' });
-    // 수입통장이 여럿이면 누구 수입인지 골라요 (사람별 수입통장이 앞에)
-    const to = within(dialog).getByLabelText(/누구 수입인가요/) as HTMLSelectElement;
+    // 월급통장은 하나만 (2026-11): 받는 통장을 골라요. 각자 월급 받는 통장은 목록에 없어요
+    const to = within(dialog).getByLabelText(/받는 통장/) as HTMLSelectElement;
     expect(to.value).toBe('demo-acc-event');
     expect(to.textContent).toBe('이벤트통장');
-    // 사람별로 묶어요: 나(민지) → 준호 → 함께. 이메일은 보이지 않아요
-    expect(listedAccounts(to).slice(0, 2)).toEqual(['demo-acc-income', 'demo-acc-income-junho']);
+    expect(listedAccounts(to)[0]).toBe('demo-acc-income');
+    expect(listedAccounts(to)).not.toContain('demo-acc-income-junho');
     expect(within(dialog).getByRole('listbox').textContent).not.toContain('@');
     fireEvent.keyDown(within(dialog).getByRole('listbox'), { key: 'Escape' });
     expect(within(dialog).queryByRole('listbox')).toBeNull();

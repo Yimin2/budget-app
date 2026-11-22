@@ -59,7 +59,7 @@ describe('state — 체험 모드 흐름', () => {
     expect(s.session.activeLedger?.id).toBe(DEMO_LEDGER_ID);
     expect(s.ledger.today).toBe('2026-11-20');
     expect(s.ledger.data?.accounts.length).toBe(6);
-    expect(s.ledger.incomeAccounts.map((a) => a.name)).toEqual(['민지 수입통장', '준호 수입통장']);
+    expect(s.ledger.incomeAccounts.map((a) => a.name)).toEqual(['민지 수입통장']); // 월급통장은 하나만 (2026-11)
     expect(s.ledger.living).not.toBeNull();
     expect(s.ledger.eventProjection?.shortages.length).toBeGreaterThan(0);
     expect(s.ledger.shortageFix?.fromReservoir).not.toBeNull();

@@ -230,7 +230,7 @@ export function AccountPicker({ value, onChange, accounts, placeholder = '통장
                     <span className="acp-bal">
                       {a.payee ? (
                         // 보낼 곳(각자 생활비 · 용돈)은 잔액을 관리하지 않아요 (2026-11)
-                        <span className="acp-cap">생활비</span>
+                        <span className="acp-cap">{a.role === 'income' ? '각자 통장' : '생활비'}</span>
                       ) : (
                         <>
                           <span className="sr-only">잔액 </span>

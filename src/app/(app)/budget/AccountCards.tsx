@@ -6,7 +6,7 @@ import type { Account, AccountRole, FixedExpense } from '@/domain/types';
 import { Badge, Card } from '@/ui';
 import { ExpandButton } from '../_components/ExpandButton';
 import type { ReadyLedger } from '../_components/RequireLedger';
-import { incomeSummaries, type IncomeSummary } from '../settings/helpers';
+import { incomeSummaries, payeePersonLabel, type IncomeSummary } from '../settings/helpers';
 import { FixedCard } from '../settings/sections/FixedCard';
 import { InstallmentCard } from '../settings/sections/InstallmentCard';
 import { LivingCard } from '../settings/sections/LivingCard';
@@ -144,7 +144,8 @@ function AccountCard({
   installmentsReadOnly: boolean;
 }) {
   const headId = `bd-acc-${account.id}`;
-  const name = account.name;
+  // 보낼 곳은 사람 이름으로 ('민지 생활비', 2026-11)
+  const name = payeePersonLabel(account) ?? account.name;
   const isIncome = account.role === 'income' && !account.deleted;
   const month = monthOf(ledger.today);
   const planned = isIncome ? plannedIncome(ledger.data, month, account.id) : 0;
