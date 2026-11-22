@@ -7,7 +7,7 @@ import {
 } from '@/domain';
 import type { Expense, Id, Settlement } from '@/domain';
 import { useLedger } from '@/state';
-import { Banner, Button, Card, Chip, ChipGroup, EmptyState, cx } from '@/ui';
+import { Banner, Button, Card, Chip, ChipGroup, Dialog, EmptyState, cx } from '@/ui';
 import { PageSkeleton, RequireLedger, type ReadyLedger } from '../../_components';
 import { peopleManText, useSettleActions } from '../../_components/SettlementCard';
 import { ExpenseDialog } from '../../history/_expenses/ExpenseDialog';
@@ -112,6 +112,7 @@ function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s
   const [person, setPerson] = useState<string | null>(null);
   const [picked, setPicked] = useState<Map<Id, boolean>>(() => new Map());
   const [editing, setEditing] = useState<Expense | null>(null);
+  const [confirm, setConfirm] = useState<'pay' | 'borrow' | null>(null);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
   const [summaryOpen, setSummaryOpen] = useState(() => currentHash() === '#loan');
   const [loanOpen, setLoanOpen] = useState(() => currentHash() === '#loan');
@@ -393,7 +394,7 @@ function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s
                     variant="primary"
                     loading={busy === 'borrow'}
                     disabled={plan.fits || (busy !== null && busy !== 'borrow')}
-                    onClick={() => void payBorrow()}
+                    onClick={() => setConfirm('borrow')}
                     // 좁은 화면은 '저수지에서 빌려 주기'로 줄여 보여도 이름은 그대로
                     aria-label="저수지에서 빌려 지급"
                   >
@@ -407,7 +408,7 @@ function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s
                   loading={busy === 'pay'}
                   disabled={withinCount === 0 || payBlocked || (busy !== null && busy !== 'pay')}
                   aria-describedby={payReason ? payReasonId : undefined}
-                  onClick={() => void payWithin()}
+                  onClick={() => setConfirm('pay')}
                   data-testid="settle-pay"
                 >
                   {`${formatMan(payAmount)} 지급`}
@@ -420,6 +421,50 @@ function SettleContent({ ledger, s, embedded = false }: { ledger: ReadyLedger; s
       ) : null}
 
       {editing ? <ExpenseDialog expense={editing} onClose={() => setEditing(null)} /> : null}
+
+      {/* 지급 전에 한 번 확인 (2026-11): 누구에게 얼마, 어느 통장에서 나가는지 보고 [지급했어요] */}
+      {confirm ? (
+        <Dialog
+          open
+          onClose={() => (busy ? undefined : setConfirm(null))}
+          title={confirm === 'borrow' ? '저수지에서 빌려 지급할까요?' : `${formatMan(payAmount)}을 지급할까요?`}
+          description="은행에서 실제로 보낸 뒤에 눌러 주세요. 지급했다고 기록하면 통장 잔액이 바뀌어요."
+          actions={
+            <>
+              <Button variant="ghost" onClick={() => setConfirm(null)} disabled={busy !== null}>
+                취소
+              </Button>
+              <Button
+                icon="check"
+                loading={busy !== null}
+                onClick={async () => {
+                  const kind = confirm;
+                  await (kind === 'borrow' ? payBorrow() : payWithin());
+                  setConfirm(null);
+                }}
+                data-testid="settle-confirm"
+              >
+                지급했어요
+              </Button>
+            </>
+          }
+        >
+          <ul className={styles.confirmList} aria-label="지급할 사람">
+            {groupByPerson(confirm === 'borrow' ? plan.claims : plan.claims.filter((c) => !plan.over.includes(c.expense.id))).map((g) => (
+              <li key={g.name}>
+                <span>{g.name}에게</span>
+                <strong>{formatWon(g.amount)}</strong>
+              </li>
+            ))}
+          </ul>
+          {bySource.length > 0 ? (
+            <p className={styles.confirmNote}>
+              {bySource.map(([name, v]) => `${name}에서 ${formatMan(v)}`).join(' · ')}
+              {confirm === 'borrow' && plan.excess > 0 ? ` · 넘는 ${formatMan(plan.excess)}은 저수지에서 빌려요 (저수지에 갚을 돈이 돼요)` : ''}
+            </p>
+          ) : null}
+        </Dialog>
+      ) : null}
     </>
   );
 }

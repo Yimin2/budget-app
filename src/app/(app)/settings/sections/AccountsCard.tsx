@@ -60,7 +60,8 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
       id: a.id,
       name: a.name,
       role: a.role,
-      openingBalance: a.openingBalance,
+      // 고치기 창의 잔액 칸은 '지금 잔액' (시작 잔액이 아니에요, 2026-11)
+      openingBalance: ledger.balances[a.id] ?? 0,
       openingDate: a.openingDate,
       ownerName: a.ownerName ?? '',
       ownerEmail: a.ownerEmail ?? '',
@@ -99,16 +100,10 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
           async () => {
             const prev = ledger.data.accounts.find((a) => a.id === draft.id);
             if (!prev) throw new Error('통장을 찾을 수 없어요');
-            await ledger.saveAccount(
-              bankInfo({
-                ...prev,
-                ...owner,
-                name,
-                role: draft.role,
-                openingBalance: balance,
-                openingDate: draft.openingDate || prev.openingDate,
-              }),
-            );
+            await ledger.saveAccount(bankInfo({ ...prev, ...owner, name, role: draft.role }));
+            // 지금 잔액을 바꿨으면 차이만큼 오늘 날짜 '잔액 조정' 기록 (시작 잔액 · 지난 기록은 그대로)
+            const current = ledger.balances[prev.id] ?? 0;
+            if (draft.openingBalance !== null && balance !== current) await ledger.adjustBalance(prev.id, balance);
             // 한 이메일은 한 통장에만: 같은 주인 이메일인 다른 통장은 비워요 (멤버 화면의 수입통장과 같게)
             if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, prev.id);
           },
@@ -117,8 +112,9 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
       : await run(
           'save',
           async () => {
+            // 새 통장: 지금 잔액 = 오늘 기준 시작 잔액
             const created = await ledger.addAccount({ ...owner, name, role: draft.role, openingBalance: balance });
-            const withBank = bankInfo({ ...created, openingDate: draft.openingDate || created.openingDate });
+            const withBank = bankInfo({ ...created, openingDate: ledger.today });
             if (withBank.openingDate !== created.openingDate || withBank.bank || withBank.accountNumber) {
               await ledger.saveAccount(withBank);
             }
@@ -279,17 +275,14 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
               />
             </Field>
             <Field
-              label="시작 잔액"
+              label="지금 잔액"
               hint={
                 draft.id
-                  ? `기준일에 통장에 있던 돈이에요. 지금 잔액은 ${formatWon(ledger.balances[draft.id] ?? 0)}이에요 (시작 잔액 + 기준일부터의 기록).`
-                  : '기준일에 통장에 있던 돈이에요.'
+                  ? '실제 통장 금액으로 고쳐 주세요. 바꾸면 차이만큼 오늘 날짜로 잔액 조정 기록이 남고, 지난 기록은 그대로예요.'
+                  : '오늘 통장에 있는 돈이에요.'
               }
             >
               <MoneyInput value={draft.openingBalance} onChange={(v) => setDraft({ ...draft, openingBalance: v })} allowNegative />
-            </Field>
-            <Field label="기준일" hint="이날의 잔액이에요. 이날부터의 기록만 잔액에 더해져요.">
-              <DateInput value={draft.openingDate} onChange={(v) => setDraft({ ...draft, openingDate: v })} />
             </Field>
             {draft.id ? (
               <div className="st-danger">

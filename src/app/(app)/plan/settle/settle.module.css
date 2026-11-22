@@ -662,3 +662,29 @@
   line-height: 18px;
   color: var(--text-muted);
 }
+
+/* 지급 확인 창 */
+.confirmList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.confirmList li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 16px;
+  line-height: 24px;
+}
+.confirmList strong {
+  font-variant-numeric: tabular-nums;
+}
+.confirmNote {
+  margin: var(--space-3) 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-muted);
+}

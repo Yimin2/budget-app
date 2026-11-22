@@ -164,6 +164,25 @@ describe('설정 화면', () => {
     expect(within(card('통장')).getByText('준호 · junho@demo')).toBeTruthy();
   });
 
+  it('통장 고치기: 시작 잔액 대신 지금 잔액을 바로 고치면 차이만큼 오늘 날짜 잔액 조정이 남아요', async () => {
+    const h = renderApp(<Pages />);
+    await startDemo(h);
+    const before = current(h).ledger.balances['demo-acc-event']!;
+    fireEvent.click(within(card('통장')).getAllByRole('button', { name: /이벤트통장/ })[0]!);
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByLabelText(/^시작 잔액/)).toBeNull();
+    expect(within(dialog).queryByLabelText(/^기준일/)).toBeNull();
+    const input = within(dialog).getByLabelText(/^지금 잔액/) as HTMLInputElement;
+    expect(input.value.replace(/,/g, '')).toBe(String(before));
+    fireEvent.change(input, { target: { value: String(before + 50_000) } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(current(h).ledger.balances['demo-acc-event']).toBe(before + 50_000));
+    const acc = current(h).ledger.data!.accounts.find((a) => a.id === 'demo-acc-event')!;
+    // 시작 잔액은 그대로, 잔액 조정 기록으로 맞춰요
+    expect(current(h).ledger.data!.transfers.some((t) => t.kind === 'adjustment' && !t.deleted)).toBe(true);
+    expect(acc.openingBalance).not.toBe(before + 50_000);
+  });
+
   it('고정 지출: 용돈 탭 · 종류 없이 고정비 하나로 (용돈 행을 만들지 않아요)', async () => {
     const h = renderApp(<Pages />);
     await startDemo(h);
