@@ -12,7 +12,7 @@ describe('schema', () => {
       'id', '날짜', '종류', '출금통장', '입금통장', '금액', '상태', '월배분id', '메모', '작성자', '생성일시', '수정일시', '삭제됨', '보냄',
     ]);
     expect(canonicalHeaders('monthEnds')).toEqual(['월', '남은생활비', '처리', '처리자', '처리일시', '항목별', '넘친돈이월']);
-    expect(canonicalHeaders('accounts')).toEqual(['id', '이름', '역할', '시작잔액', '시작일', '순서', '주인', '주인이메일', '삭제됨', '은행', '계좌번호']);
+    expect(canonicalHeaders('accounts')).toEqual(['id', '이름', '역할', '시작잔액', '시작일', '순서', '주인', '주인이메일', '삭제됨', '은행', '계좌번호', '보낼곳']);
     expect(canonicalHeaders('fixedExpenses')).toContain('나눠쓰기');
     expect(canonicalHeaders('forecasts')).toEqual([
       'id', '기록한달', '대상달', '예상잔액', '아끼면', '많이쓰면', '예상들어올돈', '예상나갈돈', '기록일시', '삭제됨',

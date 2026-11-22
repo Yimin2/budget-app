@@ -160,7 +160,7 @@ export function RecordSheet({ amount, source, categoryId, tripId = null, spender
         <Field label="내용" optional>
           <TextInput value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 운동화" maxLength={100} enterKeyHint="done" />
         </Field>
-        <Field label="통장" error={accountError} hint="어느 돈으로 사는지에 따라 골라 뒀어요" required>
+        <Field label="통장 · 어디서 나갔나요" error={accountError} hint="내 생활비 · 이벤트통장 · 저수지 중 어느 돈으로 썼는지 골라 뒀어요" required>
           <AccountPicker
             value={accountId}
             onChange={(v) => {

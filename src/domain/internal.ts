@@ -35,3 +35,21 @@ export function livingAccountIdsFor(data: LedgerData, month: YearMonth): Id[] {
 export function livingAccountIdFor(data: LedgerData, month: YearMonth): Id | null {
   return livingAccountIdsFor(data, month)[0] ?? null;
 }
+
+/** 보낼 곳인지 (잔액을 관리하지 않는 각자 생활비 · 용돈, 2026-11) */
+export function isPayeeAccount(a: Pick<Account, 'payee'>): boolean {
+  return a.payee === true;
+}
+
+/** 잔액을 관리하는 통장 (보낼 곳 빼고) */
+export function managedAccounts(data: LedgerData): Account[] {
+  return activeAccountsSorted(data).filter((a) => !isPayeeAccount(a));
+}
+
+/**
+ * 생활비 · 용돈 통장을 보낼 곳으로 바꿀 통장들 (아직 표시 안 한 것만, 다시 해도 같음).
+ * 월급 · 이벤트 · 저수지 · 그 밖의 통장은 그대로 통장이에요
+ */
+export function accountsToPayee(data: LedgerData): Account[] {
+  return data.accounts.filter((a) => !a.deleted && !a.payee && (a.role === 'fixed' || a.role === 'allowance')).map((a) => ({ ...a, payee: true }));
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatDateKo, formatWon } from '@/domain';
+import { formatDateKo, formatWon, isPayeeAccount } from '@/domain';
 import type { Account, AccountRole } from '@/domain/types';
 import { ACCOUNT_ROLE_ICON, Badge, Button, Card, ConfirmDialog, DateInput, Dialog, EmptyState, Field, ListRow, Money, MoneyInput, Select, TextInput, focusFirstInvalid } from '@/ui';
 import type { ReadyLedger } from '../../_components/RequireLedger';
@@ -36,7 +36,10 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
   const isShared = ledger.data.settings.kind === 'shared';
   const people = peopleOptions(ledger.data);
   // 사람별로 묶어 보여요: 나 → 다른 사람 → 함께
-  const groups = groupAccounts(ledger.data, accounts, { meKey: meKeyOf(ledger.data, session.user?.email, ledger.myLivingAccountId) });
+  // 통장은 잔액을 관리하는 것만 (월급 · 이벤트 · 저수지 등), 각자 생활비 · 용돈은 '보낼 곳'으로 따로 (2026-11)
+  const managed = accounts.filter((a) => !isPayeeAccount(a));
+  const payees = accounts.filter(isPayeeAccount);
+  const groups = groupAccounts(ledger.data, managed, { meKey: meKeyOf(ledger.data, session.user?.email, ledger.myLivingAccountId) });
 
   function openNew(role: AccountRole = 'other') {
     setNameError(undefined);
@@ -103,7 +106,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             await ledger.saveAccount(bankInfo({ ...prev, ...owner, name, role: draft.role }));
             // 지금 잔액을 바꿨으면 차이만큼 오늘 날짜 '잔액 조정' 기록 (시작 잔액 · 지난 기록은 그대로)
             const current = ledger.balances[prev.id] ?? 0;
-            if (draft.openingBalance !== null && balance !== current) await ledger.adjustBalance(prev.id, balance);
+            if (!prev.payee && draft.openingBalance !== null && balance !== current) await ledger.adjustBalance(prev.id, balance);
             // 한 이메일은 한 통장에만: 같은 주인 이메일인 다른 통장은 비워요 (멤버 화면의 수입통장과 같게)
             if (owner.ownerEmail) await ledger.linkMemberAccount(owner.ownerEmail, prev.id);
           },
@@ -147,9 +150,9 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
     : null;
 
   return (
-    <Card id="st-accounts" title="통장" aside={<span className="muted">{accounts.length}개</span>}>
-      <p className="st-desc">잔액은 시작 잔액에 기준일부터의 기록을 더하고 빼서 계산해요.</p>
-      {accounts.length === 0 ? (
+    <Card id="st-accounts" title="통장" aside={<span className="muted">{managed.length}개</span>}>
+      <p className="st-desc">잔액을 관리하는 통장이에요. 눌러서 지금 잔액을 실제 금액으로 고칠 수 있어요.</p>
+      {managed.length === 0 ? (
         <EmptyState icon="wallet" headingLevel={3} title="통장이 없어요" description="통장을 추가하면 잔액을 계산해 드려요." />
       ) : (
         groups.map((g) => (
@@ -175,9 +178,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                             {ownerText(a)}
                           </Badge>
                         ) : null}
-                        <span>
-                          시작 <Money amount={a.openingBalance} /> · {formatDateKo(a.openingDate, false)}부터
-                        </span>
+                        {a.bank || a.accountNumber ? <span>{[a.bank, a.accountNumber].filter(Boolean).join(' ')}</span> : null}
                       </span>
                     }
                     trailing={
@@ -195,6 +196,36 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
           </section>
         ))
       )}
+      {payees.length > 0 ? (
+        <section className="stack gap-2" aria-labelledby="st-payees-title">
+          <h3 id="st-payees-title" className="st-group-title">
+            보낼 곳 · {payees.length}
+          </h3>
+          <p className="st-desc">월급에서 돈을 보내기만 하는 곳이에요 (각자 생활비 · 용돈). 잔액은 관리하지 않고, 이름 · 은행 · 계좌번호만 적어요.</p>
+          <ul className="list" aria-label="보낼 곳">
+            {payees.map((a) => (
+              <li key={a.id}>
+                <ListRow
+                  icon={ACCOUNT_ROLE_ICON[a.role]}
+                  title={a.name}
+                  subtitle={
+                    <span className="st-sub">
+                      {ownerText(a) ? (
+                        <Badge size="sm" tone="info" dot={false}>
+                          {ownerText(a)}
+                        </Badge>
+                      ) : null}
+                      <span>{[a.bank, a.accountNumber].filter(Boolean).join(' ') || '계좌번호를 넣어 주세요'}</span>
+                    </span>
+                  }
+                  onClick={() => openEdit(a)}
+                  className="st-acc-row"
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <div className="st-foot">
         <Button variant="outline" icon="plus" onClick={() => openNew()}>
           통장 추가
@@ -274,6 +305,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                 onChange={(e) => setDraft({ ...draft, accountNumber: e.target.value })}
               />
             </Field>
+            {draft.id && accounts.find((x) => x.id === draft.id)?.payee ? null : (
             <Field
               label="지금 잔액"
               hint={
@@ -284,6 +316,7 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
             >
               <MoneyInput value={draft.openingBalance} onChange={(v) => setDraft({ ...draft, openingBalance: v })} allowNegative />
             </Field>
+            )}
             {draft.id ? (
               <div className="st-danger">
                 <Button

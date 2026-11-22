@@ -36,17 +36,19 @@ describe('통장 목록', () => {
     const h = await open();
     const summary = await screen.findByRole('region', { name: '통장 잔액 합계' });
     const balances = current(h).ledger.balances;
-    const total = Object.values(balances).reduce((s, v) => s + v, 0);
+    // 각자 생활비(보낼 곳)는 잔액을 관리하지 않아서 합계 · 목록에서 빠져요 (2026-11)
+    const payees = new Set(current(h).ledger.data!.accounts.filter((a) => a.payee).map((a) => a.id));
+    const total = Object.entries(balances).filter(([id]) => !payees.has(id)).reduce((s, [, v]) => s + v, 0);
     expect(within(summary).getByText(won(total))).toBeTruthy();
 
-    const list = screen.getByRole('heading', { name: '통장 6개' }).parentElement!;
+    const list = screen.getByRole('heading', { name: '통장 5개' }).parentElement!;
     const links = within(list).getAllByRole('link');
-    expect(links).toHaveLength(6);
-    expect(links[3]!.getAttribute('href')).toBe('/history?tab=accounts&id=demo-acc-event');
-    expect(links[3]!.textContent).toContain('이벤트통장');
+    expect(links).toHaveLength(5);
+    expect(links.some((l) => (l.textContent ?? '').includes('생활비'))).toBe(false);
+    expect(links[2]!.getAttribute('href')).toBe('/history?tab=accounts&id=demo-acc-event');
+    expect(links[2]!.textContent).toContain('이벤트통장');
     // 시작 600,000 + 배분 300,000 − 제주 여행 숙소 예약금 150,000 (항공권은 민지 청구라 아직 안 빠짐)
-    expect(links[3]!.textContent).toContain('750,000원');
-    expect(links[2]!.textContent).toContain('생활비');
+    expect(links[2]!.textContent).toContain('750,000원');
     // 사람별 수입통장: 민지 300만 · 준호 200만 들어오고 그만큼 나감
     // (체험 예시에서 민지가 제주 항공권 30만원을 개인 돈으로 내서 그만큼 더 나갔고, 돌려받을 돈으로 보여요)
     expect(links[0]!.textContent).toContain('민지 수입통장');

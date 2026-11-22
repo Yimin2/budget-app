@@ -131,7 +131,8 @@ describe('AccountPicker', () => {
     const balances = current(h).ledger.balances;
     const mine = within(groups[0]!).getAllByRole('option');
     expect(mine[0]!.textContent).toContain('생활비');
-    expect(mine[0]!.textContent).toContain(`${formatAmount(balances['demo-acc-living-minji']!)}원`);
+    // 각자 생활비는 '보낼 곳'이라 잔액 대신 '생활비'만 (2026-11)
+    expect(mine[0]!.textContent).not.toContain(`${formatAmount(balances['demo-acc-living-minji']!)}원`);
     const shared = within(groups[2]!).getByRole('option', { name: /저수지통장/ });
     expect(shared.textContent).toContain(`${formatAmount(balances['demo-acc-reservoir']!)}원`);
 
