@@ -59,7 +59,7 @@ export function accountsToPayee(data: LedgerData): Account[] {
  * 수입통장이 둘 이상이면 월급통장 하나(이름에 '월급' → 나가는 배분이 많은 것 → 수입 계획이 많은 것 → 순서)만 남기고
  * 나머지는 보낼 곳처럼 관리 목록에서 빼요(각자 통장). 그 통장에서 나가던 배분 · 그 통장으로 받던 수입 계획,
  * 그 통장에 기록한 월급 · 그 통장에서 나간 배분 이체도 월급통장으로 옮겨요 (월급은 월급통장에 들어와서 나가요).
- * 다시 해도 같음 (옮길 게 없으면 빈 목록)
+ * 함께 쓰는 가계부면 남긴 월급통장의 주인도 비워요 (함께 쓰는 통장). 다시 해도 같음 (옮길 게 없으면 빈 목록)
  */
 export function incomeAccountsToMerge(data: LedgerData): {
   hubId: Id | null;
@@ -71,7 +71,10 @@ export function incomeAccountsToMerge(data: LedgerData): {
   const empty = { hubId: null, accounts: [], rules: [], incomePlans: [], transfers: [] };
   const incomes = data.accounts.filter((a) => !a.deleted && a.role === 'income');
   const managed = incomes.filter((a) => !a.payee);
-  if (managed.length < 2) return { ...empty, hubId: managed[0]?.id ?? null };
+  // 함께 쓰는 가계부의 월급통장은 누구 것도 아니에요: 주인을 비워 '함께'로 (2026-11)
+  const shared = data.settings.kind === 'shared';
+  const unowned = (a: Account): Account[] => (shared && (a.ownerName || a.ownerEmail) ? [{ ...a, ownerName: null, ownerEmail: null }] : []);
+  if (managed.length < 2) return { ...empty, hubId: managed[0]?.id ?? null, accounts: managed[0] ? unowned(managed[0]) : [] };
   const ruleCount = (id: Id) => data.rules.filter((r) => !r.deleted && r.fromAccountId === id).length;
   const planCount = (id: Id) => (data.incomePlans ?? []).filter((p) => !p.deleted && p.accountId === id).length;
   const hub = [...managed].sort(
@@ -84,7 +87,7 @@ export function incomeAccountsToMerge(data: LedgerData): {
   const others = new Set(managed.filter((a) => a.id !== hub.id).map((a) => a.id));
   return {
     hubId: hub.id,
-    accounts: managed.filter((a) => others.has(a.id)).map((a) => ({ ...a, payee: true })),
+    accounts: [...unowned(hub), ...managed.filter((a) => others.has(a.id)).map((a) => ({ ...a, payee: true }))],
     rules: data.rules.filter((r) => !r.deleted && others.has(r.fromAccountId)).map((r) => ({ ...r, fromAccountId: hub.id })),
     incomePlans: (data.incomePlans ?? []).filter((p) => !p.deleted && others.has(p.accountId)).map((p) => ({ ...p, accountId: hub.id })),
     transfers: data.transfers.flatMap((t) => {

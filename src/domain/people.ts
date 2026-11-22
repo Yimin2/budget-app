@@ -64,7 +64,8 @@ export function nameMatchesOwner(displayName: string, ownerName: string, email?:
 
 /** 이 가계부의 사람들. 이어진 통장 순서(수입통장 먼저) → 이어진 통장이 없는 멤버 순. 같은 이메일은 한 번 */
 export function ledgerPeople(data: LedgerData): LedgerPerson[] {
-  const accounts = activeAccountsSorted(data).filter((a) => (a.ownerName ?? '').trim() || lower(a.ownerEmail));
+  // 각자 월급 받는 통장(월급통장으로 보내는 쪽, 2026-11)은 사람을 정하는 데 쓰지 않아요
+  const accounts = activeAccountsSorted(data).filter((a) => !(a.payee && a.role === 'income') && ((a.ownerName ?? '').trim() || lower(a.ownerEmail)));
   const members: { email: string; displayName: string }[] = [];
   for (const m of data.members) {
     const email = (m.email ?? '').trim();

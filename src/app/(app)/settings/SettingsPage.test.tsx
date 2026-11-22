@@ -52,8 +52,8 @@ describe('설정 화면', () => {
     }
     // 설정 화면의 예산 카드는 예산 화면에만 있어요
 
-    // 월급통장은 하나만 (2026-11): 두 사람 월급 500만이 들어와 모두 배분으로 나가요 → 경고 없음
-    pickOwner('민지');
+    // 월급통장은 하나만 (2026-11): 두 사람 월급 500만이 들어와 모두 배분으로 나가요 → 경고 없음. 월급통장은 '함께'
+    pickOwner('함께');
     expect(within(accountCard('민지 수입통장')).getByTestId('income-sent').textContent).toBe('매달 배분으로 보내는 돈 500만');
     expect(screen.queryByRole('heading', { level: 3, name: '준호 수입통장' })).toBeNull();
     expect(screen.queryByText(/수입보다/)).toBeNull();
@@ -116,7 +116,6 @@ describe('설정 화면', () => {
     fireEvent.change(within(editor).getByLabelText('금액'), { target: { value: '800000' } });
     fireEvent.click(within(editor).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(document.getElementById(editor.id)).toBeNull());
-    pickOwner('민지');
     expect(await within(accountCard('민지 수입통장')).findByText('민지 수입통장에서 보내는 돈이 수입보다 200,000원 많아요')).toBeTruthy();
     expect(current(h).ledger.data).not.toBeNull();
   });

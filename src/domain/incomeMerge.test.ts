@@ -11,7 +11,11 @@ describe('incomeAccountsToMerge', () => {
     const data = demo();
     const m = incomeAccountsToMerge(data);
     expect(m.hubId).toBe('demo-acc-income');
-    expect(m.accounts.map((a) => [a.id, a.payee])).toEqual([['demo-acc-income-junho', true]]);
+    // 남긴 월급통장은 주인을 비워 '함께'로, 준호 통장은 각자 월급 받는 통장으로
+    expect(m.accounts.map((a) => [a.id, a.payee ?? false, a.ownerName])).toEqual([
+      ['demo-acc-income', false, null],
+      ['demo-acc-income-junho', true, '준호'],
+    ]);
     expect(m.rules.length).toBeGreaterThan(0);
     expect(m.rules.every((r) => r.fromAccountId === 'demo-acc-income')).toBe(true);
     const salary = m.transfers.find((t) => t.id === 'demo-salary-junho');
@@ -35,11 +39,13 @@ describe('incomeAccountsToMerge', () => {
     expect(again.hubId).toBe('demo-acc-income-junho');
   });
 
-  it('수입통장이 하나면 아무것도 안 바꿔요', () => {
+  it('수입통장이 하나면 주인만 비우고(함께), 그 밖에는 안 바꿔요', () => {
     const data = demo();
     data.accounts = data.accounts.filter((a) => a.id !== 'demo-acc-income-junho');
     const m = incomeAccountsToMerge(data);
-    expect(m.accounts).toEqual([]);
+    expect(m.accounts.map((a) => [a.id, a.ownerName, a.ownerEmail])).toEqual([['demo-acc-income', null, null]]);
+    const after: LedgerData = { ...data, accounts: data.accounts.map((a) => m.accounts.find((x) => x.id === a.id) ?? a) };
+    expect(incomeAccountsToMerge(after).accounts).toEqual([]);
     expect(m.rules).toEqual([]);
     expect(m.transfers).toEqual([]);
   });

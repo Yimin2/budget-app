@@ -168,7 +168,7 @@ describe("'나' 찾기", () => {
     expect(screen.queryByRole('region', { name: '누가 나인지 골라 주세요' })).toBeNull();
     expect(screen.getByRole('radio', { name: '민구 (나)' })).toBeTruthy();
     const stored = await s.stored();
-    expect(stored.accounts.filter((a) => a.ownerName === '민구').map((a) => a.ownerEmail)).toEqual([ME.email, ME.email, ME.email]);
+    expect(stored.accounts.filter((a) => a.ownerName === '민구').map((a) => a.ownerEmail)).toEqual([ME.email, ME.email]); // 월급통장은 '함께'라 주인이 없어요 (2026-11)
   });
 
   it('보기 권한이라 못 써도 화면에서는 이어 보여 주고 알림은 띄우지 않아요', async () => {
