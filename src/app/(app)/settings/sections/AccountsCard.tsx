@@ -210,9 +210,10 @@ export function AccountsCard({ ledger }: { ledger: ReadyLedger }) {
                   title={a.name}
                   subtitle={
                     <span className="st-sub">
-                      {ownerText(a) ? (
+                      {/* 주인은 이메일 대신 이름만, 통장 이름에 이미 있으면 빼요 */}
+                      {a.ownerName && !a.name.includes(a.ownerName) ? (
                         <Badge size="sm" tone="info" dot={false}>
-                          {ownerText(a)}
+                          {a.ownerName}
                         </Badge>
                       ) : null}
                       <span>{[a.bank, a.accountNumber].filter(Boolean).join(' ') || '계좌번호를 넣어 주세요'}</span>

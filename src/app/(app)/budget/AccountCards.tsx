@@ -171,7 +171,7 @@ function AccountCard({
           {name}
         </h3>
         <Badge size="sm" tone={account.deleted ? 'warning' : 'neutral'}>
-          {account.deleted ? '지운 통장' : ROLE_TEXT[account.role]}
+          {account.deleted ? '지운 통장' : account.payee ? `보낼 곳 · ${ROLE_TEXT[account.role]}` : ROLE_TEXT[account.role]}
         </Badge>
       </div>
 
