@@ -60,6 +60,11 @@ export function fixedOccurrenceDate(data: LedgerData, f: FixedExpense, month: Ye
   return date;
 }
 
+/** 나머지 전부 보내기의 두 번째 건부터 쓰는 id: 'auto:<규칙id>:<월>@<날짜>' (월급이 여러 번 들어올 때, 2026-11) */
+export function remainderPartId(baseId: Id, date: ISODate): Id {
+  return `${baseId}@${date}`;
+}
+
 /**
  * 아직 만들지 않은 자동 기록 (앱을 열 때 호출).
  * - 월배분 규칙: rule.startMonth ~ 이번 달, 그달 dayOfMonth 가 오늘 이전(포함)인 회차 → transfer(kind='transfer', status='done', ruleId, id=autoTransferId)
@@ -72,7 +77,10 @@ export function fixedOccurrenceDate(data: LedgerData, f: FixedExpense, month: Ye
  * - 월급이 들어온 날 배분: 그 월급날 몫의 수입이 기록돼 있으면 배분은 정해 둔 날 대신 수입이 들어온 날에 나가요 (ruleDueDate)
  * - 나머지 전부 보내기 규칙: 위 기록(수입 · 정한 금액 배분 · 고정 지출)을 모두 더한 뒤 날짜 순으로 하나씩 금액을 정한다
  *   (remainderAmount). 0 이면 만들지 않는다 (다음에 열 때 다시 계산). id 는 정한 금액 배분과 같은 auto:<규칙id>:<월>
+ *   월급이 여러 번 들어오면 들어올 때마다 따로 한 건씩 (첫 건 auto:<규칙id>:<월>, 다음부터 auto:<규칙id>:<월>@<날짜>).
+ *   이미 기록한(보낸) 건은 그대로 두고, 그 뒤에 남은 돈만 보내요 (2026-11)
  */
+
 export function pendingAutoRecords(data: LedgerData, today: ISODate, author: string, now: string): AutoRecords {
   const thisMonth = monthOf(today);
   const transferIds = new Set(data.transfers.map((t) => t.id));
@@ -90,17 +98,32 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
     return ruleDueDate(withIncome, rule, m, planned, map);
   };
 
-  const remainders: { rule: AllocationRule; month: YearMonth; date: ISODate }[] = [];
+  const remainders: { rule: AllocationRule; month: YearMonth; date: ISODate; id: Id }[] = [];
+  const byTransferId = new Map(data.transfers.map((t) => [t.id, t]));
   for (const rule of data.rules) {
     if (rule.deleted || !isValidMonth(rule.startMonth)) continue;
     if (isRemainderRule(rule)) {
       const from = firstMonth(rule.startMonth, latestOpeningDate(data, [rule.fromAccountId, rule.toAccountId]));
       for (const m of monthRange(from, thisMonth)) {
         const planned = ruleOccurrenceDate(data, rule, m);
-        if (planned === null || transferIds.has(autoTransferId(rule.id, m))) continue;
-        const date = dueOf(rule, m, planned);
-        if (date > today) continue;
-        remainders.push({ rule, month: m, date });
+        if (planned === null) continue;
+        // 월급이 들어올 때마다 따로 보내요 (2026-11): 그 월급날 몫의 수입 날짜마다 한 건. 수입이 없으면 정해 둔 날 한 건
+        const key = `${rule.fromAccountId}|${m}`;
+        let map = incomeCache.get(key);
+        if (!map) incomeCache.set(key, (map = paydayIncomeDates(withIncome, rule.fromAccountId, m)));
+        const dates = [...new Set(map.get(planned) ?? [dueOf(rule, m, planned)])].sort();
+        const baseId = autoTransferId(rule.id, m);
+        const base = byTransferId.get(baseId);
+        let baseFree = !base;
+        for (const date of dates) {
+          if (date > today) continue;
+          // 예전 한 건(합쳐진 기록)이 있으면 그날까지는 그대로 둬요. 지운 기록이면 날짜마다 새로 만들어요
+          if (base && !base.deleted && date <= base.date) continue;
+          const id = baseFree ? baseId : remainderPartId(baseId, date);
+          baseFree = false;
+          if (transferIds.has(id)) continue;
+          remainders.push({ rule, month: m, date, id });
+        }
       }
       continue;
     }
@@ -184,11 +207,12 @@ export function pendingAutoRecords(data: LedgerData, today: ISODate, author: str
     // 날짜 순 (같은 날은 규칙 id 순). 앞서 정한 나머지 이체까지 넣은 잔액으로 다음 금액을 정한다
     remainders.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.rule.id < b.rule.id ? -1 : a.rule.id > b.rule.id ? 1 : 0));
     const work: LedgerData = { ...data, transfers: [...data.transfers, ...transfers], expenses: [...data.expenses, ...expenses] };
-    for (const { rule, month, date } of remainders) {
+    for (const { rule, date, id } of remainders) {
       const amount = remainderAmount(work, rule, date, today);
       if (amount <= 0) continue;
+      transferIds.add(id);
       const row: Transfer = {
-        id: autoTransferId(rule.id, month),
+        id,
         date,
         kind: 'transfer',
         fromAccountId: rule.fromAccountId,
