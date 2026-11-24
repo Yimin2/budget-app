@@ -310,3 +310,51 @@ describe('실제 들어온 월급 · 수입 계획 바꾸기 권장', () => {
     expect(incomePlanSuggestion(same, garam(same), '2026-11-21')).toBeNull();
   });
 });
+
+/** 월급이 한 월급날 몫으로 두 번 들어오면 (21일 · 24일) 저수지로 따로따로 보내요 (2026-11) */
+describe('나머지 전부 보내기 — 월급이 들어올 때마다 따로', () => {
+  const base = () =>
+    emptyLedger({
+      accounts: [salary, livA, reservoir],
+      rules: [r('fix', livA.id, 1_000_000, 21), r('rest', reservoir.id, 0, 21, 'remainder')],
+    });
+  const pay21 = transfer({ id: 'p-21', date: '2026-11-21', kind: 'income', toAccountId: salary.id, amount: 3_000_000 });
+  const pay24 = transfer({ id: 'p-24', date: '2026-11-24', kind: 'income', toAccountId: salary.id, amount: 2_000_000 });
+  const toReservoir = (d: LedgerData) =>
+    d.transfers.filter((t) => !t.deleted && t.ruleId === 'rest').map((t) => [t.id, t.date, t.amount]);
+
+  it('21일에 보낸 건은 그대로, 24일 월급은 따로 한 건 더 (합치지 않아요)', () => {
+    // 21일: 월급 300만 − 생활비 100만 = 200만 저수지로
+    const d21 = withRecords({ ...base(), transfers: [pay21] }, '2026-11-21');
+    expect(toReservoir(d21)).toEqual([[autoTransferId('rest', '2026-11'), '2026-11-21', 2_000_000]]);
+    // 보냈어요를 누른 뒤 24일 월급이 들어오면 그 200만만 따로 보내요
+    const sent = { ...d21, transfers: d21.transfers.map((t) => (t.ruleId === 'rest' ? { ...t, sentAt: NOW } : t)) };
+    const d24 = withRecords({ ...sent, transfers: [...sent.transfers, pay24] }, '2026-11-24');
+    expect(toReservoir(d24)).toEqual([
+      [autoTransferId('rest', '2026-11'), '2026-11-21', 2_000_000],
+      [`${autoTransferId('rest', '2026-11')}@2026-11-24`, '2026-11-24', 2_000_000],
+    ]);
+    expect(d24.transfers.find((t) => t.id === autoTransferId('rest', '2026-11'))?.sentAt).toBe(NOW);
+    expect(accountBalance(d24, salary.id, '2026-11-24')).toBe(0);
+  });
+
+  it('두 월급을 한꺼번에 기록해도 날짜마다 따로 보내요', () => {
+    const d = withRecords({ ...base(), transfers: [pay21, pay24] }, '2026-11-24');
+    expect(toReservoir(d)).toEqual([
+      [autoTransferId('rest', '2026-11'), '2026-11-21', 2_000_000],
+      [`${autoTransferId('rest', '2026-11')}@2026-11-24`, '2026-11-24', 2_000_000],
+    ]);
+    // 다시 열어도 더 만들지 않아요
+    expect(pendingAutoRecords(d, '2026-11-24', 'a@x', NOW).transfers).toEqual([]);
+  });
+
+  it('예전에 합쳐진 한 건을 지우면 날짜마다 다시 만들어요', () => {
+    const merged = transfer({ id: autoTransferId('rest', '2026-11'), date: '2026-11-24', kind: 'transfer', fromAccountId: salary.id, toAccountId: reservoir.id, amount: 4_000_000, ruleId: 'rest', deleted: true });
+    const fix = transfer({ id: autoTransferId('fix', '2026-11'), date: '2026-11-21', kind: 'transfer', fromAccountId: salary.id, toAccountId: livA.id, amount: 1_000_000, ruleId: 'fix' });
+    const d = withRecords({ ...base(), transfers: [pay21, pay24, fix, merged] }, '2026-11-24');
+    expect(toReservoir(d)).toEqual([
+      [`${autoTransferId('rest', '2026-11')}@2026-11-21`, '2026-11-21', 2_000_000],
+      [`${autoTransferId('rest', '2026-11')}@2026-11-24`, '2026-11-24', 2_000_000],
+    ]);
+  });
+});
